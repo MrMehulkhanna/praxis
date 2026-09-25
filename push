@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# push — the daily commit+push habit, one command.
+# Stages everything, shows you what changed, asks for a one-line message
+# (or takes it as an argument), commits, and pushes to origin/main.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+if [ -z "$(git status --porcelain)" ]; then
+  echo "Nothing changed since the last commit."
+  exit 0
+fi
+
+echo "── changed ──"
+git status --short
+echo
+
+MSG="${*:-}"
+if [ -z "$MSG" ]; then
+  read -rp "commit message: " MSG
+  [ -z "$MSG" ] && { echo "aborted (empty message)"; exit 1; }
+fi
+
+git add -A
+git commit -q -m "$MSG"
+echo "✓ committed: $MSG"
+
+if git remote get-url origin >/dev/null 2>&1; then
+  git push -q origin main
+  echo "✓ pushed to $(git remote get-url origin)"
+else
+  echo "no 'origin' remote yet — see docs/GITHUB-SETUP.md"
+fi

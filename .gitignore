@@ -1,0 +1,43 @@
+# ── secrets & personal data — never commit ──────────────────────────────
+config/aios.env
+*.env
+!*.env.example
+*.key
+*.pem
+
+# ── local AI memory / ledger / conversations (personal) ──────────────────
+*.db
+*.db-shm
+*.db-wal
+logs/
+voice/*.jsonl
+blobs/
+cache/
+.hf/
+
+# ── large / regenerable artifacts (not source) ──────────────────────────
+models/
+.venv/
+# vendored upstream; build it yourself (see README)
+llama.cpp/
+llama.cpp
+llama-server
+llama-bench
+*.gguf
+*.onnx
+
+# ── python / editor cruft ────────────────────────────────────────────────
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.swp
+.DS_Store
+
+# ── session scratch (not part of the project) ───────────────────────────
+daemon.log
+session-status.md
+desktop-audit-phase0.md
+
+# ── keep the desktop demo video? it's ~3 MB; comment the next line to commit it
+# docs/*.mp4

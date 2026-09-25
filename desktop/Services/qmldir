@@ -1,0 +1,13 @@
+module Services
+singleton Shell 1.0 Shell.qml
+singleton Sys 1.0 Sys.qml
+singleton Aios 1.0 Aios.qml
+singleton Notifs 1.0 Notifs.qml
+singleton Power 1.0 Power.qml
+singleton Voice 1.0 Voice.qml
+singleton Audio 1.0 Audio.qml
+singleton Net 1.0 Net.qml
+singleton HyprOpts 1.0 HyprOpts.qml
+singleton Wallpaper 1.0 Wallpaper.qml
+singleton EyeComfort 1.0 EyeComfort.qml
+singleton Display 1.0 Display.qml

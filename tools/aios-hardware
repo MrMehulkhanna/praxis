@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Root helper for the two AIOS hardware controls that the kernel protects.
+
+It intentionally accepts no paths, shell fragments, or arbitrary commands.
+"""
+import glob
+import os
+import pathlib
+import sys
+
+
+def fail(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(2)
+
+
+def asus_fan() -> pathlib.Path:
+    for hwmon in glob.glob("/sys/class/hwmon/hwmon*"):
+        try:
+            if pathlib.Path(hwmon, "name").read_text().strip() == "asus":
+                control = pathlib.Path(hwmon, "pwm1_enable")
+                if control.exists():
+                    return control
+        except OSError:
+            continue
+    fail("ASUS fan-control interface unavailable")
+
+
+def charge_limit() -> pathlib.Path:
+    paths = glob.glob("/sys/class/power_supply/BAT*/charge_control_end_threshold")
+    if not paths:
+        fail("battery charge-limit interface unavailable")
+    return pathlib.Path(paths[0])
+
+
+def write(path: pathlib.Path, value: str) -> None:
+    # sysfs attributes are command-like files: opening with O_TRUNC (the
+    # default for Python's ``write_text``) is rejected by several drivers.
+    fd = os.open(path, os.O_WRONLY)
+    try:
+        os.write(fd, value.encode())
+    finally:
+        os.close(fd)
+    print("applied")
+
+
+if len(sys.argv) != 3:
+    fail("usage: aios-hardware fan <auto|full> | charge-limit <40..100>")
+
+action, value = sys.argv[1:]
+if action == "fan" and value in {"2", "0"}:
+    write(asus_fan(), value)
+elif action == "charge-limit" and value.isdigit() and 40 <= int(value) <= 100:
+    write(charge_limit(), value)
+else:
+    fail("unsupported hardware action")

@@ -1,0 +1,281 @@
+{
+  "_comment": "Default-deny allow-list for voice commands. Anything NOT listed here is refused and logged, never executed — including anything that merely sounds like it might be a command. This file is the entire authorization boundary: edit it to change what voice can do. security.py never executes anything that isn't matched against an entry below.",
+  "_tiers": {
+    "auto": "executes immediately, no confirmation",
+    "confirm": "requires a spoken 'yes' or 'confirm' within 5 seconds of the prompt being read back, OR a tap on the confirm toast in the UI",
+    "forbidden": "explicitly listed so it's clear this was considered and rejected on purpose, not just forgotten"
+  },
+  "commands": [
+    {
+      "id": "volume_set",
+      "pattern": "^(set )?volume (to )?(\\d+)%?$",
+      "tier": "auto",
+      "handler": "volume_set",
+      "description": "set volume to N%"
+    },
+    {
+      "id": "volume_up",
+      "pattern": "^(turn |set )?volume up$",
+      "tier": "auto",
+      "handler": "volume_up",
+      "description": "volume up 5%"
+    },
+    {
+      "id": "volume_down",
+      "pattern": "^(turn |set )?volume down$",
+      "tier": "auto",
+      "handler": "volume_down",
+      "description": "volume down 5%"
+    },
+    {
+      "id": "mute_toggle",
+      "pattern": "^mute( audio)?$",
+      "tier": "auto",
+      "handler": "mute_toggle",
+      "description": "toggle mute"
+    },
+    {
+      "id": "brightness_set",
+      "pattern": "^(set )?brightness (to )?(\\d+)%?$",
+      "tier": "auto",
+      "handler": "brightness_set",
+      "description": "set brightness to N%"
+    },
+    {
+      "id": "brightness_up",
+      "pattern": "^(turn |make )?(screen |brightness )?(brighter|up)$",
+      "tier": "auto",
+      "handler": "brightness_up",
+      "description": "brightness up 10%"
+    },
+    {
+      "id": "brightness_down",
+      "pattern": "^(turn |make )?(screen |brightness )?(darker|dimmer|down)$",
+      "tier": "auto",
+      "handler": "brightness_down",
+      "description": "brightness down 10%"
+    },
+    {
+      "id": "workspace_switch",
+      "pattern": "^(go to |switch to )?workspace (\\d+)$",
+      "tier": "auto",
+      "handler": "workspace_switch",
+      "description": "switch to workspace N"
+    },
+    {
+      "id": "open_app",
+      "pattern": "^(open|launch|start) (browser|terminal|files|file manager|antigravity|code|aios)$",
+      "tier": "auto",
+      "handler": "open_app",
+      "description": "launch a whitelisted app — see apps.json for the exact list, opening anything not in that list is refused even if this pattern matches"
+    },
+    {
+      "id": "unload_model",
+      "pattern": "^(free vram|unload( the)? model)$",
+      "tier": "auto",
+      "handler": "unload_model",
+      "description": "unload the local AI model, free VRAM"
+    },
+    {
+      "id": "lock_screen",
+      "pattern": "^lock( screen)?$",
+      "tier": "auto",
+      "handler": "lock_screen",
+      "description": "lock the screen — always safe to auto-execute, it only adds friction for you"
+    },
+    {
+      "id": "help",
+      "pattern": "^what can (i say|you do)\\??$",
+      "tier": "auto",
+      "handler": "help",
+      "description": "list available commands"
+    },
+    {
+      "id": "model_coding",
+      "pattern": "^(open|switch to|use|select) (my |the )?(coding|code|coder) model$",
+      "tier": "auto",
+      "handler": "model_select",
+      "arg": "local-coder-7b",
+      "description": "switch to the coding model"
+    },
+    {
+      "id": "model_fast",
+      "pattern": "^(switch to|use|select) (the )?(fastest|fast|quick|daily)( local)? model$",
+      "tier": "auto",
+      "handler": "model_select",
+      "arg": "local-qwen3-4b",
+      "description": "switch to the fastest local model"
+    },
+    {
+      "id": "model_best",
+      "pattern": "^(switch to|use|select) (the )?(best|quality|smartest|biggest)( local)? model$",
+      "tier": "auto",
+      "handler": "model_select",
+      "arg": "local-qwen3-8b",
+      "description": "switch to the best local model"
+    },
+    {
+      "id": "model_auto",
+      "pattern": "^(switch to|use|select|enable) (the )?auto(matic)?( model)?( routing| mode)?$",
+      "tier": "auto",
+      "handler": "model_select",
+      "arg": "auto",
+      "description": "let the router pick the model per task"
+    },
+    {
+      "id": "which_model",
+      "pattern": "^(which|what) model (is|are you|am i) (using|running|on)\\??$",
+      "tier": "auto",
+      "handler": "model_which",
+      "description": "say which model is selected"
+    },
+    {
+      "id": "status_gpu",
+      "pattern": "^(check|show|what('s| is)) (the |my )?gpu( usage| status| load)?\\??$",
+      "tier": "auto",
+      "handler": "status_gpu",
+      "description": "GPU usage, VRAM and temperature"
+    },
+    {
+      "id": "status_cpu",
+      "pattern": "^(check|show|what('s| is)) (the |my )?(cpu|processor)( usage| load| temperature)?\\??$",
+      "tier": "auto",
+      "handler": "status_cpu",
+      "description": "CPU usage and temperature"
+    },
+    {
+      "id": "status_mem",
+      "pattern": "^(check|show|what('s| is)) (the |my )?(memory|ram)( usage)?\\??$",
+      "tier": "auto",
+      "handler": "status_mem",
+      "description": "memory usage"
+    },
+    {
+      "id": "status_bat",
+      "pattern": "^(check|show|what('s| is)) (the |my )?battery( level| status)?\\??$",
+      "tier": "auto",
+      "handler": "status_bat",
+      "description": "battery level and state"
+    },
+    {
+      "id": "status_disk",
+      "pattern": "^(check|show|what('s| is)) (the |my )?(disk|storage)( space| usage)?\\??$",
+      "tier": "auto",
+      "handler": "status_disk",
+      "description": "free disk space"
+    },
+    {
+      "id": "status_temp",
+      "pattern": "^(check|show|what('s| is)) (the |my )?temperature(s)?\\??$",
+      "tier": "auto",
+      "handler": "status_temp",
+      "description": "CPU, GPU and SSD temperatures"
+    },
+    {
+      "id": "perf_mode",
+      "pattern": "^(set |switch to |enable )?(performance|balanced|quiet|power saver|power saving) mode$",
+      "tier": "auto",
+      "handler": "perf_mode",
+      "description": "set performance / balanced / quiet mode"
+    },
+    {
+      "id": "svc_restart_ai",
+      "pattern": "^restart (the )?(ai|aios|backend|ai service)$",
+      "tier": "auto",
+      "handler": "svc",
+      "arg": "restart aios.service",
+      "description": "restart the AI backend"
+    },
+    {
+      "id": "svc_stop_ai",
+      "pattern": "^stop (the )?(ai|aios|backend|ai service)$",
+      "tier": "confirm",
+      "handler": "svc",
+      "arg": "stop aios.service",
+      "description": "stop the AI backend — asks first"
+    },
+    {
+      "id": "dev_env",
+      "pattern": "^(start|open|launch) (my |the )?(dev|development|coding) (environment|setup|workspace)$",
+      "tier": "auto",
+      "handler": "dev_env",
+      "description": "open terminal, editor and browser"
+    },
+    {
+      "id": "activity",
+      "pattern": "^(show|open) (the )?(activity|what('s| is) (happening|running))$",
+      "tier": "auto",
+      "handler": "panel",
+      "arg": "activity",
+      "description": "open the activity panel"
+    },
+    {
+      "id": "open_ai_panel",
+      "pattern": "^(open|show) (the )?(ai|assistant)( panel| chat)?$",
+      "tier": "auto",
+      "handler": "panel",
+      "arg": "ai",
+      "description": "open the AI panel"
+    },
+    {
+      "id": "open_settings",
+      "pattern": "^(open|show) (the )?settings$",
+      "tier": "auto",
+      "handler": "panel",
+      "arg": "settings",
+      "description": "open settings"
+    },
+    {
+      "id": "suspend",
+      "pattern": "^(suspend|sleep)$",
+      "tier": "confirm",
+      "handler": "suspend",
+      "description": "suspend the machine — confirm required: interrupts whatever you're doing"
+    },
+    {
+      "id": "logout",
+      "pattern": "^log ?out$",
+      "tier": "confirm",
+      "handler": "logout",
+      "description": "end the Hyprland session — confirm required: closes everything"
+    },
+    {
+      "id": "reboot",
+      "pattern": "^reboot|restart( computer| pc)?$",
+      "tier": "confirm",
+      "handler": "reboot",
+      "description": "reboot the machine — confirm required"
+    },
+    {
+      "id": "shutdown",
+      "pattern": "^shut ?down( computer| pc)?$",
+      "tier": "confirm",
+      "handler": "shutdown",
+      "description": "power off the machine — confirm required"
+    },
+    {
+      "id": "delete_file",
+      "pattern": ".*",
+      "tier": "forbidden",
+      "handler": null,
+      "description": "voice can never delete, move, or overwrite files — no pattern matches this on purpose; file operations are not exposed to voice at all, by design, not by omission"
+    },
+    {
+      "id": "run_arbitrary_shell",
+      "pattern": ".*",
+      "tier": "forbidden",
+      "handler": null,
+      "description": "voice can never run an arbitrary shell command — every executable action above is a fixed handler with fixed arguments; there is no 'run <transcript>' handler and there must never be one"
+    }
+  ],
+  "apps": {
+    "_comment": "The ONLY launch targets voice is allowed to reach. Not a general launcher — a named allow-list. Adding an app here is a deliberate edit, not automatic.",
+    "browser": "firefox",
+    "terminal": "kitty",
+    "files": "thunar",
+    "file manager": "thunar",
+    "antigravity": "kitty ~/.local/bin/agy",
+    "code": "code",
+    "aios": "xdg-open http://127.0.0.1:8778"
+  }
+}

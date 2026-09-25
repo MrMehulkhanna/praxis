@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""
+ai — control interface for AIOS (local-first AI on this machine).
+
+  ai "why is my GPU not detected?"   terminal agent: gathers evidence, answers, may propose a fix
+  ai ask "…"                         plain chat (no diagnostics)
+  ai code "…"                        coding task (routes to the code model, adds cwd context)
+  ai see photo.png ["question"]      ask about an image (Qwen3-VL); --image FILE works on any command
+  ai model [list|auto|<id>|stop]     show / select / auto-route / unload
+  ai models · ai providers · ai usage · ai status · ai logs [-f] · ai activity
+  ai system · ai hardware · ai gpu · ai cpu · ai memory · ai storage · ai services
+  ai voice [test|commands]           voice pipeline status / test / allowed phrases
+  ai config [key value]              model · budget · thinking · cloud-for
+  ai doctor · ai update · ai cleanup [--apply] · ai audit · ai do "…" · ai approve
+  --json  machine-readable   --model <id>  one-shot override   --auto  force routing
+
+Exit codes: 0 ok · 1 error · 2 usage · 3 backend down · 4 refused/denied
+"""
+import json, os, pathlib, shutil, subprocess, sys, time, urllib.error, urllib.request
+
+BASE = "http://127.0.0.1:8778"
+HOME = pathlib.Path(os.environ.get("AIOS_HOME", pathlib.Path.home() / "aios"))
+D, B, R, G, Y, C, M, RST = "\033[2m", "\033[1m", "\033[31m", "\033[32m", "\033[33m", "\033[36m", "\033[35m", "\033[0m"
+JSON = "--json" in sys.argv
+if JSON or not sys.stdout.isatty():
+    D = B = R = G = Y = C = M = RST = ""
+
+def die(msg, code=1):
+    print(f"{R}✗ {msg}{RST}", file=sys.stderr); sys.exit(code)
+
+def api(path, data=None, timeout=15, method=None):
+    body = json.dumps(data).encode() if data is not None else None
+    req = urllib.request.Request(BASE + path, data=body, method=method or ("POST" if body is not None else "GET"),
+                                 headers={"Content-Type": "application/json"} if body is not None else {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try: msg = json.loads(e.read()).get("detail", str(e))
+        except Exception: msg = str(e)
+        die(msg, 1)
+    except (urllib.error.URLError, ConnectionRefusedError, TimeoutError):
+        die("AIOS backend is not running.  Start it:  systemctl --user start aios.service   (ai doctor for details)", 3)
+
+def out(obj, human):
+    if JSON: print(json.dumps(obj, indent=2, default=str))
+    else: human(obj)
+
+def fmt_bytes(n):
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024: return f"{n:.1f} {u}" if u != "B" else f"{int(n)} B"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+# ── streaming (chat / agent) ────────────────────────────────────────────
+IMAGES: list = []
+
+def stream(path, message, model, conversation, show_meta=True):
+    body = json.dumps({"message": message, "conversation_id": conversation, "model": model,
+                       "images": [str(pathlib.Path(i).expanduser().resolve()) for i in IMAGES]}).encode()
+    req = urllib.request.Request(BASE + path, data=body, headers={"Content-Type": "application/json"})
+    pending = None
+    try:
+        with urllib.request.urlopen(req, timeout=None) as resp:
+            event = "message"
+            for raw in resp:
+                line = raw.decode().rstrip("\n")
+                if line.startswith("event: "): event = line[7:].strip(); continue
+                if not line.startswith("data: "): continue
+                data = line[6:]; this, event = event, "message"
+                if data == "{}": continue
+                v = json.loads(data)
+                if this == "meta":
+                    if show_meta:
+                        badge = {"LOCAL": G, "CLOUD": M}.get(v.get("mode"), Y)
+                        print(f"{D}[{badge}{v.get('mode')}{RST}{D} · {v.get('model')} · {v.get('task', '')}"
+                              + (f" · {v.get('reason')}" if v.get("auto") or path == "/api/agent" else "") + f"]{RST}")
+                elif this == "step":
+                    print(f"{D}  ↳ {v.get('stage')}: {v.get('msg')}{RST}")
+                elif this == "pending":
+                    pending = v
+                elif this == "error":
+                    print(f"\n{R}⚠ {v}{RST}")
+                elif this == "done":
+                    print()
+                else:
+                    sys.stdout.write(v); sys.stdout.flush()
+    except (urllib.error.URLError, ConnectionRefusedError):
+        die("AIOS backend is not running.", 3)
+    if pending:
+        confirm_pending(pending)
+
+def confirm_pending(p):
+    print(f"\n{Y}Proposed command needs your confirmation:{RST}\n  {B}$ {p['cmd']}{RST}\n  {D}{p.get('reason', '')}{RST}")
+    if not sys.stdin.isatty():
+        api("/api/tool/cancel", {"token": p["token"]}); print(f"{D}(not a terminal — cancelled){RST}"); return
+    try: ans = input(f"{Y}Run it? [y/N] {RST}").strip().lower()
+    except (EOFError, KeyboardInterrupt): ans = ""
+    if ans in ("y", "yes"):
+        r = api("/api/tool/exec", {"token": p["token"]}, timeout=120)
+        print((f"{G}✓ ran{RST}\n" + r.get("output", "")) if r.get("executed") else f"{R}⚠ {r.get('output')}{RST}")
+    else:
+        api("/api/tool/cancel", {"token": p["token"]}); print(f"{D}cancelled{RST}")
+
+# ── commands ────────────────────────────────────────────────────────────
+def cmd_models():
+    ms = api("/api/models"); sel = api("/api/settings")["selected_model"]
+    def human(ms):
+        stars = lambda n: "★" * n + "☆" * (5 - n)
+        print(f"{'':2}{B}{'id':32} {'label':22} {'role':8} {'quality':7} {'speed':7} {'measured':12} {'where':6} {'vram':8}{RST}")
+        print(f"{C + '▶' if sel == 'auto' else ' '}{RST} {'auto':32} {'Auto routing':22} {'—':8} {'':7} {'':7} {'':12} {'':6} {'':8}")
+        print(f"   {D}task-based: code/debug → Code · sysadmin/reasoning → Quality · chat → Daily · sticks to the loaded model{RST}")
+        for m in ms:
+            meas = m.get("measured"); ms_ = f"{meas['tok_per_s']} tok/s" if meas and meas.get("tok_per_s") else "—"
+            where = "local" if m["provider"] == "local" else ("free" if m.get("free") else "paid")
+            flag = "" if m["available"] else f" {D}({m.get('state', 'not downloaded')}){RST}"
+            print(f"{C + '▶' if m['selected'] else ' '}{RST} {m['id']:32} {m['label']:22} {m['role']:8} {stars(m['quality']):7} {m['speed']:7} {ms_:12} {where:6} {m['vram']:8}{flag}")
+    out(ms, human)
+
+def cmd_model(args):
+    if not args or args[0] == "list": return cmd_models()
+    a = args[0]
+    if a == "stop": api("/api/unload"); print(f"{G}✓ model unloaded, VRAM freed{RST}"); return
+    if a == "run": a = args[1] if len(args) > 1 else die("ai model run <id>", 2)
+    s = api("/api/settings", {"selected_model": a})
+    print(f"{G}✓ model → {s['selected_model']}{RST}" + (f"  {D}(router decides per task){RST}" if s["auto"] else ""))
+    if a not in ("auto",) and a.startswith("local-"):
+        print(f"{D}loads into VRAM on first use; auto-unloads after idle{RST}")
+
+def cmd_providers():
+    ps = api("/api/providers")
+    def human(ps):
+        print(f"{B}{'provider':12} {'enabled':8} {'key':10} {'state':13} {'requests':9} {'latency':9} {'quota':8} models{RST}")
+        for p in ps:
+            st = {"ok": G, "quota": Y, "auth": R, "error": R, "offline": Y}.get(p["state"], D)
+            print(f"{p['id']:12} {str(p['enabled']):8} {('set' if p['configured'] else 'missing'):10} {st}{p['state']:13}{RST} "
+                  f"{p['requests']:<9} {(str(p['last_latency_ms']) + ' ms') if p['last_latency_ms'] else '—':9} {p['quota']:8} {', '.join(p['models'])}")
+        print(f"\n{D}Enable: put the key in ~/aios/config/aios.env (e.g. {ps[0]['key_env'] if ps else 'GROQ_API_KEY'}=…), set \"enabled\": true in "
+              f"~/aios/config/providers.json, then `ai config budget FREE_ONLINE` and `ai providers reload`.{RST}")
+    out(ps, human)
+
+def cmd_usage():
+    u = api("/api/usage")
+    def human(u):
+        t = u["total"]
+        print(f"{B}Total{RST}  {t['requests']} requests · {t['in_tok']} in · {t['out_tok']} out tokens · est ${t['cost_est']:.4f}")
+        print(f"{B}{'model':30} {'where':6} {'req':5} {'in':8} {'out':8} {'cost $':9} {'avg ms':8} {'fail':6} quota{RST}")
+        for r in u["by_model"]:
+            print(f"{r['model']:30} {r['mode']:6} {r['n']:<5} {r['in_tok'] or 0:<8} {r['out_tok'] or 0:<8} {r['cost'] or 0:<9.4f} {int(r['avg_ms'] or 0):<8} {r['failure_rate']:<6.2f} {r['quota']}")
+    out(u, human)
+
+def cmd_status():
+    s = api("/api/status")
+    def human(s):
+        print(f"{B}{C}AIOS{RST}  backend {G}running{RST} · {'online' if s['online'] else Y + 'offline' + RST} · budget {s['budget_mode']}")
+        print(f"  model: {s['selected_model']}   loaded in VRAM: {s['loaded'] or 'none'}   whisper: {'warm' if s['whisper_loaded'] else 'cold'}")
+        print(f"  memory: {s['objects']} objects · {s['runs']} runs · db {s['db_mb']} MB   jobs: {len(s['jobs'])}")
+        for j in s["jobs"]:
+            print(f"    • [{j['id']}] {j['kind']} {j['stage']} — {j['title'][:60]}")
+    out(s, human)
+
+def cmd_logs(follow):
+    if follow:
+        req = urllib.request.Request(BASE + "/api/activity/stream")
+        try:
+            with urllib.request.urlopen(req, timeout=None) as resp:
+                ev = "message"
+                for raw in resp:
+                    line = raw.decode().rstrip("\n")
+                    if line.startswith("event: "): ev = line[7:].strip(); continue
+                    if not line.startswith("data: "): continue
+                    d = json.loads(line[6:]); this, ev = ev, "message"
+                    if this == "jobs": continue
+                    print_event(d)
+        except KeyboardInterrupt: print()
+        except urllib.error.URLError: die("backend not running", 3)
+        return
+    a = api("/api/activity?limit=60")
+    out(a, lambda a: [print_event(e) for e in a["events"]])
+
+def print_event(e):
+    col = {"error": R, "refused": R, "result": G, "executed": G, "approval": Y, "routed": C, "classified": C}.get(e["stage"], D)
+    print(f"{D}{time.strftime('%H:%M:%S', time.localtime(e['ts']))}{RST} {D}[{e.get('job') or '-':8}]{RST} {col}{e['stage']:10}{RST} {e['msg']}")
+
+def cmd_hw(section=None):
+    h = api("/api/hardware")
+    def human(h):
+        c, g, m, b, f = h["cpu"], h["gpu"], h["memory"], h["battery"], h["fans"]
+        if section in (None, "system"):
+            print(f"{B}{h['model']}{RST} · kernel {h['kernel']} · up {h['uptime_s'] // 3600}h {h['uptime_s'] % 3600 // 60}m")
+        if section in (None, "cpu", "system"):
+            print(f"{B}CPU{RST}  {c['model']}\n     {c['usage']}% · {c['temp_c']}°C · {c['freq_mhz']} MHz · load {c['load']} · governor {c['governor']} · {c['cores']} threads")
+        if section in (None, "gpu", "system"):
+            if g.get("present") and not g.get("error"):
+                print(f"{B}GPU{RST}  {g['name']}\n     {g['util']}% · VRAM {int(g['vram_used_mb'])}/{int(g['vram_total_mb'])} MB · {g['temp_c']}°C · {g['power_w']} W / {g['power_limit_w']} W · {g['clock_mhz']} MHz · {g['pstate']} · mux: {g['mux_mode']}")
+                for p in g["processes"]: print(f"       {p['pid']:>7} {p['name'][:40]:40} {p['vram_mb']} MB")
+            else: print(f"{B}GPU{RST}  {g.get('error', 'not present')}")
+        if section in (None, "memory", "system"):
+            print(f"{B}RAM{RST}  {fmt_bytes(m['used'])} / {fmt_bytes(m['total'])} ({m['percent']}%) · swap {fmt_bytes(m['swap_used'])} / {fmt_bytes(m['swap_total'])}")
+        if section in (None, "storage", "system"):
+            for fs in h["storage"]["filesystems"]:
+                print(f"{B}DISK{RST} {fs['mount']:12} {fmt_bytes(fs['used'])} / {fmt_bytes(fs['size'])} ({fs['percent']}%) free {fmt_bytes(fs['avail'])} · {fs['fs']}" + (f" · nvme {h['storage']['nvme_temp_c']}°C" if fs['mount'] == '/' and h['storage']['nvme_temp_c'] else ""))
+        if section in (None, "hardware", "system"):
+            print(f"{B}PWR{RST}  battery {b.get('percent')}% {b.get('status', '').lower()} · {b.get('power_w')} W · health {b.get('health_percent') or '?'}% · charge limit {b.get('charge_limit')}% · profile {h['profile']['current']} {h['profile']['choices']}")
+            print(f"{B}FAN{RST}  {f.get('rpm')} rpm · mode {f.get('mode')} · {f.get('note', '')}")
+            print(f"{B}KBD{RST}  backlight {h['keyboard'].get('level')}/{h['keyboard'].get('max')} · temps {h['temps']} · net ↓{fmt_bytes(h['network']['down_bps'])}/s ↑{fmt_bytes(h['network']['up_bps'])}/s")
+    out(h, human)
+
+def cmd_hw_set(what, value):
+    r = api("/api/hardware/set", {"what": what, "value": value}, timeout=150)
+    print((G + "✓ " if r["ok"] else R + "✗ ") + r["message"] + RST); sys.exit(0 if r["ok"] else 4)
+
+def cmd_services():
+    rows = subprocess.run(["systemctl", "--user", "list-units", "--type=service", "--no-pager", "--no-legend", "--plain"], capture_output=True, text=True).stdout
+    failed = subprocess.run(["systemctl", "--failed", "--no-pager", "--no-legend", "--plain"], capture_output=True, text=True).stdout
+    print(f"{B}user services{RST}"); print(rows.strip() or "(none)")
+    print(f"\n{B}system failed units{RST}"); print(failed.strip() or f"{G}none{RST}")
+    for u in ("aios.service",):
+        st = subprocess.run(["systemctl", "--user", "is-active", u], capture_output=True, text=True).stdout.strip()
+        print(f"\n{u}: {(G if st == 'active' else R)}{st}{RST}")
+
+def cmd_voice(args):
+    vp = HOME / "voice"
+    if args and args[0] == "commands":
+        m = json.loads((vp / "voice_permissions.json").read_text())
+        for c in m["commands"]:
+            if c["tier"] != "forbidden":
+                print(f"{(Y if c['tier'] == 'confirm' else G)}{c['tier']:8}{RST} {c['description']}")
+        return
+    if args and args[0] == "test":
+        wav = "/tmp/aios-voice-test.wav"
+        print("recording 4 s — speak now…"); subprocess.run(["pw-record", "--channels=1", "--rate=16000", wav], timeout=4.5) if False else None
+        p = subprocess.Popen(["pw-record", "--channels=1", "--rate=16000", wav]); time.sleep(4); p.terminate(); p.wait()
+        t0 = time.time(); r = api("/api/voice/transcribe", {"path": wav}, timeout=90)
+        print(f"heard: {B}{r['text'] or '(nothing)'}{RST}  {D}({r['ms']} ms transcription){RST}")
+        sys.path.insert(0, str(vp)); from security import route  # noqa
+        res = route(r["text"]) if r["text"] else {"kind": "empty", "reply": ""}
+        print(f"route: {res['kind']} — {res.get('reply', '')[:120]}"); return
+    s = api("/api/status")
+    ok = lambda b: G + "✓" + RST if b else R + "✗" + RST
+    print(f"{ok(shutil.which('pw-record'))} pw-record   {ok((vp / 'security.py').exists())} security gate   {ok(s['whisper_loaded'])} whisper warm (loads on first use)   "
+          f"{ok((HOME / 'models/piper-amy').exists())} piper voice")
+    print(f"{D}hold the mic button in the top bar, speak, release · `ai voice commands` lists phrases · `ai voice test` records 4 s{RST}")
+
+def cmd_config(args):
+    s = api("/api/settings")
+    if not args:
+        out(s, lambda s: print(f"model      {s['selected_model']}\nbudget     {s['budget_mode']}   {D}({', '.join(s['budget_modes'])}){RST}\nthinking   {s['thinking']}\ncloud-for  {s['prefer_cloud_for'] or '[] (auto routing never picks cloud)'}")); return
+    k = args[0]; v = args[1] if len(args) > 1 else None
+    if k == "model" and v: s = api("/api/settings", {"selected_model": v})
+    elif k == "budget" and v: s = api("/api/settings", {"budget_mode": v.upper()})
+    elif k == "thinking" and v: s = api("/api/settings", {"thinking": v.lower() in ("1", "on", "true", "yes")})
+    elif k == "cloud-for": s = api("/api/settings", {"prefer_cloud_for": [] if v in (None, "none") else v.split(",")})
+    elif k == "approve": api("/api/settings/approve", {"run_key": "next"}); print(f"{G}✓ next paid request approved{RST}"); return
+    else: die("ai config [model <id>|budget <MODE>|thinking on/off|cloud-for code,reasoning|approve]", 2)
+    print(f"{G}✓{RST} model={s['selected_model']} budget={s['budget_mode']} thinking={s['thinking']} cloud-for={s['prefer_cloud_for']}")
+
+def cmd_doctor():
+    checks = []
+    def add(name, ok, fix=""): checks.append((name, ok, fix))
+    try:
+        with urllib.request.urlopen(BASE + "/api/status", timeout=3) as r: s = json.loads(r.read()); add("backend reachable on :8778", True)
+    except Exception: s = None; add("backend reachable on :8778", False, "systemctl --user start aios.service")
+    add("aios.service enabled", subprocess.run(["systemctl", "--user", "is-enabled", "aios.service"], capture_output=True, text=True).stdout.strip() == "enabled", "systemctl --user enable aios.service")
+    add("llama-server binary", (HOME / "llama-server").exists() and os.access(HOME / "llama-server", os.X_OK), "build llama.cpp: cmake -B build -DGGML_CUDA=ON && cmake --build build")
+    add("nvidia-smi sees the GPU", subprocess.run(["nvidia-smi", "-L"], capture_output=True).returncode == 0, "check nvidia driver / modules")
+    for mid, d, minimum in (("qwen3-4b", "qwen3-4b", 1), ("qwen3-8b", "qwen3-8b", 1), ("coder-7b", "qwen-coder-7b", 1), ("dolphin-v2-8b", "dolphin-v2-8b-abliterated", 4_500_000_000)):
+        add(f"model {mid} downloaded", any(p.stat().st_size >= minimum for p in (HOME / "models" / d).glob("*.gguf")), f"see adapters/local/llama.py PROFILES")
+    add("python venv", (HOME / ".venv/bin/python").exists())
+    for mod in ("fastapi", "httpx", "faster_whisper", "sqlite_vec"):
+        add(f"venv has {mod}", subprocess.run([str(HOME / ".venv/bin/python"), "-c", f"import {mod}"], capture_output=True).returncode == 0, f"{HOME}/.venv/bin/pip install {mod.replace('_', '-')}")
+    add("quickshell running", subprocess.run(["pgrep", "-x", "quickshell"], capture_output=True).returncode == 0, "toggle-qs  (Super+Esc)")
+    add("swaync running", subprocess.run(["pgrep", "-x", "swaync"], capture_output=True).returncode == 0, "swaync &")
+    add("polkit agent (for root-only hardware toggles)", subprocess.run(["pgrep", "-f", "polkit-kde-authentication-agent"], capture_output=True).returncode == 0, "/usr/lib/polkit-kde-authentication-agent-1 &")
+    add("pw-record (voice)", bool(shutil.which("pw-record")), "pacman -S pipewire")
+    add("aios.env is private (0600)", oct((HOME / "config/aios.env").stat().st_mode)[-3:] == "600", f"chmod 600 {HOME}/config/aios.env")
+    free = shutil.disk_usage("/").free / 1e9; add(f"disk free {free:.0f} GB", free > 10, "ai cleanup")
+    if s: add(f"budget mode {s['budget_mode']}", True); add("internet", s["online"], "local models still work offline")
+    ps = api("/api/providers") if s else []
+    add(f"cloud providers configured: {sum(1 for p in ps if p['configured'] and p['enabled'])}/{len(ps)}", True, "optional — ai providers")
+    bad = 0
+    for name, ok, fix in checks:
+        print(f"{G + '✓' if ok else R + '✗'}{RST} {name}" + (f"   {D}→ {fix}{RST}" if not ok and fix else "")); bad += not ok
+    print(f"\n{G if not bad else Y}{len(checks) - bad}/{len(checks)} checks passed{RST}"); sys.exit(0 if not bad else 1)
+
+def cmd_cleanup(apply):
+    cands = []
+    for pat in ("*.bak*", "*.orig", "*~"):
+        cands += [p for p in HOME.glob(pat)] + [p for p in (HOME / "voice").glob(pat)]
+    cands += [p for p in HOME.rglob("__pycache__") if ".venv" not in p.parts and "llama.cpp" not in p.parts]
+    cands += list(pathlib.Path.home().joinpath(".config").glob("quickshell.backup.*"))
+    cands += list(pathlib.Path.home().joinpath(".config/hypr").glob("hyprland.lua.bak.*"))
+    cands += list(pathlib.Path.home().joinpath(".config/swaync").glob("style.css.bak.*"))
+    log = HOME / "logs/activity.log"
+    if log.exists() and log.stat().st_size > 5e6: cands.append(log)
+    def size(p): return sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
+    total = 0
+    for p in cands:
+        sz = size(p); total += sz; print(f"  {fmt_bytes(sz):>10}  {p}")
+    print(f"{B}{len(cands)} items · {fmt_bytes(total)}{RST}  {D}(models, llama.cpp build and the DB are never touched){RST}")
+    if not cands: return
+    if not apply: print(f"{D}run `ai cleanup --apply` to delete them (asks first){RST}"); return
+    if "--yes" not in sys.argv:
+        try: ans = input(f"{Y}Delete these {len(cands)} items? [y/N] {RST}").strip().lower()
+        except (EOFError, KeyboardInterrupt): ans = ""
+        if ans not in ("y", "yes"): print("cancelled"); return
+    for p in cands:
+        shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+    print(f"{G}✓ removed {fmt_bytes(total)}{RST}")
+
+def cmd_update():
+    def v(cmd):
+        try: return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip().split("\n")[0]
+        except Exception: return "?"
+    print(f"quickshell  {v(['quickshell', '--version'])}\nhyprland    {v(['hyprctl', 'version']).replace('Hyprland ', '')[:60]}")
+    rev = v(["git", "-C", str(HOME / "llama.cpp"), "log", "-1", "--format=%h %cd", "--date=short"])
+    print(f"llama.cpp   {rev}")
+    print(f"\n{D}update llama.cpp:{RST}  cd ~/aios/llama.cpp && git pull && cmake --build build -j$(nproc)")
+    print(f"{D}update packages: {RST}  sudo pacman -Syu")
+    print(f"{D}(not run automatically — updates touch the system; run them yourself){RST}")
+
+def cmd_do(request):
+    r = api("/api/tool/propose", {"request": request}, timeout=240)
+    tier = r.get("tier")
+    if tier in ("noop", "error"): print(f"{D if tier == 'noop' else R}{r['reason']}{RST}"); sys.exit(0 if tier == "noop" else 1)
+    print(f"{D}$ {RST}{B}{r['cmd']}{RST}")
+    if tier == "forbidden": print(f"{R}✗ refused — {r['reason']}{RST}"); sys.exit(4)
+    if tier == "auto": print(f"{G}✓ ran{RST}" + (f"\n{r['output']}" if r.get("output") else "")); return
+    confirm_pending(r)
+
+def cmd_audit():
+    for a in api("/api/audit?limit=25"):
+        col = {"allow": G, "confirmed": G, "deny": R, "prompt": Y, "cancelled": D}.get(a["decision"], D)
+        print(f"{D}{time.strftime('%m-%d %H:%M', time.localtime(a['at']))}{RST} {a['actor']:5} {col}{a['decision']:9}{RST} {a['action'][:80]}")
+
+def cmd_code(text, model):
+    ctx = []
+    cwd = pathlib.Path.cwd()
+    try:
+        ls = subprocess.run(["git", "ls-files"], capture_output=True, text=True, timeout=3, cwd=cwd)
+        files = (ls.stdout if ls.returncode == 0 else "\n".join(sorted(p.name for p in cwd.iterdir())[:60])).split("\n")
+        ctx.append(f"Working directory: {cwd}\nFiles: " + ", ".join(f for f in files if f)[:1500])
+        st = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, timeout=3, cwd=cwd)
+        if st.returncode == 0 and st.stdout.strip(): ctx.append("git status:\n" + st.stdout[:800])
+    except Exception: pass
+    prompt = text + "\n\n<project_context>\n" + "\n".join(ctx) + "\n</project_context>"
+    stream("/api/chat", prompt, model or "local-coder-7b", "cli-code-" + str(int(time.time())))
+
+def main():
+    argv = [a for a in sys.argv[1:] if a != "--json"]
+    model = None
+    if "--model" in argv:
+        i = argv.index("--model"); model = argv[i + 1] if i + 1 < len(argv) else die("--model <id>", 2); del argv[i:i + 2]
+    if "--auto" in argv: argv.remove("--auto"); model = "auto"
+    while "--image" in argv:
+        i = argv.index("--image"); IMAGES.append(argv[i + 1] if i + 1 < len(argv) else die("--image <file>", 2)); del argv[i:i + 2]
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__); return
+    sub, rest = argv[0], argv[1:]
+    conv = "cli-" + str(int(time.time()))
+    if sub == "ask":      stream("/api/chat", " ".join(rest) or die("ai ask \"…\"", 2), model or "auto", conv)
+    elif sub == "see":
+        if not rest: die("ai see <image> [question]", 2)
+        IMAGES.append(rest[0]); stream("/api/chat", " ".join(rest[1:]) or "Describe this image in detail.", model or "auto", conv)
+    elif sub == "code":   cmd_code(" ".join(rest) or die("ai code \"…\"", 2), model)
+    elif sub == "model":  cmd_model(rest)
+    elif sub == "models": cmd_models()
+    elif sub == "providers": (api("/api/providers/reload") and print(f"{G}✓ reloaded{RST}")) if rest[:1] == ["reload"] else cmd_providers()
+    elif sub == "usage":  cmd_usage()
+    elif sub == "status": cmd_status()
+    elif sub in ("logs", "activity"): cmd_logs(follow=("-f" in rest or "--follow" in rest))
+    elif sub == "system": cmd_hw("system")
+    elif sub == "hardware":
+        if rest[:1] == ["set"] and len(rest) >= 3: cmd_hw_set(rest[1], rest[2])
+        else: cmd_hw(None)
+    elif sub in ("gpu", "cpu", "memory", "storage"): cmd_hw(sub)
+    elif sub == "services": cmd_services()
+    elif sub == "voice":  cmd_voice(rest)
+    elif sub == "config": cmd_config(rest)
+    elif sub == "doctor": cmd_doctor()
+    elif sub == "update": cmd_update()
+    elif sub == "cleanup": cmd_cleanup(apply="--apply" in rest)
+    elif sub == "audit":  cmd_audit()
+    elif sub == "do":     cmd_do(" ".join(rest) or die("ai do \"open firefox\"", 2))
+    elif sub == "approve": api("/api/settings/approve", {"run_key": "next"}); print(f"{G}✓ next paid request approved{RST}")
+    elif sub == "budget": cmd_config(["budget"] + rest)
+    else:
+        # bare question → agent when it's about the machine, chat otherwise
+        stream("/api/ask", " ".join(argv), model or "auto", conv)
+
+if __name__ == "__main__":
+    try: main()
+    except KeyboardInterrupt: print(); sys.exit(130)
