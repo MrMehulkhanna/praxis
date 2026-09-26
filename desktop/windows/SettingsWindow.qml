@@ -316,6 +316,29 @@ OverlayWindow {
                         }
                     }
                     SettingRow {
+                        label: "Project (Super+P)"
+                        description: "Quickly switch display layout when an external monitor is connected."
+                        Segmented {
+                            options: [
+                                { value: "pc", label: "PC screen only" },
+                                { value: "duplicate", label: "Duplicate" },
+                                { value: "extend", label: "Extend" },
+                                { value: "second", label: "Second screen only" }
+                            ]
+                            // Rough heuristic to show which state we might be in
+                            value: {
+                                const m = Hyprland.monitors.values;
+                                if (m.length === 1) return m[0].name.startsWith("eDP") ? "pc" : "second";
+                                if (m.length > 1) {
+                                    if (m[1].x === 0 && m[1].y === 0 && m[0].x === 0 && m[0].y === 0) return "duplicate";
+                                    return "extend";
+                                }
+                                return "pc";
+                            }
+                            onSelected: v => Display.setProjection(v)
+                        }
+                    }
+                    SettingRow {
                         label: "Refresh rate"
                         description: "120 Hz is smooth; 60 Hz saves battery. Applies to the internal display."
                         Segmented {

@@ -94,5 +94,32 @@ done`]
     }
     Timer { id: careLater; interval: 900; onTriggered: root.hypridleCheck() }
 
+    // ── Projection (Super+P) ────────────────────────────────────────────
+    function setProjection(mode) {
+        // mode: "pc", "duplicate", "extend", "second"
+        const intMon = panels.find(p => p.name.startsWith("eDP")) || panels[0]
+        const extMon = panels.find(p => p.name !== intMon.name)
+        if (!extMon) return // Nothing to project to
+        
+        let cmds = []
+        if (mode === "pc") {
+            cmds.push(`hl.monitor({ output = "${intMon.name}", mode = "${intMon.w}x${intMon.h}@${intMon.refresh}", position = "0x0", scale = ${intMon.scale} })`)
+            cmds.push(`hl.monitor({ output = "${extMon.name}", disable = true })`)
+        } else if (mode === "second") {
+            cmds.push(`hl.monitor({ output = "${intMon.name}", disable = true })`)
+            cmds.push(`hl.monitor({ output = "${extMon.name}", mode = "${extMon.w}x${extMon.h}@${extMon.refresh}", position = "0x0", scale = ${extMon.scale} })`)
+        } else if (mode === "duplicate") {
+            cmds.push(`hl.monitor({ output = "${intMon.name}", mode = "${intMon.w}x${intMon.h}@${intMon.refresh}", position = "0x0", scale = ${intMon.scale} })`)
+            cmds.push(`hl.monitor({ output = "${extMon.name}", mode = "${extMon.w}x${extMon.h}@${extMon.refresh}", position = "0x0", scale = ${extMon.scale} })`)
+        } else if (mode === "extend") {
+            cmds.push(`hl.monitor({ output = "${intMon.name}", mode = "${intMon.w}x${intMon.h}@${intMon.refresh}", position = "0x0", scale = ${intMon.scale} })`)
+            cmds.push(`hl.monitor({ output = "${extMon.name}", mode = "${extMon.w}x${extMon.h}@${extMon.refresh}", position = "auto-right", scale = ${extMon.scale} })`)
+        }
+        if (cmds.length) {
+            Quickshell.execDetached(["hyprctl", "eval", cmds.join(" ")])
+            refreshLater.start()
+        }
+    }
+
     Component.onCompleted: refresh()
 }

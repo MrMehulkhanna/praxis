@@ -15,7 +15,7 @@ end)
 -- frosted glass on the shell's layer surfaces
 hl.layer_rule({ name = "quickshell-glass", match = { namespace = "^quickshell$" }, blur = true, ignore_alpha = 0.1 })
 
--- panel toggles (Super + A/I/O/W)
+-- panel toggles (Super + A/I/O/W/P)
 hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
 hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc call shell toggle ai"))
 hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc call shell toggle cc"))
