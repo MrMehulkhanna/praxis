@@ -372,6 +372,19 @@ OverlayWindow {
                             // mode = PHYSICAL resolution (never × scale); scale is a separate arg
                             onSelected: v => HyprOpts.monitor(modelData.name, `${modelData.width}x${modelData.height}@${Math.round(ipc.refreshRate || 60)}`, `${modelData.x}x${modelData.y}`, v)
                         }
+                        Text { text: "POSITION"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; topPadding: 4 }
+                        Segmented {
+                            options: [
+                                { value: "auto-left", label: "Left" },
+                                { value: "auto-right", label: "Right" },
+                                { value: "auto-up", label: "Up" },
+                                { value: "auto-down", label: "Down" },
+                                { value: "0x0", label: "Mirror" }
+                            ]
+                            // Simple heuristic for current value:
+                            value: modelData.x === 0 && modelData.y === 0 ? "0x0" : (modelData.x < 0 ? "auto-left" : (modelData.y < 0 ? "auto-up" : "auto-right"))
+                            onSelected: v => HyprOpts.monitor(modelData.name, `${modelData.width}x${modelData.height}@${Math.round(ipc.refreshRate || 60)}`, v, modelData.scale)
+                        }
                     }
                 }
             }
