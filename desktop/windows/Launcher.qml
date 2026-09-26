@@ -49,6 +49,11 @@ OverlayWindow {
             const scored = apps.map(e => ({ s: score(e, q), e })).filter(x => x.s > 0).sort((a, b) => b.s - a.s || a.e.name.localeCompare(b.e.name))
             rows = scored.slice(0, 7).map(x => ({ kind: "app", entry: x.e, name: x.e.name, hint: x.e.genericName || x.e.comment || "" }))
             for (const a of actions) if (a.name.toLowerCase().includes(q)) rows.push({ kind: "action", action: a, name: a.name, hint: a.hint })
+            
+            const webItem = { kind: "web", name: "Search Google: " + query, hint: "Open in browser" }
+            if (scored.length === 0) rows.unshift(webItem)
+            else rows.push(webItem)
+            
             rows.push({ kind: "ask", name: "Ask AI: " + query, hint: "Send to " + (Aios.selectedInfo ? Aios.selectedInfo.label : "AIOS") })
             rows.push({ kind: "control", name: "Control PC: " + query, hint: "Run through the permission gate" })
         }
@@ -69,6 +74,7 @@ OverlayWindow {
             if (r.action.confirm && confirmIndex !== i) { confirmIndex = i; return }
             r.action.run(); Shell.closeAll()
         }
+        else if (r.kind === "web") { Shell.run("xdg-open 'https://www.google.com/search?q=" + encodeURIComponent(query).replace(/'/g, "%27") + "'"); Shell.closeAll() }
         else if (r.kind === "ask") { Aios.send(query); Shell.open("ai") }
         else if (r.kind === "control") { Aios.control(query); Shell.open("ai") }
     }
@@ -185,7 +191,7 @@ OverlayWindow {
                         Icon {
                             anchors.centerIn: parent
                             visible: modelData.kind !== "app"
-                            name: modelData.kind === "ask" ? "sparkle" : modelData.kind === "control" ? "terminal" : (modelData.action ? modelData.action.icon : "grid")
+                            name: modelData.kind === "ask" ? "sparkle" : modelData.kind === "control" ? "terminal" : modelData.kind === "web" ? "search" : (modelData.action ? modelData.action.icon : "grid")
                             size: 18; color: modelData.kind === "app" ? Theme.text : Theme.accent
                         }
                     }
