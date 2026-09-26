@@ -18,6 +18,45 @@ OverlayWindow {
     readonly property ListModel events: ListModel {}
     property var hw: ({})
 
+    property string activeView: "events"
+    property var topList: []
+    onActiveViewChanged: { if (activeView !== "events") { psProc.running = false; psProc.running = true; } }
+
+    Process {
+        id: psProc
+        command: ["bash", "-c", `
+            if [ "${win.activeView}" = "cpu" ] || [ "${win.activeView}" = "mem" ]; then
+                ps -eo pid,%cpu,%mem,rss,comm --sort=-%${win.activeView} | head -n 11 | awk 'NR>1 {comm=""; for(i=5; i<=NF; i++) comm=comm $i " "; print $1"|"$2"|"$3"|"$4"|"comm}'
+            elif [ "${win.activeView}" = "gpu" ]; then
+                nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv,noheader | head -n 10 | awk -F', ' '{print $1"|||"$2"|"$3}'
+            fi
+        `]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (win.activeView === "events") return;
+                const lines = this.text.trim().split("\n");
+                let list = [];
+                for (let l of lines) {
+                    if (!l || l.indexOf("|") === -1) continue;
+                    let p = l.split("|");
+                    list.push({
+                        pid: p[0],
+                        cpu: p[1] ? p[1] + "%" : "",
+                        mem: p[2] ? p[2] + "%" : "",
+                        rss: p[3] ? (p[3].includes("MiB") ? p[3] : (parseInt(p[3])/1024).toFixed(1) + "M") : "",
+                        comm: p[4] ? p[4].replace(/^\s+|\s+$/g, "") : ""
+                    });
+                }
+                win.topList = list;
+            }
+        }
+    }
+    Timer {
+        running: win.activeView !== "events" && win.open
+        interval: 1500; repeat: true; triggeredOnStart: true
+        onTriggered: { psProc.running = false; psProc.running = true }
+    }
+
     // live feed
     Process {
         id: feed
@@ -150,18 +189,18 @@ OverlayWindow {
                 spacing: 18
                 Repeater {
                     model: [
-                        { l: "CPU", v: Math.round(stats.c.usage || Sys.cpu) + "%", s: (stats.c.temp_c || Sys.cpuTempC) + "°C", p: (stats.c.usage || Sys.cpu) / 100, cmd: "kitty -e htop -s PERCENT_CPU" },
-                        { l: "RAM", v: (stats.m.used ? (stats.m.used / 1e9).toFixed(1) : Sys.memUsedGb.toFixed(1)) + " G", s: Math.round(stats.m.percent || Sys.mem) + "%", p: (stats.m.percent || Sys.mem) / 100, cmd: "kitty -e htop -s PERCENT_MEM" },
-                        { l: "GPU", v: Math.round(stats.g.util || Sys.gpu) + "%", s: (stats.g.temp_c || Sys.gpuTempC) + "°C", p: (stats.g.util || Sys.gpu) / 100, cmd: "kitty -e nvtop" },
-                        { l: "VRAM", v: ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: "of " + ((stats.g.vram_total_mb || 6141) / 1024).toFixed(0) + " G", p: (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / (stats.g.vram_total_mb || 6141), cmd: "kitty -e nvtop" },
-                        { l: "NET", v: "↓" + win.fmtB(win.hw.network ? win.hw.network.down_bps : Sys.netDown), s: "↑" + win.fmtB(win.hw.network ? win.hw.network.up_bps : Sys.netUp), p: 0, cmd: "kitty -e htop" },
+                        { l: "CPU", v: Math.round(stats.c.usage || Sys.cpu) + "%", s: (stats.c.temp_c || Sys.cpuTempC) + "°C", p: (stats.c.usage || Sys.cpu) / 100, view: "cpu" },
+                        { l: "RAM", v: (stats.m.used ? (stats.m.used / 1e9).toFixed(1) : Sys.memUsedGb.toFixed(1)) + " G", s: Math.round(stats.m.percent || Sys.mem) + "%", p: (stats.m.percent || Sys.mem) / 100, view: "mem" },
+                        { l: "GPU", v: Math.round(stats.g.util || Sys.gpu) + "%", s: (stats.g.temp_c || Sys.gpuTempC) + "°C", p: (stats.g.util || Sys.gpu) / 100, view: "gpu" },
+                        { l: "VRAM", v: ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: "of " + ((stats.g.vram_total_mb || 6141) / 1024).toFixed(0) + " G", p: (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / (stats.g.vram_total_mb || 6141), view: "gpu" },
+                        { l: "NET", v: "↓" + win.fmtB(win.hw.network ? win.hw.network.down_bps : Sys.netDown), s: "↑" + win.fmtB(win.hw.network ? win.hw.network.up_bps : Sys.netUp), p: 0, view: "events" },
                     ]
                     Column {
                         spacing: 3
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: { Shell.run(modelData.cmd); Shell.closeAll(); }
+                            onClicked: win.activeView = (win.activeView === modelData.view) ? "events" : modelData.view
                         }
                         Text { text: modelData.l; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; anchors.horizontalCenter: parent.horizontalCenter }
                         Text { text: modelData.v; color: Theme.text; font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.weight: Font.Bold; anchors.horizontalCenter: parent.horizontalCenter }
@@ -176,6 +215,7 @@ OverlayWindow {
         // ── pipeline feed ──
         ListView {
             id: list
+            visible: win.activeView === "events"
             anchors { top: stats.bottom; left: parent.left; right: parent.right; bottom: footer.top; margins: 14; topMargin: 10; bottomMargin: 8 }
             model: win.events
             spacing: 2
@@ -194,6 +234,37 @@ OverlayWindow {
             }
             header: Item { width: list.width; height: win.events.count ? 0 : 60
                 Text { anchors.centerIn: parent; visible: win.events.count === 0; text: "Waiting for activity — ask the AI something."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontSm } }
+        }
+
+        // ── task manager view ──
+        ListView {
+            id: topView
+            visible: win.activeView !== "events"
+            anchors { top: stats.bottom; left: parent.left; right: parent.right; bottom: footer.top; margins: 14; topMargin: 10; bottomMargin: 8 }
+            model: win.topList
+            spacing: 2
+            clip: true
+            delegate: Item {
+                required property var modelData
+                width: topView.width; height: 22
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    Text { text: modelData.pid; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: modelData.cpu; color: Theme.accent; font.family: Theme.fontMono; font.pixelSize: 10; width: 40; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: modelData.mem || modelData.rss; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10; width: 50; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: modelData.comm; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: topView.width - 160; anchors.verticalCenter: parent.verticalCenter }
+                }
+            }
+            header: Item { width: topView.width; height: 26
+                Row {
+                    spacing: 8; anchors.verticalCenter: parent.verticalCenter
+                    Text { text: "PID"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; font.weight: Font.Bold }
+                    Text { text: win.activeView === "gpu" ? "" : "CPU"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 40; font.weight: Font.Bold }
+                    Text { text: win.activeView === "gpu" ? "VRAM" : "MEM"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 50; font.weight: Font.Bold }
+                    Text { text: "PROCESS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; width: topView.width - 160; font.weight: Font.Bold }
+                }
+            }
         }
 
         // ── footer ──
