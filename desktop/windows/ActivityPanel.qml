@@ -254,13 +254,26 @@ OverlayWindow {
             delegate: Item {
                 required property var modelData
                 width: topView.width; height: 22
+                
+                // Hover highlight
+                Rectangle { anchors.fill: parent; radius: 4; color: hover.containsMouse ? Theme.hover : "transparent" }
+                MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+                
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
                     Text { text: modelData.pid; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: modelData.cpu; color: Theme.accent; font.family: Theme.fontMono; font.pixelSize: 10; width: 40; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: modelData.mem || modelData.rss; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10; width: 50; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: modelData.comm; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: topView.width - 160; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: modelData.comm; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: topView.width - 184; anchors.verticalCenter: parent.verticalCenter }
+                    IconButton { 
+                        icon: "x"
+                        iconSize: 12
+                        opacity: hover.containsMouse ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                        onClicked: Shell.run("kill -15 " + modelData.pid)
+                        anchors.verticalCenter: parent.verticalCenter 
+                    }
                 }
             }
             header: Item { width: topView.width; height: 26
@@ -269,7 +282,7 @@ OverlayWindow {
                     Text { text: "PID"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; font.weight: Font.Bold }
                     Text { text: win.activeView === "gpu" ? "" : "CPU"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 40; font.weight: Font.Bold }
                     Text { text: win.activeView === "gpu" ? "VRAM" : "MEM"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 50; font.weight: Font.Bold }
-                    Text { text: "PROCESS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; width: topView.width - 160; font.weight: Font.Bold }
+                    Text { text: "PROCESS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; width: topView.width - 184; font.weight: Font.Bold }
                 }
             }
         }
