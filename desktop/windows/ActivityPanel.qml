@@ -21,34 +21,36 @@ OverlayWindow {
     property string activeView: "events"
     property var topList: []
     onActiveViewChanged: { if (activeView !== "events") { psProc.running = false; psProc.running = true; } }
-
+    property var currentBuf: []
     Process {
         id: psProc
         command: ["bash", "-c", `
-            if [ "${win.activeView}" = "cpu" ] || [ "${win.activeView}" = "mem" ]; then
-                ps -eo pid,%cpu,%mem,rss,comm --sort=-%${win.activeView} | head -n 11 | awk 'NR>1 {comm=""; for(i=5; i<=NF; i++) comm=comm $i " "; print $1"|"$2"|"$3"|"$4"|"comm}'
-            elif [ "${win.activeView}" = "gpu" ]; then
+            MODE=$1
+            if [ "$MODE" = "cpu" ] || [ "$MODE" = "mem" ]; then
+                ps -eo pid,%cpu,%mem,rss,comm --sort=-%$MODE | head -n 11 | awk 'NR>1 {comm=""; for(i=5; i<=NF; i++) comm=comm $i " "; print $1"|"$2"|"$3"|"$4"|"comm}'
+            elif [ "$MODE" = "gpu" ]; then
                 nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv,noheader | head -n 10 | awk -F', ' '{print $1"|||"$2"|"$3}'
             fi
-        `]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                if (win.activeView === "events") return;
-                const lines = this.text.trim().split("\n");
-                let list = [];
-                for (let l of lines) {
-                    if (!l || l.indexOf("|") === -1) continue;
-                    let p = l.split("|");
-                    list.push({
-                        pid: p[0],
-                        cpu: p[1] ? p[1] + "%" : "",
-                        mem: p[2] ? p[2] + "%" : "",
-                        rss: p[3] ? (p[3].includes("MiB") ? p[3] : (parseInt(p[3])/1024).toFixed(1) + "M") : "",
-                        comm: p[4] ? p[4].replace(/^\s+|\s+$/g, "") : ""
-                    });
-                }
-                win.topList = list;
+        `, "--", win.activeView]
+        stdout: SplitParser {
+            onRead: line => win.currentBuf.push(line)
+        }
+        onExited: {
+            if (win.activeView === "events") { win.currentBuf = []; return; }
+            let list = [];
+            for (let l of win.currentBuf) {
+                if (!l || l.indexOf("|") === -1) continue;
+                let p = l.split("|");
+                list.push({
+                    pid: p[0],
+                    cpu: p[1] ? p[1] + "%" : "",
+                    mem: p[2] ? p[2] + "%" : "",
+                    rss: p[3] ? (p[3].includes("MiB") ? p[3] : (parseInt(p[3])/1024).toFixed(1) + "M") : "",
+                    comm: p[4] ? p[4].replace(/^\s+|\s+$/g, "") : ""
+                });
             }
+            win.topList = list;
+            win.currentBuf = [];
         }
     }
     Timer {
@@ -195,18 +197,23 @@ OverlayWindow {
                         { l: "VRAM", v: ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: "of " + ((stats.g.vram_total_mb || 6141) / 1024).toFixed(0) + " G", p: (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / (stats.g.vram_total_mb || 6141), view: "gpu" },
                         { l: "NET", v: "↓" + win.fmtB(win.hw.network ? win.hw.network.down_bps : Sys.netDown), s: "↑" + win.fmtB(win.hw.network ? win.hw.network.up_bps : Sys.netUp), p: 0, view: "events" },
                     ]
-                    Column {
-                        spacing: 3
+                    Item {
+                        width: 60; height: col.implicitHeight
+                        Column {
+                            id: col
+                            spacing: 3
+                            anchors.centerIn: parent
+                            Text { text: modelData.l; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; anchors.horizontalCenter: parent.horizontalCenter }
+                            Text { text: modelData.v; color: Theme.text; font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.weight: Font.Bold; anchors.horizontalCenter: parent.horizontalCenter }
+                            Text { text: modelData.s; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10; anchors.horizontalCenter: parent.horizontalCenter }
+                            Rectangle { width: 60; height: 3; radius: 1.5; color: Theme.surface3; anchors.horizontalCenter: parent.horizontalCenter
+                                Rectangle { width: parent.width * Math.max(0, Math.min(1, modelData.p)); height: 3; radius: 1.5; color: modelData.p > 0.85 ? Theme.red : modelData.p > 0.6 ? Theme.yellow : Theme.accent } }
+                        }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: win.activeView = (win.activeView === modelData.view) ? "events" : modelData.view
                         }
-                        Text { text: modelData.l; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; anchors.horizontalCenter: parent.horizontalCenter }
-                        Text { text: modelData.v; color: Theme.text; font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.weight: Font.Bold; anchors.horizontalCenter: parent.horizontalCenter }
-                        Text { text: modelData.s; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10; anchors.horizontalCenter: parent.horizontalCenter }
-                        Rectangle { width: 60; height: 3; radius: 1.5; color: Theme.surface3; anchors.horizontalCenter: parent.horizontalCenter
-                            Rectangle { width: parent.width * Math.max(0, Math.min(1, modelData.p)); height: 3; radius: 1.5; color: modelData.p > 0.85 ? Theme.red : modelData.p > 0.6 ? Theme.yellow : Theme.accent } }
                     }
                 }
             }
