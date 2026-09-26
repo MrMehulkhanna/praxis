@@ -5,6 +5,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Every Praxis commit is authored by you, and only you. Pinning the identity
+# here (instead of relying on ambient git config) means no tool, agent, or
+# collaborator's name can ever slip onto a commit.
+AUTHOR_NAME="Mehul Khanna"
+AUTHOR_EMAIL="mehulkhanna277@gmail.com"
+
 if [ -z "$(git status --porcelain)" ]; then
   echo "Nothing changed since the last commit."
   exit 0
@@ -21,8 +27,9 @@ if [ -z "$MSG" ]; then
 fi
 
 git add -A
-git commit -q -m "$MSG"
-echo "✓ committed: $MSG"
+git -c user.name="$AUTHOR_NAME" -c user.email="$AUTHOR_EMAIL" \
+    commit -q --author="$AUTHOR_NAME <$AUTHOR_EMAIL>" -m "$MSG"
+echo "✓ committed as $(git log -1 --pretty='%an <%ae>'): $MSG"
 
 if git remote get-url origin >/dev/null 2>&1; then
   git push -q origin main
