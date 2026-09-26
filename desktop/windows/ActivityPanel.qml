@@ -150,14 +150,19 @@ OverlayWindow {
                 spacing: 18
                 Repeater {
                     model: [
-                        { l: "CPU", v: Math.round(stats.c.usage || Sys.cpu) + "%", s: (stats.c.temp_c || Sys.cpuTempC) + "°C", p: (stats.c.usage || Sys.cpu) / 100 },
-                        { l: "RAM", v: (stats.m.used ? (stats.m.used / 1e9).toFixed(1) : Sys.memUsedGb.toFixed(1)) + " G", s: Math.round(stats.m.percent || Sys.mem) + "%", p: (stats.m.percent || Sys.mem) / 100 },
-                        { l: "GPU", v: Math.round(stats.g.util || Sys.gpu) + "%", s: (stats.g.temp_c || Sys.gpuTempC) + "°C", p: (stats.g.util || Sys.gpu) / 100 },
-                        { l: "VRAM", v: ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: "of " + ((stats.g.vram_total_mb || 6141) / 1024).toFixed(0) + " G", p: (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / (stats.g.vram_total_mb || 6141) },
-                        { l: "NET", v: "↓" + win.fmtB(win.hw.network ? win.hw.network.down_bps : Sys.netDown), s: "↑" + win.fmtB(win.hw.network ? win.hw.network.up_bps : Sys.netUp), p: 0 },
+                        { l: "CPU", v: Math.round(stats.c.usage || Sys.cpu) + "%", s: (stats.c.temp_c || Sys.cpuTempC) + "°C", p: (stats.c.usage || Sys.cpu) / 100, cmd: "kitty -e htop -s PERCENT_CPU" },
+                        { l: "RAM", v: (stats.m.used ? (stats.m.used / 1e9).toFixed(1) : Sys.memUsedGb.toFixed(1)) + " G", s: Math.round(stats.m.percent || Sys.mem) + "%", p: (stats.m.percent || Sys.mem) / 100, cmd: "kitty -e htop -s PERCENT_MEM" },
+                        { l: "GPU", v: Math.round(stats.g.util || Sys.gpu) + "%", s: (stats.g.temp_c || Sys.gpuTempC) + "°C", p: (stats.g.util || Sys.gpu) / 100, cmd: "kitty -e nvtop" },
+                        { l: "VRAM", v: ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: "of " + ((stats.g.vram_total_mb || 6141) / 1024).toFixed(0) + " G", p: (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / (stats.g.vram_total_mb || 6141), cmd: "kitty -e nvtop" },
+                        { l: "NET", v: "↓" + win.fmtB(win.hw.network ? win.hw.network.down_bps : Sys.netDown), s: "↑" + win.fmtB(win.hw.network ? win.hw.network.up_bps : Sys.netUp), p: 0, cmd: "kitty -e htop" },
                     ]
                     Column {
                         spacing: 3
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { Shell.run(modelData.cmd); Shell.closeAll(); }
+                        }
                         Text { text: modelData.l; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; anchors.horizontalCenter: parent.horizontalCenter }
                         Text { text: modelData.v; color: Theme.text; font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.weight: Font.Bold; anchors.horizontalCenter: parent.horizontalCenter }
                         Text { text: modelData.s; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10; anchors.horizontalCenter: parent.horizontalCenter }
