@@ -117,25 +117,32 @@ hl.config({
     },
 
     decoration = {
-        rounding       = 10,
-        rounding_power = 2,
+        rounding       = 14,             -- was 10 — smoother macOS-like rounding
+        rounding_power = 2.5,
 
-        -- Change transparency of focused and unfocused windows
+        -- Subtle inactive-window fade — gives foreground focus without harshness
         active_opacity   = 1.0,
-        inactive_opacity = 1.0,
+        inactive_opacity = 0.94,
 
         shadow = {
             enabled      = true,
-            range        = 4,
-            render_power = 3,
-            color        = 0xee1a1a1a,
+            range        = 22,           -- deeper drop shadow
+            render_power = 4,
+            color        = 0xcc0a0a0a,
+            offset       = { 0, 8 },
         },
 
+        -- Layered blur: bigger radius + more passes for a rich frosted glass look
         blur = {
-            enabled   = true,
-            size      = 3,
-            passes    = 1,
-            vibrancy  = 0.1696,
+            enabled       = true,
+            size          = 7,           -- was 3
+            passes        = 3,           -- was 1
+            vibrancy      = 0.22,
+            new_optimizations = true,
+            xray          = false,
+            noise         = 0.02,
+            contrast      = 1.05,
+            brightness    = 1.0,
         },
     },
 
@@ -167,9 +174,13 @@ hl.animation({ leaf = "layersIn",      enabled = true,  speed = 4,    bezier = "
 hl.animation({ leaf = "layersOut",     enabled = true,  speed = 1.5,  bezier = "linear",       style = "fade" })
 hl.animation({ leaf = "fadeLayersIn",  enabled = true,  speed = 1.79, bezier = "almostLinear" })
 hl.animation({ leaf = "fadeLayersOut", enabled = true,  speed = 1.39, bezier = "almostLinear" })
-hl.animation({ leaf = "workspaces",    enabled = true,  speed = 1.94, bezier = "almostLinear", style = "fade" })
-hl.animation({ leaf = "workspacesIn",  enabled = true,  speed = 1.21, bezier = "almostLinear", style = "fade" })
-hl.animation({ leaf = "workspacesOut", enabled = true,  speed = 1.94, bezier = "almostLinear", style = "fade" })
+-- Cinematic workspace slide with depth (the 3D-ish effect)
+hl.animation({ leaf = "workspaces",    enabled = true,  speed = 3.0,  bezier = "easeOutQuint", style = "slidevert" })
+hl.animation({ leaf = "workspacesIn",  enabled = true,  speed = 2.5,  bezier = "easeOutQuint", style = "slidevert" })
+hl.animation({ leaf = "workspacesOut", enabled = true,  speed = 2.5,  bezier = "easeOutQuint", style = "slidevert" })
+hl.animation({ leaf = "specialWorkspace",    enabled = true, speed = 3.0, bezier = "easeOutQuint", style = "slidefadevert 50%" })
+hl.animation({ leaf = "specialWorkspaceIn",  enabled = true, speed = 3.0, bezier = "easeOutQuint", style = "slidefadevert 50%" })
+hl.animation({ leaf = "specialWorkspaceOut", enabled = true, speed = 2.0, bezier = "easeOutQuint", style = "slidefadevert 50%" })
 hl.animation({ leaf = "zoomFactor",    enabled = true,  speed = 7,    bezier = "quick" })
 
 -- Ref https://wiki.hypr.land/Configuring/Basics/Workspace-Rules/
