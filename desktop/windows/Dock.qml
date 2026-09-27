@@ -20,13 +20,20 @@ PanelWindow {
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
     readonly property bool fullscreenHere: hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen
-    // Hidden if:
-    //  - auto-hide is on AND the mouse isn't near the dock, OR
-    //  - a fullscreen window is present AND the user opted into hide-on-fullscreen.
-    // Otherwise the dock stays visible.
-    readonly property bool hidden:
+    // Debounced hidden — an internal `_want` re-evaluates instantly but the
+    // exposed `hidden` only follows after a 350 ms grace period, which stops
+    // rapid on/off flicker if the mouse skims the hover zone or a workspace
+    // transition briefly reports fullscreen.
+    readonly property bool _want:
         (Settings.dockAutoHide && !hoverZone.containsMouse && !dockMa.containsMouse)
         || (fullscreenHere && Settings.dockHideOnFullscreen)
+    property bool hidden: false
+    onWantChanged: hideDebounce.restart()
+    Timer {
+        id: hideDebounce
+        interval: 350
+        onTriggered: dock.hidden = dock._want
+    }
     readonly property int  iconSize: Theme.dockIcon
     readonly property int  padding: 8
 

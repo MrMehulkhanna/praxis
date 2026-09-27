@@ -126,18 +126,18 @@ hl.config({
 
         shadow = {
             enabled      = true,
-            range        = 22,           -- deeper drop shadow
-            render_power = 4,
+            range        = 10,           -- moderate, doesn't spill into dock hover zone
+            render_power = 3,
             color        = 0xcc0a0a0a,
-            offset       = { 0, 8 },
+            offset       = { 0, 4 },
         },
 
-        -- Layered blur: bigger radius + more passes for a rich frosted glass look
+        -- Frosted glass but calmer — 5/2 keeps GPU cool and stops paint cascades
         blur = {
             enabled       = true,
-            size          = 7,           -- was 3
-            passes        = 3,           -- was 1
-            vibrancy      = 0.22,
+            size          = 5,
+            passes        = 2,
+            vibrancy      = 0.20,
             new_optimizations = true,
             xray          = false,
             noise         = 0.02,
