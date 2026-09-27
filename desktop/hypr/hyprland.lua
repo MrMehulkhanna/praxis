@@ -285,7 +285,9 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"))  -- lock screen (|| guard: never stack lockers)
-hl.bind(mainMod .. " + TAB", hl.dsp.exec_cmd("rofi -show window"))
+-- Super+Tab → workspace overview (grid of all 12); rofi window switcher moved to Super+Shift+Tab
+hl.bind(mainMod .. " + TAB",         hl.dsp.exec_cmd("quickshell ipc call shell toggle ws"))
+hl.bind(mainMod .. " + SHIFT + TAB", hl.dsp.exec_cmd("rofi -show window"))
 -- Super+P is bound to Project/Display settings below
 -- hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
