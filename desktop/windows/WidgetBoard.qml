@@ -126,39 +126,65 @@ OverlayWindow {
             }
         }
 
-        // ── 3. BATTERY ──────────────────────────────────────────────────
+        // ── 3. BATTERY (with rolling spark line + ETA) ──────────────────
         Glass {
             Layout.preferredWidth: 220; Layout.preferredHeight: 180
             radius: Theme.radiusXl
-            readonly property var dev: UPower.displayDevice
-            readonly property real pct: dev ? (dev.percentage > 1 ? dev.percentage / 100 : dev.percentage) : 1.0
-            readonly property bool chg: dev && (dev.state === UPowerDeviceState.Charging || dev.state === UPowerDeviceState.FullyCharged)
-            visible: dev && dev.isLaptopBattery
+            visible: Battery.dev && Battery.dev.isLaptopBattery
             Column {
                 anchors.centerIn: parent
-                spacing: 6
-                Row {
-                    spacing: 6
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    Icon { name: parent.parent.parent.chg ? "battery" : "battery"; size: 22; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "Battery"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.verticalCenter: parent.verticalCenter }
-                }
+                spacing: 4
+                Text { text: "Battery"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
+                       anchors.horizontalCenter: parent.horizontalCenter }
                 Text {
-                    text: Math.round(parent.parent.pct * 100) + "%"
+                    text: Math.round(Battery.pct * 100) + "%"
                     color: Theme.text
-                    font.family: Theme.font; font.pixelSize: 48; font.weight: Font.Bold
+                    font.family: Theme.font; font.pixelSize: 40; font.weight: Font.Bold
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
-                Rectangle {
-                    width: 160; height: 8; radius: 4; color: Theme.alpha(Theme.text, 0.08)
+                // spark line — last hour of pct
+                Canvas {
+                    width: 180; height: 34
                     anchors.horizontalCenter: parent.horizontalCenter
-                    Rectangle {
-                        width: parent.width * parent.parent.parent.pct; height: parent.height; radius: parent.radius
-                        color: parent.parent.parent.pct > 0.5 ? Theme.green : parent.parent.parent.pct > 0.2 ? Theme.yellow : Theme.red
+                    property var pts: Battery.series
+                    onPtsChanged: requestPaint()
+                    onWidthChanged: requestPaint()
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.reset()
+                        if (!pts || pts.length < 2) return
+                        const t0 = pts[0].t
+                        const tN = pts[pts.length - 1].t
+                        const span = Math.max(1, tN - t0)
+                        ctx.beginPath()
+                        for (let i = 0; i < pts.length; i++) {
+                            const x = ((pts[i].t - t0) / span) * width
+                            const y = height - pts[i].p * height * 0.9 - height * 0.05
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                        }
+                        ctx.lineTo(width, height); ctx.lineTo(0, height); ctx.closePath()
+                        // fill
+                        const grad = ctx.createLinearGradient(0, 0, 0, height)
+                        grad.addColorStop(0, Battery.charging ? Theme.green : Battery.pct < 0.2 ? Theme.red : Theme.accent)
+                        grad.addColorStop(1, "transparent")
+                        ctx.fillStyle = grad
+                        ctx.globalAlpha = 0.6
+                        ctx.fill()
+                        // line
+                        ctx.beginPath()
+                        for (let i = 0; i < pts.length; i++) {
+                            const x = ((pts[i].t - t0) / span) * width
+                            const y = height - pts[i].p * height * 0.9 - height * 0.05
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                        }
+                        ctx.strokeStyle = Battery.charging ? Theme.green : Battery.pct < 0.2 ? Theme.red : Theme.accent
+                        ctx.lineWidth = 1.5; ctx.globalAlpha = 1.0
+                        ctx.stroke()
                     }
                 }
                 Text {
-                    text: parent.parent.chg ? "charging" : (parent.parent.dev ? "on battery" : "")
+                    text: Battery.eta || (Battery.charging ? "charging" : "on battery")
+                       + (Battery.rateW > 0 ? "  ·  " + Battery.rateW.toFixed(1) + " W" : "")
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
