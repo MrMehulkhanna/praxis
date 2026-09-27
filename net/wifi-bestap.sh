@@ -33,14 +33,15 @@ speed_mbit() {
   # Fast curl-based test: download from Cloudflare for TEST_SECS, return Mbit/s.
   # Tries a 100MB file, cut off by --max-time.
   local bytes secs mbit
-  bytes=$(curl -s -o /dev/null --max-time "$TEST_SECS" \
-    -w '%{size_download}' \
-    'https://speed.cloudflare.com/__down?bytes=104857600' 2>/dev/null)
-  bytes=${bytes:-0}
-  secs=$TEST_SECS
-  # Mbit/s = bytes*8/1e6/secs
-  mbit=$(( bytes * 8 / 1000000 / secs ))
-  echo "${mbit:-0}"
+  local tmp bps
+  tmp=$(mktemp)
+  bps=$(curl -s -o "$tmp" --max-time "$TEST_SECS" \
+    -w '%{speed_download}' \
+    'https://speed.cloudflare.com/__down?bytes=52428800' 2>/dev/null)
+  rm -f "$tmp"
+  bps=${bps%.*}; bps=${bps:-0}
+  mbit=$(( bps * 8 / 1000000 ))
+  echo "$mbit"
 }
 
 pin_bssid() {

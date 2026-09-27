@@ -321,6 +321,10 @@ hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("quickshell ipc call shell settings D
 hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("praxis-palette"))
 -- Super+B → widget board (StandBy-style tiles: clock, calendar, battery, sys, media, weather)
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle widgets"))
+-- Super+Shift+Q → power menu (lock/suspend/logout/reboot/off)
+hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"))
+-- Super+N → quicknote (rofi prompt → today's ~/aios/notes/YYYY-MM-DD.md)
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("praxis-quicknote"))
 
 
 -- Move focus with mainMod + arrow keys
