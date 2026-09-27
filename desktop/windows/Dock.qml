@@ -20,7 +20,13 @@ PanelWindow {
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
     readonly property bool fullscreenHere: hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen
-    readonly property bool hidden: (Settings.dockAutoHide && !hoverZone.containsMouse && !dockMa.containsMouse) || fullscreenHere
+    // Hidden if:
+    //  - auto-hide is on AND the mouse isn't near the dock, OR
+    //  - a fullscreen window is present AND the user opted into hide-on-fullscreen.
+    // Otherwise the dock stays visible.
+    readonly property bool hidden:
+        (Settings.dockAutoHide && !hoverZone.containsMouse && !dockMa.containsMouse)
+        || (fullscreenHere && Settings.dockHideOnFullscreen)
     readonly property int  iconSize: Theme.dockIcon
     readonly property int  padding: 8
 

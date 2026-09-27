@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.UPower
+import Quickshell.Services.Mpris
 import "root:/Config"
 import "root:/Services"
 import "root:/components"
@@ -127,11 +128,21 @@ PanelWindow {
                 Component.onCompleted: Sys.active++
                 Component.onDestruction: Sys.active--
                 onVisibleChanged: Sys.active += visible ? 1 : -1
+                // helper: bytes/sec → compact human string (12K / 3.4M / 1.2G)
+                function fmtBps(bps) {
+                    if (bps < 1024)          return Math.round(bps) + "B"
+                    if (bps < 1048576)       return Math.round(bps/1024) + "K"
+                    if (bps < 1073741824)    return (bps/1048576).toFixed(1) + "M"
+                    return (bps/1073741824).toFixed(1) + "G"
+                }
                 Repeater {
                     model: [
                         { icon: "cpu", v: Sys.cpu, txt: Math.round(Sys.cpu) + "%" },
                         { icon: "memory", v: Sys.mem, txt: Sys.memUsedGb.toFixed(1) + "G" },
                         { icon: "gpu", v: Sys.gpu, txt: Sys.vramUsedGb.toFixed(1) + "G" },
+                        // net: heat 0..100 mapped from combined B/s vs ~10 MB/s ceiling
+                        { icon: "activity", v: Math.min(100, (Sys.netDown + Sys.netUp) / 1e5),
+                          txt: stats.fmtBps(Sys.netDown + Sys.netUp) },
                         { icon: "sun", v: Sys.cpuTempC, txt: Sys.cpuTempC + "°" },
                     ]
                     Row {
@@ -169,6 +180,59 @@ PanelWindow {
                     onWheel: wheel => Audio.step(wheel.angleDelta.y > 0 ? 0.05 : -0.05)
                 }
             }
+            // ── media chip: hides when no MPRIS player is active ────────────
+            Rectangle {
+                id: mediaChip
+                readonly property var player: Mpris.players.values.length
+                    ? (Mpris.players.values.find(p => p.isPlaying) || Mpris.players.values[0])
+                    : null
+                visible: player !== null
+                height: 26
+                width: visible ? mediaRow.width + 14 : 0
+                radius: 13
+                color: mediaMa.containsMouse ? Theme.hover : Theme.alpha(Theme.text, 0.06)
+                border.width: 1; border.color: Theme.border
+                anchors.verticalCenter: parent.verticalCenter
+                Behavior on color { ColorAnimation { duration: Theme.fast } }
+                Behavior on width { NumberAnimation { duration: Theme.normal } }
+                Row {
+                    id: mediaRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Icon {
+                        name: mediaChip.player && mediaChip.player.isPlaying ? "pause" : "play"
+                        size: 12; color: Theme.muted
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: mediaChip.player ? (mediaChip.player.trackTitle || mediaChip.player.identity || "") : ""
+                        color: Theme.text2
+                        font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.Medium
+                        elide: Text.ElideRight
+                        width: Math.min(implicitWidth, 140)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                MouseArea {
+                    id: mediaMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (!mediaChip.player) return
+                        // left = play/pause, right = next, middle = previous
+                        if (mouse.button === Qt.LeftButton)       mediaChip.player.togglePlaying()
+                        else if (mouse.button === Qt.RightButton) mediaChip.player.next()
+                        else                                       mediaChip.player.previous()
+                    }
+                    onWheel: wheel => {
+                        // scroll = volume for the player
+                        if (!mediaChip.player) return
+                        Audio.step(wheel.angleDelta.y > 0 ? 0.05 : -0.05)
+                    }
+                }
+            }
+
             IconButton {
                 icon: EyeComfort.enabled ? "moon-filled" : "moon"; iconSize: 15
                 iconColor: EyeComfort.enabled ? Theme.accent : Theme.text

@@ -19,6 +19,7 @@ Singleton {
     property alias blur:           s.blur
     property alias dockIconSize:   s.dockIconSize
     property alias dockAutoHide:   s.dockAutoHide
+    property alias dockHideOnFullscreen: s.dockHideOnFullscreen
     property alias dockAllScreens: s.dockAllScreens
     property alias dockFavorites:  s.dockFavorites
     property alias barStats:       s.barStats
@@ -44,6 +45,9 @@ Singleton {
             property bool   blur: true
             property int    dockIconSize: 44
             property bool   dockAutoHide: false
+            // when true (legacy), dock hides while a workspace has a fullscreen window;
+            // set false to keep the dock visible even on fullscreen apps.
+            property bool   dockHideOnFullscreen: false
             property bool   dockAllScreens: false
             property list<string> dockFavorites: [
                 "google-chrome", "kitty", "thunar", "aios"
