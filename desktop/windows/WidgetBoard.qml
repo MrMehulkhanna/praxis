@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.UPower
 import Quickshell.Services.Mpris
 import "root:/Config"
@@ -282,14 +283,83 @@ OverlayWindow {
                 Row {
                     spacing: 24
                     anchors.horizontalCenter: parent.horizontalCenter
+                    // Optional-chain the click handlers so a player that vanishes
+                    // between the visible-check tick and a click can't throw.
                     IconButton { icon: "prev"; iconSize: 22; visible: !!parent.parent.parent.player
-                                 onClicked: parent.parent.parent.player.previous() }
+                                 onClicked: parent.parent.parent.player?.previous() }
                     IconButton { icon: parent.parent.parent.player && parent.parent.parent.player.isPlaying ? "pause" : "play"
                                  iconSize: 28; visible: !!parent.parent.parent.player
-                                 onClicked: parent.parent.parent.player.togglePlaying() }
+                                 onClicked: parent.parent.parent.player?.togglePlaying() }
                     IconButton { icon: "next"; iconSize: 22; visible: !!parent.parent.parent.player
-                                 onClicked: parent.parent.parent.player.next() }
+                                 onClicked: parent.parent.parent.player?.next() }
                 }
+            }
+        }
+
+        // ── 7b. NETWORK ─────────────────────────────────────────────────
+        Glass {
+            Layout.preferredWidth: 240; Layout.preferredHeight: 180
+            radius: Theme.radiusXl
+            Column {
+                anchors.centerIn: parent
+                spacing: 4
+                Text { text: "Network"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Icon { name: Net.icon || "wifi-off"; size: 34
+                       color: (Net.wired || Net.wifiConnected) ? Theme.accent : Theme.muted
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text { text: Net.label || "no network"
+                       color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold
+                       elide: Text.ElideRight; width: 200
+                       horizontalAlignment: Text.AlignHCenter
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text {
+                    text: (Sys.netDown/1024).toFixed(0) + " ↓ / " + (Sys.netUp/1024).toFixed(0) + " ↑ KB/s"
+                    color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+            }
+        }
+
+        // ── 7c. UPTIME + KERNEL ─────────────────────────────────────────
+        Glass {
+            Layout.preferredWidth: 240; Layout.preferredHeight: 180
+            radius: Theme.radiusXl
+            property string uptimeStr: ""
+            property string kernel: ""
+            Timer {
+                interval: 30_000; running: win.open; repeat: true; triggeredOnStart: true
+                onTriggered: uptimeProc.running = true
+            }
+            Process {
+                id: uptimeProc
+                command: ["bash", "-c", "cat /proc/uptime | awk '{print $1}'; uname -r"]
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        const [ups, kern] = this.text.trim().split("\n")
+                        const s = parseFloat(ups || "0")
+                        const d = Math.floor(s / 86400)
+                        const h = Math.floor((s % 86400) / 3600)
+                        const m = Math.floor((s % 3600) / 60)
+                        parent.parent.uptimeStr = d ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`
+                        parent.parent.kernel = kern || ""
+                    }
+                }
+            }
+            Column {
+                anchors.centerIn: parent
+                spacing: 4
+                Text { text: "Uptime"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text { text: parent.parent.uptimeStr || "—"
+                       color: Theme.text; font.family: Theme.font; font.pixelSize: 30; font.weight: Font.Bold
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text { text: "kernel " + parent.parent.kernel
+                       color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text { text: Qt.formatDateTime(sysClock.date, "yyyy-MM-dd HH:mm")
+                       color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
+                       anchors.horizontalCenter: parent.horizontalCenter }
             }
         }
 
