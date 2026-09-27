@@ -18,6 +18,7 @@ ShellRoot {
     AiPanel {}
     SettingsWindow {}
     ActivityPanel {}
+    WidgetBoard {}
 
     // singletons that must be alive from the start
     Component.onCompleted: { Shell.overlay; Aios.online; Notifs.count; Net.icon; Audio.icon; Power.profile; Wallpaper.files; HyprOpts.blur }

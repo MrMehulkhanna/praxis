@@ -317,6 +317,8 @@ hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("quickshell ipc call shell toggle lau
 hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("quickshell ipc call shell settings Display"))
 -- Super+Space → Praxis omnibox (apps · files · AI · calc · shell)
 hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("praxis-palette"))
+-- Super+B → widget board (StandBy-style tiles: clock, calendar, battery, sys, media, weather)
+hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle widgets"))
 
 
 -- Move focus with mainMod + arrow keys
