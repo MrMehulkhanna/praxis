@@ -21,6 +21,9 @@ Singleton {
     property real netDown: 0          // bytes/s
     property real netUp: 0
     property var  _prevNet: null
+    property real diskUsedGb: 0
+    property real diskTotalGb: 0
+    property real diskUsedPct: 0
 
     property var _prev: null
 
@@ -39,7 +42,10 @@ Singleton {
             "grep -E '^(MemTotal|MemAvailable)' /proc/meminfo; " +
             "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null || echo 'GPU_NA'; " +
             "cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1; " +
-            "awk 'NR>2 && $1!=\"lo:\" {rx+=$2; tx+=$10} END {print \"NET\", rx, tx}' /proc/net/dev"]
+            "awk 'NR>2 && $1!=\"lo:\" {rx+=$2; tx+=$10} END {print \"NET\", rx, tx}' /proc/net/dev; " +
+            // total across all real ext4/btrfs/xfs mounts (skip tmpfs/overlay)
+            "df -k --output=fstype,size,used --local 2>/dev/null | " +
+            "awk '$1 ~ /^(ext4|btrfs|xfs|f2fs|zfs)$/ {sz+=$2; us+=$3} END {print \"DISK\", sz, us}'"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = this.text.trim().split("\n")
@@ -76,6 +82,15 @@ Singleton {
                     const p = net.split(" "); const rx = parseInt(p[1]), tx = parseInt(p[2]), now = Date.now()
                     if (root._prevNet) { const dt = (now - root._prevNet.t) / 1000; if (dt > 0) { root.netDown = (rx - root._prevNet.rx) / dt; root.netUp = (tx - root._prevNet.tx) / dt } }
                     root._prevNet = { t: now, rx, tx }
+                }
+                const disk = lines.find(l => l.startsWith("DISK "))
+                if (disk) {
+                    const p = disk.split(" "); const sz = parseInt(p[1]), us = parseInt(p[2])
+                    if (sz > 0) {
+                        root.diskTotalGb = sz / 1048576  // kB → GiB
+                        root.diskUsedGb  = us / 1048576
+                        root.diskUsedPct = 100 * us / sz
+                    }
                 }
             }
         }
