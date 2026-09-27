@@ -267,25 +267,27 @@ OverlayWindow {
             }
         }
 
-        // ── 7. WEATHER (via wttr.in — best-effort, silently blank when offline)
+        // ── 7. WEATHER (via wttr.in — free, no key) ─────────────────────
         Glass {
             Layout.preferredWidth: 240; Layout.preferredHeight: 180
             radius: Theme.radiusXl
-            property string cond: "—"
-            property string temp: ""
-            property string place: ""
+            Component.onCompleted: Weather.active++
+            Component.onDestruction: Weather.active = Math.max(0, Weather.active - 1)
             Column {
                 anchors.centerIn: parent
-                spacing: 6
+                spacing: 4
                 Text { text: "Weather"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
                        anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: parent.parent.temp || "—"; color: Theme.text
-                       font.family: Theme.font; font.pixelSize: 44; font.weight: Font.Bold
+                Text { text: Weather.emoji || "🌤"; font.pixelSize: 32
                        anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: parent.parent.cond; color: Theme.text2
+                Text { text: Weather.tempC || "—"; color: Theme.text
+                       font.family: Theme.font; font.pixelSize: 34; font.weight: Font.Bold
+                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text { text: Weather.cond || (Weather.lastFetch === 0 ? "fetching…" : "offline")
+                       color: Theme.text2
                        font.family: Theme.font; font.pixelSize: Theme.fontSm
                        anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: parent.parent.place; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
+                Text { text: Weather.place; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
                        anchors.horizontalCenter: parent.horizontalCenter }
             }
         }

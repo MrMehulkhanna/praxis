@@ -11,3 +11,4 @@ singleton HyprOpts 1.0 HyprOpts.qml
 singleton Wallpaper 1.0 Wallpaper.qml
 singleton EyeComfort 1.0 EyeComfort.qml
 singleton Display 1.0 Display.qml
+singleton Weather 1.0 Weather.qml
