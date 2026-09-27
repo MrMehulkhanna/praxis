@@ -259,6 +259,12 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: Notifs.togglePanel()
                 onRightClicked: Notifs.toggleDnd()
+                // middle-click = clear all notifications
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.MiddleButton
+                    onClicked: Notifs.clearAll()
+                }
             }
 
             // hairline: separates passive status readouts from interactive panels

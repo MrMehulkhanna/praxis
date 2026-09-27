@@ -30,16 +30,17 @@ remove_cap_for_test() {
 }
 
 speed_mbit() {
-  # returns integer Mbit/s (download); prefer ookla `speedtest`
-  local out
-  if command -v speedtest >/dev/null; then
-    out=$(speedtest --accept-license --accept-gdpr -f json 2>/dev/null) || return 1
-    # bandwidth is bytes/s
-    python3 -c "import json,sys;d=json.loads('''$out''');print(int(d['download']['bandwidth']*8/1_000_000))" 2>/dev/null
-  else
-    out=$(speedtest-cli --simple --secure 2>/dev/null | awk '/Download/{print int($2)}')
-    echo "${out:-0}"
-  fi
+  # Fast curl-based test: download from Cloudflare for TEST_SECS, return Mbit/s.
+  # Tries a 100MB file, cut off by --max-time.
+  local bytes secs mbit
+  bytes=$(curl -s -o /dev/null --max-time "$TEST_SECS" \
+    -w '%{size_download}' \
+    'https://speed.cloudflare.com/__down?bytes=104857600' 2>/dev/null)
+  bytes=${bytes:-0}
+  secs=$TEST_SECS
+  # Mbit/s = bytes*8/1e6/secs
+  mbit=$(( bytes * 8 / 1000000 / secs ))
+  echo "${mbit:-0}"
 }
 
 pin_bssid() {
