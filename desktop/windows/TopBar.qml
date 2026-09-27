@@ -88,10 +88,11 @@ PanelWindow {
             }
         }
 
-        // ── CENTRE: clock ────────────────────────────────────────────────
+        // ── CENTRE: clock (only on focused monitor to avoid duplication) ─
         SystemClock { id: clock; precision: Settings.showSeconds ? SystemClock.Seconds : SystemClock.Minutes }
         Rectangle {
             anchors.centerIn: parent
+            visible: bar.isFocusedScreen
             width: clockRow.width + 20; height: 26; radius: 13
             color: clockMa.containsMouse ? Theme.hover : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.fast } }

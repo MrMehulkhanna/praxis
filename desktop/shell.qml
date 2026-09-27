@@ -6,6 +6,8 @@ import "root:/Services"
 import "windows"
 
 ShellRoot {
+    // Ambient background layer — 3 drifting glow orbs, reacts to CPU/mem/time.
+    Variants { model: Quickshell.screens; AmbientLayer {} }
     Variants { model: Quickshell.screens; TopBar {} }
     Variants {
         model: Settings.dockAllScreens ? Quickshell.screens : [Quickshell.screens[0]]
