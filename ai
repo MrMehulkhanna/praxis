@@ -333,6 +333,50 @@ def cmd_audit():
         col = {"allow": G, "confirmed": G, "deny": R, "prompt": Y, "cancelled": D}.get(a["decision"], D)
         print(f"{D}{time.strftime('%m-%d %H:%M', time.localtime(a['at']))}{RST} {a['actor']:5} {col}{a['decision']:9}{RST} {a['action'][:80]}")
 
+def cmd_rag(rest):
+    """ai rag add PATH | q QUERY [-k N] | stats | embed"""
+    if not rest or rest[0] in ("-h", "--help"):
+        print("ai rag add <path>          index a file or directory")
+        print("ai rag q   \"<query>\" [-k N]  search  (default N=5)")
+        print("ai rag stats               index statistics")
+        print("ai rag embed               embed pending chunks (needs embedder)")
+        return
+    sub, args = rest[0], rest[1:]
+    if sub == "add":
+        if not args: die("ai rag add <path>", 2)
+        p = str(pathlib.Path(args[0]).expanduser().resolve())
+        r = api("/api/rag/add", {"path": p})
+        if JSON: print(json.dumps(r)); return
+        print(f"{G}✓{RST} {r.get('files', 0)} file(s), {r.get('chunks', 0)} chunk(s)"
+              + (f", {r.get('skipped_count', 0)} skipped" if r.get('skipped_count') else ""))
+        for s in r.get('skipped', []): print(f"  {D}- {s}{RST}")
+    elif sub == "q":
+        k = 5
+        if "-k" in args:
+            i = args.index("-k"); k = int(args[i + 1]); del args[i:i + 2]
+        q = " ".join(args) or die("ai rag q \"<query>\"", 2)
+        r = api("/api/rag/query", {"q": q, "k": k})
+        if JSON: print(json.dumps(r)); return
+        hits = r.get("hits", [])
+        if not hits: print(f"{Y}no matches{RST}"); return
+        for i, h in enumerate(hits, 1):
+            print(f"{B}{i}. {h['title']}{RST}  {D}score={h['score']:.3f}{RST}")
+            print(f"   {h['text'][:280].strip()}{'…' if len(h['text']) > 280 else ''}")
+            print()
+    elif sub == "stats":
+        r = api("/api/rag/stats", method="GET")
+        if JSON: print(json.dumps(r)); return
+        print(f"documents : {r['documents']}")
+        print(f"chunks    : {r['chunks']} ({r['embedded']} embedded, {r['vectors']} vectors)")
+        print(f"embedder  : {'installed' if r['embedder'] else 'not installed (BM25 only)'}")
+    elif sub == "embed":
+        r = api("/api/rag/embed")
+        if JSON: print(json.dumps(r)); return
+        print(f"embedded {r.get('embedded', 0)} chunk(s)")
+        if r.get("reason"): print(f"  {D}{r['reason']}{RST}")
+    else:
+        die(f"unknown rag command: {sub}", 2)
+
 def cmd_code(text, model):
     ctx = []
     cwd = pathlib.Path.cwd()
@@ -383,6 +427,7 @@ def main():
     elif sub == "audit":  cmd_audit()
     elif sub == "do":     cmd_do(" ".join(rest) or die("ai do \"open firefox\"", 2))
     elif sub == "approve": api("/api/settings/approve", {"run_key": "next"}); print(f"{G}✓ next paid request approved{RST}")
+    elif sub == "rag":    cmd_rag(rest)
     elif sub == "budget": cmd_config(["budget"] + rest)
     else:
         # bare question → agent when it's about the machine, chat otherwise

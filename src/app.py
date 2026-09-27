@@ -11,7 +11,7 @@ from core.gateway.iface import Request as GReq
 from core.gateway import gate
 from core.perms import policy
 from core.tools import exec as tools
-from core import activity, router, providers, hardware, agent
+from core import activity, router, providers, hardware, agent, rag
 from core.voice import transcribe as stt
 from adapters.local.llama import LlamaAdapter, list_models, PROFILES, DEFAULT_MODEL
 
@@ -601,6 +601,39 @@ async def oai_responses(body: dict):
             "output": [{"id": "msg_0", "type": "message", "role": "assistant",
                         "content": [{"type": "output_text", "text": text}]}],
             "usage": {"input_tokens": it, "output_tokens": ot, "total_tokens": it + ot}}
+
+# ── RAG (retrieval-augmented) ───────────────────────────────────────────
+class RagIngest(BaseModel):
+    path: str
+    project_id: str | None = None
+    tag: str = "rag"
+    embed: bool = True
+
+class RagQuery(BaseModel):
+    q: str
+    k: int = 5
+    project_id: str | None = None
+
+@app.post("/api/rag/add")
+def rag_add(req: RagIngest):
+    try:
+        return rag.ingest_path(req.path, req.project_id, req.tag, req.embed)
+    except FileNotFoundError:
+        raise HTTPException(404, f"not found: {req.path}")
+    except Exception as e:
+        raise HTTPException(500, f"ingest failed: {e}")
+
+@app.post("/api/rag/query")
+def rag_query(req: RagQuery):
+    return {"hits": rag.query(req.q, req.k, req.project_id)}
+
+@app.get("/api/rag/stats")
+def rag_stats():
+    return rag.stats()
+
+@app.post("/api/rag/embed")
+def rag_embed_now():
+    return rag.embed_pending()
 
 # ── serve UI ────────────────────────────────────────────────────────────
 @app.get("/")
