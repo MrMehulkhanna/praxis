@@ -15,21 +15,21 @@
     },
     {
       "id": "volume_up",
-      "pattern": "^(turn |set )?volume up$",
+      "pattern": "^(turn (the )?(volume|sound) up|turn up (the )?(volume|sound)|(the )?volume up|louder|(increase|raise) (the )?volume)$",
       "tier": "auto",
       "handler": "volume_up",
       "description": "volume up 5%"
     },
     {
       "id": "volume_down",
-      "pattern": "^(turn |set )?volume down$",
+      "pattern": "^(turn (the )?(volume|sound) down|turn down (the )?(volume|sound)|(the )?volume down|quieter|(decrease|lower) (the )?volume)$",
       "tier": "auto",
       "handler": "volume_down",
       "description": "volume down 5%"
     },
     {
       "id": "mute_toggle",
-      "pattern": "^mute( audio)?$",
+      "pattern": "^(un)?mute( (the )?(audio|sound|volume))?$",
       "tier": "auto",
       "handler": "mute_toggle",
       "description": "toggle mute"
@@ -64,7 +64,7 @@
     },
     {
       "id": "open_app",
-      "pattern": "^(open|launch|start) (browser|terminal|files|file manager|antigravity|code|aios)$",
+      "pattern": "^(open|launch|start) (the )?(?P<app>web browser|browser|firefox|terminal|kitty|file manager|files|thunar|code|aios)$",
       "tier": "auto",
       "handler": "open_app",
       "description": "launch a whitelisted app — see apps.json for the exact list, opening anything not in that list is refused even if this pattern matches"
@@ -241,14 +241,14 @@
     },
     {
       "id": "reboot",
-      "pattern": "^reboot|restart( computer| pc)?$",
+      "pattern": "^(reboot|restart)( the)?( computer| pc| laptop)?$",
       "tier": "confirm",
       "handler": "reboot",
       "description": "reboot the machine — confirm required"
     },
     {
       "id": "shutdown",
-      "pattern": "^shut ?down( computer| pc)?$",
+      "pattern": "^(shut ?down|power off)( the)?( computer| pc| laptop)?$",
       "tier": "confirm",
       "handler": "shutdown",
       "description": "power off the machine — confirm required"
@@ -274,8 +274,11 @@
     "terminal": "kitty",
     "files": "thunar",
     "file manager": "thunar",
-    "antigravity": "kitty ~/.local/bin/agy",
     "code": "code",
-    "aios": "xdg-open http://127.0.0.1:8778"
+    "aios": "xdg-open http://127.0.0.1:8778",
+    "web browser": "firefox",
+    "firefox": "firefox",
+    "kitty": "kitty",
+    "thunar": "thunar"
   }
 }

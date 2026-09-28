@@ -31,6 +31,7 @@ Design, in order of importance:
    doesn't match any command and gets forwarded to AIOS, the worst case
    is it answers a question. It cannot act on your system.
 """
+import shutil
 import json, os, re, subprocess, sys, time, pathlib
 
 AIOS_HOME = pathlib.Path(os.environ.get("AIOS_HOME", pathlib.Path.home() / "aios"))
@@ -108,11 +109,13 @@ def _h_open_app(m, manifest):
     # dict (what actually *runs*). This duplication is intentional: it
     # means an app can never become launchable by voice through a single
     # careless edit to just one of the two places.
-    spoken = m.group(2).strip().lower()
+    spoken = m.group("app").strip().lower()
     apps = manifest.get("apps", {})
     cmd = apps.get(spoken)
     if not cmd:
         return f"'{spoken}' isn't in the allowed app list"
+    if not shutil.which(cmd.split()[0]):
+        return f"{spoken} isn't installed on this computer"
     subprocess.Popen(["bash", "-lc", cmd])
     return f"Opening {spoken}"
 
@@ -286,10 +289,22 @@ def _clear_pending():
 
 
 # ── main entry point ──────────────────────────────────────────────────────
+# People talk politely; the allow-list patterns shouldn't have to. Only
+# courtesy words are stripped — never anything that changes what runs.
+_FILLER = re.compile(r"^(hey |ok |okay )?praxis\b[ ,]*|^(please|can you|could you|would you|will you)\b[ ,]*|[ ,]*\b(please|for me|now)$")
+
+def normalize(transcript: str) -> str:
+    text = re.sub(r"[.!?]+$", "", transcript.strip().lower()).replace(",", "")
+    prev = None
+    while prev != text:
+        prev, text = text, _FILLER.sub("", text).strip()
+    # articles never change which command is meant ("lock the screen" = "lock screen")
+    return re.sub(r"\s+", " ", re.sub(r"\b(the|my)\b", " ", text)).strip()
+
 def route(transcript: str) -> dict:
     """Returns {"kind", "reply", "spoken", "executed": bool}"""
     manifest = _load_manifest()
-    text = transcript.strip().lower().rstrip(".!?")
+    text = normalize(transcript)
 
     if not text:
         return {"kind": "empty", "reply": "", "spoken": "", "executed": False}
