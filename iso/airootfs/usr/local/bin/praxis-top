@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""praxis-top — what is using the CPU, memory and GPU right now, and stop it.
+
+    praxis-top [cpu|mem|gpu] [N]    JSON: the top N processes (default: cpu, 14)
+    praxis-top stop PID             stop PID and every process it started:
+                                    SIGTERM first, SIGKILL for whatever is left after 3 s
+
+CPU is measured over the time since the previous call (0.3 s on the first),
+the way top does it — not the lifetime average `ps %cpu` reports. GPU use comes
+from the kernel's per-client DRM counters (Intel, AMD, nouveau) and from
+nvidia-smi, which is only asked while the NVIDIA GPU is already awake:
+polling it must never wake a sleeping dGPU and burn battery.
+"""
+import json
+import os
+import pathlib
+import pwd
+import re
+import signal
+import subprocess
+import sys
+import time
+
+CLK = os.sysconf("SC_CLK_TCK")
+PAGE = os.sysconf("SC_PAGE_SIZE")
+ME = os.getuid()
+CACHE = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / f"praxis-top-{ME}.json"
+
+# The desktop session itself and core services: stopping these would end the
+# session or break audio/network, so they are never offered for stopping.
+PROTECTED_EXACT = {"Hyprland", "Xwayland", "Xorg", "quickshell", "qs", "agetty", "login", "sddm", "gdm",
+                   "NetworkManager", "wpa_supplicant", "iwd", "bluetoothd", "wireplumber", "praxis-top",
+                   "hypridle", "hyprpaper", "swaync"}
+PROTECTED_PREFIX = ("systemd", "dbus-", "pipewire", "xdg-desktop-por", "polkit", "uwsm", "gnome-keyring",
+                    "kwallet", "at-spi")
+INTERPRETERS = re.compile(r"^(python[\d.]*|node|bash|sh|zsh|fish|java|perl|ruby|lua\S*)$")
+
+
+def read(path, mode="r"):
+    with open(path, mode) as f:
+        return f.read()
+
+
+def snapshot():
+    """pid -> {ppid, comm, ticks, start, rss, uid} for every userspace process."""
+    out = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        pid = int(d)
+        try:
+            stat = read(f"/proc/{pid}/stat", "rb").decode(errors="replace")
+            uid = os.stat(f"/proc/{pid}").st_uid
+        except OSError:
+            continue
+        r = stat.rindex(")")
+        f = stat[r + 2:].split()
+        ppid = int(f[1])
+        if pid == 2 or ppid == 2:                         # kernel threads
+            continue
+        out[pid] = {"ppid": ppid, "comm": stat[stat.index("(") + 1:r], "ticks": int(f[11]) + int(f[12]),
+                    "start": int(f[19]), "rss": int(f[21]) * PAGE, "uid": uid}
+    return out
+
+
+def describe(pid, comm):
+    """A readable name: 'chrome (renderer)', 'python3 server.py', 'firefox (tab)'."""
+    try:
+        argv = [a.decode(errors="replace") for a in read(f"/proc/{pid}/cmdline", "rb").split(b"\0") if a]
+    except OSError:
+        argv = []
+    if not argv:
+        return comm, ""
+    joined = " ".join(argv)
+    name = os.path.basename(argv[0].split(" ")[0]) or comm
+    if INTERPRETERS.match(name) and "-c" not in argv[1:2]:
+        script = next((a for a in argv[1:] if not a.startswith("-")), "")
+        if script and not any(c.isspace() for c in script):      # a file, not inline code
+            name = f"{name} {os.path.basename(script)}"
+    m = re.search(r"--type=([\w-]+)", joined)
+    if m:
+        name += f" ({m.group(1)})"
+    elif "-contentproc" in joined:
+        name += " (tab)"
+    return name[:60], joined[:400]
+
+
+def protected(pid, comm):
+    return (pid == 1 or pid == os.getpid() or pid == os.getppid()
+            or comm in PROTECTED_EXACT or comm.startswith(PROTECTED_PREFIX))
+
+
+def children_map(procs):
+    kids = {}
+    for pid, p in procs.items():
+        kids.setdefault(p["ppid"], []).append(pid)
+    return kids
+
+
+def descendants(pid, kids):
+    out, stack = [], list(kids.get(pid, []))
+    while stack:
+        c = stack.pop()
+        out.append(c)
+        stack.extend(kids.get(c, []))
+    return out
+
+
+def user_name(uid):
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+# ── GPU ────────────────────────────────────────────────────────────────────
+def drm_clients(procs):
+    """Per-process DRM engine counters from /proc/<pid>/fdinfo (Intel/AMD/nouveau).
+    Returns {"pid:start:client:engine": value} plus {pid: vram_bytes}."""
+    counters, vram = {}, {}
+    for pid, p in procs.items():
+        if p["uid"] != ME and ME != 0:
+            continue
+        try:
+            fds = os.listdir(f"/proc/{pid}/fd")
+        except OSError:
+            continue
+        seen = set()
+        for fd in fds:
+            try:
+                if not os.readlink(f"/proc/{pid}/fd/{fd}").startswith("/dev/dri/"):
+                    continue
+                info = read(f"/proc/{pid}/fdinfo/{fd}")
+            except OSError:
+                continue
+            kv = dict(line.split(":", 1) for line in info.splitlines() if ":" in line)
+            client = kv.get("drm-client-id", "").strip()
+            if not client or client in seen:
+                continue
+            seen.add(client)
+            for k, v in kv.items():
+                v = v.strip()
+                if k.startswith("drm-engine-") and v.endswith(" ns"):
+                    counters[f"{pid}:{p['start']}:{client}:{k[11:]}"] = int(v.split()[0])
+                elif k.startswith("drm-cycles-"):                      # Intel xe: busy cycles ...
+                    counters[f"{pid}:{p['start']}:{client}:{k[11:]}:cyc"] = int(v.split()[0])
+                elif k.startswith("drm-total-cycles-"):                # ... out of total cycles
+                    counters[f"{pid}:{p['start']}:{client}:{k[17:]}:tot"] = int(v.split()[0])
+                elif k.startswith(("drm-memory-vram", "drm-total-vram", "drm-total-local")):
+                    n, unit = (v.split() + ["B"])[:2]
+                    vram[pid] = max(vram.get(pid, 0), int(n) * {"KiB": 1024, "MiB": 1 << 20}.get(unit, 1))
+    return counters, vram
+
+
+def drm_busy(prev, cur, dt):
+    """pid -> busiest engine % over the interval."""
+    per = {}
+    for key, v in cur.items():
+        if key.endswith(":tot") or key not in prev:
+            continue
+        pid, start, client, engine = key.split(":")[:4]
+        if key.endswith(":cyc"):
+            tot = key[:-4] + ":tot"
+            dtot = cur.get(tot, 0) - prev.get(tot, 0)
+            pct = 100.0 * (v - prev[key]) / dtot if dtot > 0 else 0.0
+        else:
+            pct = 100.0 * (v - prev[key]) / (dt * 1e9)
+        slot = (int(pid), engine)
+        per[slot] = per.get(slot, 0.0) + pct
+    busy = {}
+    for (pid, _), pct in per.items():
+        busy[pid] = max(busy.get(pid, 0.0), min(pct, 100.0))
+    return busy
+
+
+def nvidia():
+    """(awake, {pid: (sm%, vram_MB)}) — never wakes a suspended NVIDIA GPU."""
+    devs = [d for d in pathlib.Path("/sys/bus/pci/devices").glob("*")
+            if (d / "vendor").exists() and read(d / "vendor").strip() == "0x10de"
+            and read(d / "class").strip().startswith("0x03")]
+    if not devs:
+        return None, {}
+    status = (devs[0] / "power" / "runtime_status")
+    if status.exists() and read(status).strip() == "suspended":
+        return False, {}
+    try:
+        out = subprocess.run(["nvidia-smi", "pmon", "-c", "1", "-s", "um"], capture_output=True, text=True,
+                             timeout=4).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return True, {}
+    use = {}
+    for line in out.splitlines():
+        f = line.split()
+        if len(f) < 10 or line.startswith("#") or not f[1].isdigit():
+            continue
+        sm = float(f[3]) if f[3].replace(".", "").isdigit() else 0.0
+        fb = float(f[9]) if f[9].replace(".", "").isdigit() else 0.0
+        use[int(f[1])] = (sm, fb)
+    return True, use
+
+
+# ── list ───────────────────────────────────────────────────────────────────
+def top(view, n):
+    now = time.monotonic()
+    try:
+        cache = json.loads(CACHE.read_text())
+        if now - cache["t"] > 10:
+            raise ValueError("stale")
+    except (OSError, ValueError, KeyError):
+        cache = None
+
+    procs = snapshot()
+    drm = drm_clients(procs) if view == "gpu" else ({}, {})
+    if cache is None:                      # first call: measure over a short interval
+        prev_t, prev_cpu, prev_drm = now, {f"{p}:{v['start']}": v["ticks"] for p, v in procs.items()}, drm[0]
+        time.sleep(0.3)
+        now, procs = time.monotonic(), snapshot()
+        drm = drm_clients(procs) if view == "gpu" else ({}, {})
+    else:
+        prev_t, prev_cpu, prev_drm = cache["t"], cache["cpu"], cache.get("drm", {})
+    dt = max(now - prev_t, 1e-3)
+
+    cpu = {}
+    for pid, p in procs.items():
+        before = prev_cpu.get(f"{pid}:{p['start']}")
+        if before is not None:
+            cpu[pid] = 100.0 * (p["ticks"] - before) / CLK / dt
+    busy = drm_busy(prev_drm, drm[0], dt) if view == "gpu" else {}
+    awake, nv = nvidia() if view == "gpu" else (None, {})
+
+    try:
+        CACHE.write_text(json.dumps({"t": now, "cpu": {f"{p}:{v['start']}": v["ticks"] for p, v in procs.items()},
+                                     "drm": drm[0] if view == "gpu" else cache and cache.get("drm", {}) or {}}))
+    except OSError:
+        pass
+
+    def gpu_of(pid):
+        return max(busy.get(pid, 0.0), nv.get(pid, (0.0, 0.0))[0])
+
+    def vram_of(pid):
+        return nv.get(pid, (0.0, 0.0))[1] or drm[1].get(pid, 0) / (1 << 20)
+
+    if view == "gpu":
+        pids = [p for p in procs if gpu_of(p) > 0 or vram_of(p) > 0]
+        pids.sort(key=lambda p: (gpu_of(p), vram_of(p)), reverse=True)
+    elif view == "mem":
+        pids = sorted(procs, key=lambda p: procs[p]["rss"], reverse=True)
+    else:
+        pids = sorted(procs, key=lambda p: cpu.get(p, 0.0), reverse=True)
+
+    kids = children_map(procs)
+    rows = []
+    for pid in pids[:n]:
+        p = procs[pid]
+        name, cmd = describe(pid, p["comm"])
+        rows.append({"pid": pid, "name": name, "cmd": cmd, "cpu": round(cpu.get(pid, 0.0), 1),
+                     "mem_mb": round(p["rss"] / (1 << 20)), "gpu": round(gpu_of(pid), 1),
+                     "vram_mb": round(vram_of(pid)), "user": user_name(p["uid"]),
+                     "own": p["uid"] == ME, "protected": protected(pid, p["comm"]),
+                     "kids": len(descendants(pid, kids))})
+    note = ""
+    if view == "gpu":
+        if awake is False:
+            note = "NVIDIA GPU is asleep — nothing is using it."
+        elif not rows:
+            note = "No process is using the GPU right now."
+    return {"view": view, "cores": os.cpu_count(), "procs": rows, "note": note}
+
+
+# ── stop ───────────────────────────────────────────────────────────────────
+def alive(pid, start):
+    try:
+        stat = read(f"/proc/{pid}/stat", "rb").decode(errors="replace")
+    except OSError:
+        return False
+    f = stat[stat.rindex(")") + 2:].split()
+    return int(f[19]) == start and f[0] != "Z"
+
+
+def stop(pid):
+    procs = snapshot()
+    p = procs.get(pid)
+    if not p:
+        return {"ok": True, "msg": "It had already exited."}
+    name, _ = describe(pid, p["comm"])
+    if protected(pid, p["comm"]):
+        return {"ok": False, "name": name, "msg": f"{name} is part of the desktop session — stopping it would break it."}
+    if p["uid"] != ME and ME != 0:
+        return {"ok": False, "name": name,
+                "msg": f"{name} belongs to '{user_name(p['uid'])}'. System processes need: sudo kill {pid}"}
+    kids = children_map(procs)
+    targets = [t for t in [pid] + descendants(pid, kids) if not protected(t, procs[t]["comm"])]
+    starts = {t: procs[t]["start"] for t in targets}
+
+    for t in targets:
+        try:
+            os.kill(t, signal.SIGTERM)
+        except OSError:
+            pass
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and any(alive(t, s) for t, s in starts.items()):
+        time.sleep(0.1)
+    forced = [t for t, s in starts.items() if alive(t, s)]
+    for t in forced:
+        try:
+            os.kill(t, signal.SIGKILL)
+        except OSError:
+            pass
+    time.sleep(0.3)
+    left = [t for t in forced if alive(t, starts[t])]
+    extra = f" and {len(targets) - 1} child process{'es' if len(targets) > 2 else ''}" if len(targets) > 1 else ""
+    if left:
+        return {"ok": False, "name": name, "msg": f"{name}: {len(left)} process(es) are stuck in the kernel and "
+                                                  "will exit when their I/O finishes."}
+    how = " (it ignored the polite request, so it was force-stopped)" if forced else ""
+    return {"ok": True, "name": name, "msg": f"Stopped {name}{extra}{how}."}
+
+
+def main(argv):
+    if argv and argv[0] == "stop":
+        if len(argv) < 2 or not argv[1].isdigit():
+            sys.exit("usage: praxis-top stop PID")
+        r = stop(int(argv[1]))
+        print(json.dumps(r))
+        return 0 if r["ok"] else 1
+    view = argv[0] if argv and argv[0] in ("cpu", "mem", "gpu") else "cpu"
+    n = int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 14
+    print(json.dumps(top(view, n)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

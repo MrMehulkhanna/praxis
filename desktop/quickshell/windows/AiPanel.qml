@@ -250,9 +250,10 @@ OverlayWindow {
             IconButton {
                 id: sendBtn
                 anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                icon: "send"; iconSize: 15; implicitWidth: 34; implicitHeight: 34; radius: 17
-                active: input.text.trim().length > 0 && !Aios.streaming
-                onClicked: input.submit()
+                // while an answer streams this is a stop button (frees the GPU right away)
+                icon: Aios.streaming ? "stop" : "send"; iconSize: 15; implicitWidth: 34; implicitHeight: 34; radius: 17
+                active: Aios.streaming || input.text.trim().length > 0
+                onClicked: Aios.streaming ? Aios.stopAnswer() : input.submit()
             }
         }
 

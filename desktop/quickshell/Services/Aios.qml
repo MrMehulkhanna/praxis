@@ -113,9 +113,24 @@ Singleton {
     }
     property int   _aiIndex: -1
 
+    // job id of the answer being streamed (from its "meta" event)
+    property string currentJob: ""
+
+    // Stop a running AI job: the backend cancels the generation, which also
+    // stops the model server from computing (frees the GPU at once).
+    function cancelJob(id) {
+        if (id) Quickshell.execDetached(["curl", "-s", "-m", "5", "-X", "POST", root.base + "/api/jobs/" + id + "/cancel"])
+    }
+    function stopAnswer() {
+        if (!streaming) return
+        if (currentJob) cancelJob(currentJob)
+        else chatProc.running = false           // no id yet: dropping the connection stops it too
+    }
+
     function send(text) {
         const msg = text.trim()
         if (!msg || streaming) return
+        currentJob = ""
         messages.append({ role: "user", text: msg, meta: "" })
         messages.append({ role: "ai", text: "", meta: "" })
         _aiIndex = messages.count - 1
@@ -158,6 +173,7 @@ Singleton {
                 let v; try { v = JSON.parse(ev.data) } catch (e) { return }
                 if (ev.event === "meta") {
                     root.lastMeta = v
+                    root.currentJob = v.job || ""
                     root.lastRoute = { model: v.model, mode: v.mode, task: v.task, reason: v.reason }
                     const lbl = (root.models.find(m => m.id === v.model) || {}).label || v.model
                     root.messages.setProperty(root._aiIndex, "meta",
@@ -180,6 +196,7 @@ Singleton {
         }
         onExited: (code, status) => {
             root.streaming = false
+            root.currentJob = ""
             if (root._aiIndex >= 0 && root.messages.get(root._aiIndex).text === "")
                 root.messages.setProperty(root._aiIndex, "text",
                     root.online ? "⚠ No reply (model may still be loading — try again)." : "⚠ AIOS backend is offline.")

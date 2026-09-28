@@ -129,6 +129,7 @@ Canvas {
             break
         case "play":  fillPoly(ctx, [[7, 4.5], [19.5, 12], [7, 19.5]]); break
         case "pause": rr(ctx, 6, 4.5, 4, 15, 1); ctx.fill(); rr(ctx, 14, 4.5, 4, 15, 1); ctx.fill(); break
+        case "stop":  rr(ctx, 6.5, 6.5, 11, 11, 2.2); ctx.fill(); break
         case "next":  fillPoly(ctx, [[5, 5], [15, 12], [5, 19]]); rr(ctx, 17, 5, 2.4, 14, 1); ctx.fill(); break
         case "prev":  fillPoly(ctx, [[19, 5], [9, 12], [19, 19]]); rr(ctx, 4.6, 5, 2.4, 14, 1); ctx.fill(); break
         case "cpu":

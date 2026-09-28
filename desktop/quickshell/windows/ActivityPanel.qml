@@ -18,45 +18,58 @@ OverlayWindow {
     readonly property ListModel events: ListModel {}
     property var hw: ({})
 
+    // ── task manager (click the CPU / RAM / GPU tiles) ──
+    // praxis-top measures *current* CPU (not ps's lifetime average), per-process
+    // GPU use (DRM counters + nvidia-smi, without waking a sleeping dGPU), and
+    // stops a task completely: SIGTERM, then SIGKILL for whatever ignores it.
     property string activeView: "events"
     property var topList: []
-    onActiveViewChanged: { if (activeView !== "events") { psProc.running = false; psProc.running = true; } }
-    property var currentBuf: []
+    property string topNote: ""
+    onActiveViewChanged: { topList = []; topNote = ""; if (activeView !== "events" && !psProc.running) psProc.running = true }
     Process {
         id: psProc
-        command: ["bash", "-c", `
-            MODE=$1
-            if [ "$MODE" = "cpu" ] || [ "$MODE" = "mem" ]; then
-                ps -eo pid,%cpu,%mem,rss,comm --sort=-%$MODE | head -n 11 | awk 'NR>1 {comm=""; for(i=5; i<=NF; i++) comm=comm $i " "; print $1"|"$2"|"$3"|"$4"|"comm}'
-            elif [ "$MODE" = "gpu" ]; then
-                nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv,noheader | head -n 10 | awk -F', ' '{print $1"|||"$2"|"$3}'
-            fi
-        `, "--", win.activeView]
-        stdout: SplitParser {
-            onRead: line => win.currentBuf.push(line)
-        }
-        onExited: {
-            if (win.activeView === "events") { win.currentBuf = []; return; }
-            let list = [];
-            for (let l of win.currentBuf) {
-                if (!l || l.indexOf("|") === -1) continue;
-                let p = l.split("|");
-                list.push({
-                    pid: p[0],
-                    cpu: p[1] ? p[1] + "%" : "",
-                    mem: p[2] ? p[2] + "%" : "",
-                    rss: p[3] ? (p[3].includes("MiB") ? p[3] : (parseInt(p[3])/1024).toFixed(1) + "M") : "",
-                    comm: p[4] ? p[4].replace(/^\s+|\s+$/g, "") : ""
-                });
+        command: ["praxis-top", win.activeView === "events" ? "cpu" : win.activeView, "14"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (win.activeView === "events") return
+                try { const d = JSON.parse(this.text); if (d.view === win.activeView) { win.topList = d.procs; win.topNote = d.note || "" } } catch (e) {}
             }
-            win.topList = list;
-            win.currentBuf = [];
         }
     }
     Timer {
         running: win.activeView !== "events" && win.open
-        interval: 1500; repeat: true; triggeredOnStart: true
-        onTriggered: { psProc.running = false; psProc.running = true }
+        interval: 1500; repeat: true
+        onTriggered: if (!psProc.running) psProc.running = true
+    }
+
+    // Ctrl+Shift+Esc (and `quickshell ipc call tasks open gpu`) opens straight to the task list
+    IpcHandler {
+        target: "tasks"
+        function open(view: string): void { win.activeView = ["cpu", "mem", "gpu"].includes(view) ? view : "cpu"; Shell.open("activity") }
+    }
+
+    // ✕ asks once ("Stop?"), the second click stops the task and all it started
+    property int armedPid: -1
+    property int stoppingPid: -1
+    Timer { id: disarm; interval: 3000; onTriggered: win.armedPid = -1 }
+    function stopTask(p) {
+        if (win.stoppingPid !== -1) return
+        if (win.armedPid !== p.pid) { win.armedPid = p.pid; disarm.restart(); return }
+        win.armedPid = -1
+        win.stoppingPid = p.pid
+        stopProc.command = ["praxis-top", "stop", String(p.pid)]
+        stopProc.running = true
+    }
+    Process {
+        id: stopProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = {}
+                try { r = JSON.parse(this.text) } catch (e) { r = { ok: false, msg: "praxis-top is not installed." } }
+                Notifs.notify(r.ok ? "Task stopped" : "Couldn't stop task", r.msg || "")
+            }
+        }
+        onExited: { win.stoppingPid = -1; if (!psProc.running) psProc.running = true }
     }
 
     // live feed
@@ -165,13 +178,21 @@ OverlayWindow {
                     required property var modelData
                     width: jobsCol.width; height: 34; radius: Theme.radiusMd
                     color: Theme.alpha(Theme.accent, 0.10); border.width: 1; border.color: Theme.alpha(Theme.accent, 0.3)
+                    IconButton {
+                        anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+                        icon: modelData.stage === "stopping" ? "refresh" : "stop"; iconSize: 11
+                        label: modelData.stage === "stopping" ? "Stopping…" : "Stop"
+                        implicitHeight: 26
+                        enabled: modelData.stage !== "stopping"
+                        onClicked: Aios.cancelJob(modelData.id)
+                    }
                     Row {
                         anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
                         spacing: 8
                         Icon { name: "refresh"; size: 13; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter
                             RotationAnimation on rotation { loops: Animation.Infinite; from: 0; to: 360; duration: 1200 } }
                         Text { text: modelData.kind + " · " + modelData.stage + " · " + (modelData.mode || "") + " " + (modelData.model || ""); color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
-                        Text { text: modelData.title; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: 200; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: modelData.title; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: 150; anchors.verticalCenter: parent.verticalCenter }
                     }
                 }
             }
@@ -251,40 +272,79 @@ OverlayWindow {
             model: win.topList
             spacing: 2
             clip: true
+            readonly property bool gpuView: win.activeView === "gpu"
+            readonly property int nameW: width - 46 - 52 - 60 - 34 - 4 * 8
             delegate: Item {
+                id: row
                 required property var modelData
-                width: topView.width; height: 22
-                
-                // Hover highlight
-                Rectangle { anchors.fill: parent; radius: 4; color: hover.containsMouse ? Theme.hover : "transparent" }
+                readonly property bool armed: win.armedPid === modelData.pid
+                readonly property bool stopping: win.stoppingPid === modelData.pid
+                readonly property bool stoppable: modelData.own && !modelData.protected
+                width: topView.width; height: 26
+
+                Rectangle { anchors.fill: parent; radius: 6
+                    color: row.armed ? Theme.alpha(Theme.red, 0.18) : hover.containsMouse ? Theme.hover : "transparent"
+                    border.width: row.armed ? 1 : 0; border.color: Theme.alpha(Theme.red, 0.5) }
                 MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
-                
+
                 Row {
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors { left: parent.left; leftMargin: 4; verticalCenter: parent.verticalCenter }
                     spacing: 8
-                    Text { text: modelData.pid; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: modelData.cpu; color: Theme.accent; font.family: Theme.fontMono; font.pixelSize: 10; width: 40; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: modelData.mem || modelData.rss; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10; width: 50; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: modelData.comm; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: topView.width - 184; anchors.verticalCenter: parent.verticalCenter }
-                    IconButton { 
-                        icon: "x"
-                        iconSize: 12
-                        opacity: hover.containsMouse ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 150 } }
-                        onClicked: Shell.run("kill -15 " + modelData.pid)
-                        anchors.verticalCenter: parent.verticalCenter 
+                    Text { text: row.modelData.pid; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; anchors.verticalCenter: parent.verticalCenter }
+                    Text {
+                        width: 52; anchors.verticalCenter: parent.verticalCenter
+                        text: topView.gpuView ? row.modelData.gpu.toFixed(0) + "%" : row.modelData.cpu.toFixed(row.modelData.cpu < 10 ? 1 : 0) + "%"
+                        color: (topView.gpuView ? row.modelData.gpu : row.modelData.cpu) > 50 ? Theme.red
+                             : (topView.gpuView ? row.modelData.gpu : row.modelData.cpu) > 15 ? Theme.yellow : Theme.accent
+                        font.family: Theme.fontMono; font.pixelSize: 10
                     }
+                    Text {
+                        width: 60; anchors.verticalCenter: parent.verticalCenter
+                        text: {
+                            const mb = topView.gpuView ? row.modelData.vram_mb : row.modelData.mem_mb
+                            return mb >= 1024 ? (mb / 1024).toFixed(1) + " G" : mb + " M"
+                        }
+                        color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: 10
+                    }
+                    Text {
+                        width: topView.nameW; anchors.verticalCenter: parent.verticalCenter
+                        text: row.stopping ? "stopping " + row.modelData.name + "…"
+                            : row.armed ? "Stop " + row.modelData.name + (row.modelData.kids ? " and " + row.modelData.kids + " child process" + (row.modelData.kids > 1 ? "es" : "") : "") + "?"
+                            : row.modelData.name
+                        color: row.armed ? Theme.red : Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: row.armed ? Font.DemiBold : Font.Normal
+                        elide: Text.ElideRight
+                    }
+                }
+                // ✕ for your own tasks; a lock for the desktop itself and system processes
+                IconButton {
+                    visible: row.stoppable
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    icon: row.stopping ? "refresh" : "x"; iconSize: 12; implicitHeight: 24; implicitWidth: 26
+                    iconColor: row.armed ? Theme.red : Theme.text2
+                    opacity: hover.containsMouse || row.armed || row.stopping ? 1 : 0.35
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    onClicked: win.stopTask(row.modelData)
+                }
+                Icon {
+                    visible: !row.stoppable
+                    anchors { right: parent.right; rightMargin: 7; verticalCenter: parent.verticalCenter }
+                    name: "lock"; size: 11; color: Theme.muted
+                    opacity: hover.containsMouse ? 0.9 : 0.35
                 }
             }
             header: Item { width: topView.width; height: 26
                 Row {
-                    spacing: 8; anchors.verticalCenter: parent.verticalCenter
+                    anchors { left: parent.left; leftMargin: 4; verticalCenter: parent.verticalCenter }
+                    spacing: 8
                     Text { text: "PID"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 46; font.weight: Font.Bold }
-                    Text { text: win.activeView === "gpu" ? "" : "CPU"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 40; font.weight: Font.Bold }
-                    Text { text: win.activeView === "gpu" ? "VRAM" : "MEM"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 50; font.weight: Font.Bold }
-                    Text { text: "PROCESS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; width: topView.width - 184; font.weight: Font.Bold }
+                    Text { text: topView.gpuView ? "GPU" : "CPU"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 52; font.weight: Font.Bold }
+                    Text { text: topView.gpuView ? "VRAM" : "MEMORY"; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10; width: 60; font.weight: Font.Bold }
+                    Text { text: "PROCESS  ·  ✕ stops a task (asks first)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; width: topView.nameW; font.weight: Font.Bold; elide: Text.ElideRight }
                 }
             }
+            footer: Item { width: topView.width; height: win.topNote || win.topList.length === 0 ? 40 : 0
+                Text { anchors.centerIn: parent; text: win.topNote || (win.topList.length === 0 ? "Measuring…" : ""); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontSm } }
         }
 
         // ── footer ──
