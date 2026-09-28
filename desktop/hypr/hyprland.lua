@@ -293,7 +293,7 @@ hl.bind(mainMod .. " + SHIFT + TAB", hl.dsp.exec_cmd("rofi -show window"))
 hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
 hl.bind("ALT + RETURN", hl.dsp.window.fullscreen())
 -- Screenshots (interactive menu on PRINT)
-hl.bind("PRINT",                hl.dsp.exec_cmd("~/aios/desktop/hypr/scripts/screenshot.sh"))
+hl.bind("PRINT",                hl.dsp.exec_cmd("~/.config/hypr/scripts/screenshot.sh"))
 hl.bind("SHIFT + PRINT",        hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"))
 hl.bind("CTRL + PRINT",         hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"))
@@ -304,15 +304,17 @@ hl.bind(mainMod .. " + SHIFT + Z", hl.dsp.workspace.toggle_special("minimized"))
 
 -- ── Quickshell panel shortcuts (Alphabet keys) ─────────────────────────
 -- Super+Escape → Force close or Force open Quickshell
-hl.bind(mainMod .. " + ESCAPE", hl.dsp.exec_cmd("toggle-qs"))
+hl.bind(mainMod .. " + ESCAPE", hl.dsp.exec_cmd("praxis-restart-shell"))
+-- Ctrl+Shift+Escape → task manager (what's using CPU/GPU, stop it)
+hl.bind("CTRL + SHIFT + ESCAPE", hl.dsp.exec_cmd("quickshell ipc call tasks open cpu"))
 -- Super+A  → AI Spotlight (search/command bar)
-hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("bash -c \"echo 'spotlight' > /tmp/qs-ipc-pipe\""))
+hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
 -- Super+I  → AI Chat panel
-hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("bash -c \"echo 'aichat' > /tmp/qs-ipc-pipe\""))
+hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc call shell toggle ai"))
 -- Super+O  → Control Center (Overview)
-hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("bash -c \"echo 'cc' > /tmp/qs-ipc-pipe\""))
+hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc call shell toggle cc"))
 -- Super+W  → Launchpad (Windows/Apps)
-hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("bash -c \"echo 'launchpad' > /tmp/qs-ipc-pipe\""))
+hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
 -- Tap Super to open Launchpad
 hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true })
 -- Super+P  → Display / Projection settings

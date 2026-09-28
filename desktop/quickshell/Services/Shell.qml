@@ -44,27 +44,6 @@ Singleton {
         function pin(monitor: string): void { root.pinnedMonitor = monitor === "none" ? "" : monitor }
     }
 
-    // Legacy named-pipe path — existing hyprland.lua binds write here.
-    Process {
-        id: pipe
-        command: ["bash", "-c", "rm -f /tmp/qs-ipc-pipe; mkfifo /tmp/qs-ipc-pipe; exec tail -f /tmp/qs-ipc-pipe"]
-        running: true
-        stdout: SplitParser {
-            onRead: line => {
-                switch (line.trim()) {
-                    case "spotlight":
-                    case "launchpad": root.toggle("launcher"); break
-                    case "aichat":    root.toggle("ai"); break
-                    case "cc":        root.toggle("cc"); break
-                    case "settings":  root.toggle("settings"); break
-                    case "activity":  root.toggle("activity"); break
-                    case "close":     root.closeAll(); break
-                }
-            }
-        }
-        onExited: running = true
-    }
-
     // profiles change real system state, not just colours
     Connections {
         target: Settings

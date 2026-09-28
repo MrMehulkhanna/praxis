@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Super+Escape: restart the Praxis shell (bar, dock, panels) — or start it if it died.
+pkill -x quickshell 2>/dev/null && sleep 0.4
+exec quickshell -d -p ~/.config/quickshell/shell.qml
