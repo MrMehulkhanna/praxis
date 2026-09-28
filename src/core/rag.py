@@ -241,6 +241,8 @@ def embed_pending(batch: int = 32) -> dict:
     ).fetchall()
     if not rows:
         return {"embedded": 0, "reason": "nothing pending"}
+    if not db._HAS_VEC:
+        return {"embedded": 0, "reason": "sqlite-vec not installed (BM25 search still works)"}
     if not _get_embedder():
         return {"embedded": 0, "reason": "no embedder installed (BM25 search still works)"}
 
@@ -304,7 +306,8 @@ def query(
 
     # 2. Vector similarity (only if embedder AND vectors both exist)
     vec_rows: list[dict] = []
-    n_vec = c.execute("SELECT COUNT(*) FROM vectors").fetchone()[0]
+    # the vec0 table only exists when the sqlite-vec extension is installed
+    n_vec = c.execute("SELECT COUNT(*) FROM vectors").fetchone()[0] if db._HAS_VEC else 0
     if n_vec and _get_embedder():
         qv = _embed_batch([q])
         if qv:
@@ -369,7 +372,7 @@ def stats() -> dict:
         "embedded": c.execute(
             "SELECT COUNT(*) FROM chunks WHERE embedded=1"
         ).fetchone()[0],
-        "vectors": c.execute("SELECT COUNT(*) FROM vectors").fetchone()[0],
+        "vectors": c.execute("SELECT COUNT(*) FROM vectors").fetchone()[0] if db._HAS_VEC else 0,
         "embedder": bool(_get_embedder()),
     }
     return r
