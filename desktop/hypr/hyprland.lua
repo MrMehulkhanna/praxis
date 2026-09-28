@@ -325,6 +325,8 @@ hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle wid
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"))
 -- Super+N → quicknote (rofi prompt → today's ~/aios/notes/YYYY-MM-DD.md)
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("praxis-quicknote"))
+-- Super+Shift+O → OCR a screen region into the clipboard
+hl.bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd("praxis-ocr"))
 
 
 -- Move focus with mainMod + arrow keys
