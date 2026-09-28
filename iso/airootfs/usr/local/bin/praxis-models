@@ -12,6 +12,7 @@
 #    praxis-models list                   full catalog
 #    praxis-models recommend              only what fits YOUR hardware
 #    praxis-models download <id>          fetch and store in ~/aios/models/<id>
+#                                         (the AI panel lists it right away)
 #    praxis-models remove   <id>          delete the local copy
 #    praxis-models installed              show what's already downloaded
 #    praxis-models space                  show disk / VRAM budget
@@ -34,6 +35,34 @@ B, G, Y, R, C, M, D, X = (
 # `uncensored` = tuned/abliterated so the safety layer is stripped or minimal.
 # Sizes are GGUF sizes at the listed quant; halve for Q4_K_M etc. as noted.
 CATALOG = [
+    # ---- the Praxis line-up (the AI panel knows these by name) ----
+    {"id": "qwen3-4b", "label": "Qwen3 4B",
+     "repo": "Qwen/Qwen3-4B-GGUF",
+     "file": "Qwen3-4B-Q4_K_M.gguf",
+     "size_gb": 2.5, "vram_gb": 3, "tags": ["chat", "default", "fast"],
+     "censored": True,
+     "desc": "Praxis default. Best speed/quality balance on small GPUs; usable on CPU."},
+    {"id": "qwen3-8b", "label": "Qwen3 8B",
+     "repo": "Qwen/Qwen3-8B-GGUF",
+     "file": "Qwen3-8B-Q4_K_M.gguf",
+     "size_gb": 5.0, "vram_gb": 6, "tags": ["chat", "coding", "quality"],
+     "censored": True,
+     "desc": "Noticeably better answers and code; thinking mode for hard questions."},
+    {"id": "qwen3-8b-abliterated", "label": "Qwen3 8B Abliterated",
+     "repo": "bartowski/mlabonne_Qwen3-8B-abliterated-GGUF",
+     "file": "mlabonne_Qwen3-8B-abliterated-Q4_K_M.gguf",
+     "size_gb": 5.0, "vram_gb": 6, "tags": ["chat", "coding", "uncensored"],
+     "censored": False,
+     "desc": "Qwen3 8B with the refusal behaviour removed (mlabonne). Strong at code and "
+             "long questions, answers directly instead of refusing. Apache-2.0."},
+    {"id": "qwen3-vl-8b", "label": "Qwen3-VL 8B",
+     "repo": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+     "file": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+     "extra": ["mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf"],     # the vision projector
+     "size_gb": 5.8, "vram_gb": 6, "tags": ["vision", "multimodal"],
+     "censored": True,
+     "desc": "Sees images: screenshots, photos, documents. Apache-2.0."},
+
     # ---- general chat / assistants ----
     {"id": "qwen2.5-3b-instruct",
      "repo": "bartowski/Qwen2.5-3B-Instruct-GGUF",
@@ -89,14 +118,6 @@ CATALOG = [
      "censored": True,
      "desc": "16 B MoE (2.4 B active), needs 12 GB+ VRAM. Very strong at code."},
 
-    # ---- vision ----
-    {"id": "qwen2-vl-7b",
-     "repo": "bartowski/Qwen2-VL-7B-Instruct-GGUF",
-     "file": "Qwen2-VL-7B-Instruct-Q4_K_M.gguf",
-     "size_gb": 5.0, "vram_gb": 6, "tags": ["vision", "multimodal"],
-     "censored": True,
-     "desc": "Vision + language. OCR, image Q&A, scene understanding."},
-
     # ---- tiny / edge ----
     {"id": "phi-3.5-mini-3.8b",
      "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
@@ -125,17 +146,25 @@ CATALOG = [
 def detect_hardware() -> dict:
     """Return a dict of {vram_gb, ram_gb, cpu, gpu_name, disk_free_gb}."""
     hw = {"vram_gb": 0, "ram_gb": 0, "cpu": "", "gpu_name": "", "disk_free_gb": 0}
-    # VRAM (NVIDIA)
+    # VRAM — NVIDIA via nvidia-smi, AMD via the amdgpu sysfs counter
     try:
         r = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=3)
+            capture_output=True, text=True, timeout=5)
         if r.returncode == 0 and r.stdout.strip():
             name, mib = [x.strip() for x in r.stdout.splitlines()[0].split(",")]
             hw["gpu_name"] = name
-            hw["vram_gb"] = int(mib) // 1024
-    except FileNotFoundError:
+            hw["vram_gb"] = round(int(mib) / 1024, 1)
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
         pass
+    if not hw["vram_gb"]:
+        for f in sorted(pathlib.Path("/sys/class/drm").glob("card*/device/mem_info_vram_total")):
+            try:
+                gb = round(int(f.read_text()) / 1024 ** 3, 1)
+            except (OSError, ValueError):
+                continue
+            if gb > hw["vram_gb"]:
+                hw["vram_gb"], hw["gpu_name"] = gb, "AMD GPU"
     # RAM
     try:
         with open("/proc/meminfo") as f:
@@ -165,7 +194,7 @@ def detect_hardware() -> dict:
 
 def print_hw(hw: dict) -> None:
     print(f"{B}Your machine{X}")
-    print(f"  GPU        {hw['gpu_name'] or D+'no NVIDIA detected — CPU-only inference'+X}")
+    print(f"  GPU        {hw['gpu_name'] or D+'no dedicated GPU — models run on the CPU (small ones are fine)'+X}")
     print(f"  VRAM       {hw['vram_gb']} GiB")
     print(f"  CPU        {hw['cpu']}")
     print(f"  RAM        {hw['ram_gb']} GiB")
@@ -254,16 +283,21 @@ def cmd_download(model_id: str, hw: dict, force: bool) -> None:
 
     dest = MODELS / m["id"]
     dest.mkdir(parents=True, exist_ok=True)
+    files = [m["file"], *m.get("extra", [])]
     print(f"{B}Downloading{X} {m['id']}  ({m['size_gb']:.1f} GB)")
     print(f"  from  {m['repo']}")
-    print(f"  file  {m['file']}")
+    print(f"  files {', '.join(files)}")
     print(f"  to    {dest}\n")
     r = subprocess.run(
-        [hf_cli, "download", m["repo"], m["file"], "--local-dir", str(dest)],
+        [hf_cli, "download", m["repo"], *files, "--local-dir", str(dest)],
         env={**os.environ, "HF_HUB_ENABLE_HF_TRANSFER": "1"},
     )
     if r.returncode == 0:
-        print(f"\n{G}✓ downloaded to {dest}{X}")
+        # tells the AIOS backend how to list it (label, vision, uncensored)
+        (dest / "praxis-model.json").write_text(json.dumps(
+            {"id": m["id"], "label": m.get("label", m["id"]), "tags": m["tags"], "censored": m["censored"],
+             "vision": "vision" in m["tags"], "desc": m["desc"]}, indent=2) + "\n")
+        print(f"\n{G}✓ downloaded to {dest}{X} — pick it in the AI panel's model menu")
         if not m["censored"]:
             print(f"{Y}note{X}: this model is uncensored — it will answer bluntly without refusals.")
     else:

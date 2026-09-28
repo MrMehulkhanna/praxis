@@ -1,13 +1,15 @@
 """
 Local llama-server adapter.
 
-Starts llama-server on demand with CUDA offload (sm_89 = RTX 4050, 6 GB).
-Auto-unloads after idle — this is what keeps Hyprland smooth.
+Starts llama-server on demand and offloads as much of the model to the GPU as
+this machine's free VRAM allows (llama.cpp's -fit), so the same setup suits a
+4 GB laptop GPU and a 24 GB desktop card. Auto-unloads after idle — this is
+what keeps Hyprland smooth.
 
 KV cache at q8_0 = half the VRAM of fp16 cache.
 Flash attention on = faster, lower VRAM for long contexts.
 """
-import asyncio, glob, json, os, pathlib, shutil, time
+import asyncio, glob, json, os, pathlib, shutil, subprocess, time
 import httpx
 from core.gateway.iface import Capability, Request, attach_images
 
@@ -19,6 +21,8 @@ _LOCAL_BIN = HOME / "llama-server"
 BIN = _LOCAL_BIN if _LOCAL_BIN.exists() else pathlib.Path(shutil.which("llama-server") or _LOCAL_BIN)
 PORT     = int(os.environ.get("LLAMA_PORT", "8779"))
 IDLE_SEC = int(os.environ.get("AIOS_IDLE_UNLOAD", "120"))
+# generation threads: about half the CPU, leaving the rest for the desktop
+THREADS  = int(os.environ.get("AIOS_THREADS", max(2, min(8, (os.cpu_count() or 4) // 2 - 2))))
 # On battery an idle model gives the GPU back sooner, so a hybrid laptop's
 # NVIDIA GPU can power down between questions.
 IDLE_SEC_BATTERY = int(os.environ.get("AIOS_IDLE_UNLOAD_BATTERY", "30"))
@@ -33,9 +37,10 @@ def _on_battery() -> bool:
     return False
 
 # ── model registry ───────────────────────────────────────────────────────
-# ngl = layers on GPU. 99 = everything. The 8B model does not fit fully in
-# 6 GB next to a compositor, so it splits: ~28 layers on GPU, the rest in
-# system RAM (16 GB). Slower per token, noticeably better answers.
+# ngl = layers on GPU (99 = everything). These are only fallbacks for an older
+# llama-server without -fit, tuned for a 6 GB GPU next to a compositor; a
+# current one sizes the offload to the free VRAM of whatever GPU it finds.
+# Setting the profile's env var (e.g. AIOS_8B_NGL) forces a fixed value.
 #
 # quality: relative local ranking 1–5. No local model on this GPU is
 # Claude/GPT-class — that tier only exists as a cloud adapter (paid, opt-in).
@@ -47,21 +52,21 @@ PROFILES: dict[str, dict] = {
         "note": "Best speed/quality balance on 6 GB. Default.",
     },
     "local-qwen3-8b": {
-        "dir": "qwen3-8b", "ngl": int(os.environ.get("AIOS_8B_NGL", "28")), "ctx": 6144,
+        "dir": "qwen3-8b", "ngl": int(os.environ.get("AIOS_8B_NGL", "28")), "ngl_env": "AIOS_8B_NGL", "ctx": 6144,
         "label": "Qwen3 8B", "role": "Quality",
         "quality": 4, "speed": "medium", "vram": "~4.2 GB", "ram": "~2 GB",
         "note": "Highest-quality local option. Partly in RAM → medium reply time.",
     },
-    "local-dolphin-v2-8b": {
-        "dir": "dolphin-v2-8b-abliterated", "ngl": int(os.environ.get("AIOS_DOLPHIN_NGL", "24")), "ctx": 4096,
-        "label": "Dolphin V2 8B", "role": "Quality",
-        "quality": 4, "speed": "medium", "vram": "~4.7 GB", "ram": "~2.5 GB",
+    "local-qwen3-8b-abliterated": {
+        "dir": "qwen3-8b-abliterated", "ngl": int(os.environ.get("AIOS_UNFILTERED_NGL", "28")), "ngl_env": "AIOS_UNFILTERED_NGL", "ctx": 8192,
+        "label": "Qwen3 8B Abliterated", "role": "Unfiltered",
+        "quality": 4, "speed": "medium", "vram": "~5 GB", "ram": "~1 GB",
         "min_bytes": 4_500_000_000,
-        "note": "Unfiltered Qwen3-8B derivative. Partly offloaded to preserve 6 GB GPU desktop headroom.",
+        "note": "Qwen3 8B with its refusal behaviour removed: strong at code and long questions, answers directly.",
     },
 
     "local-qwen3-vl-8b": {
-        "dir": "qwen3-vl-8b", "ngl": int(os.environ.get("AIOS_VL_NGL", "24")), "ctx": 8192,
+        "dir": "qwen3-vl-8b", "ngl": int(os.environ.get("AIOS_VL_NGL", "24")), "ngl_env": "AIOS_VL_NGL", "ctx": 8192,
         "label": "Qwen3-VL 8B", "role": "Quality", "vision": True,
         "quality": 4, "speed": "medium", "vram": "~4.5 GB", "ram": "~2.5 GB",
         "note": "Sees images & video frames (Apache-2.0). Text quality of the 8B class. Partly in RAM.",
@@ -69,7 +74,34 @@ PROFILES: dict[str, dict] = {
 }
 DEFAULT_MODEL = "local-qwen3-4b"
 
+def _discover() -> None:
+    """Anything else in ~/aios/models — downloaded with praxis-models or dropped in by
+    hand — becomes selectable too, labelled from its praxis-model.json when present."""
+    known = {p["dir"] for p in PROFILES.values()}
+    for d in sorted((HOME / "models").glob("*")):
+        if not d.is_dir() or d.name in known or d.name.startswith("piper"):
+            continue
+        ggufs = [g for g in d.glob("*.gguf") if "mmproj" not in g.name.lower()]
+        if not ggufs:
+            continue
+        try:
+            meta = json.loads((d / "praxis-model.json").read_text())
+        except (OSError, ValueError):
+            meta = {}
+        if "embed" in d.name or "embed" in meta.get("tags", []):
+            continue                                    # embedders aren't chat models
+        size_gb = max(g.stat().st_size for g in ggufs) / 1e9
+        vision = bool(meta.get("vision")) or any(d.glob("mmproj*.gguf"))
+        PROFILES[f"local-{d.name}"] = {
+            "dir": d.name, "ngl": 99, "ctx": int(meta.get("ctx", 8192)),
+            "label": meta.get("label") or d.name, "role": "Unfiltered" if meta.get("censored") is False else "Custom",
+            "quality": 3, "speed": "fast" if size_gb < 3.5 else "medium",
+            "vram": f"~{size_gb + 0.7:.1f} GB", "ram": "—", "vision": vision,
+            "note": meta.get("desc") or "Added from ~/aios/models.",
+        }
+
 def list_models() -> list[dict]:
+    _discover()
     out = []
     for mid, p in PROFILES.items():
         hits = [h for h in glob.glob(str(HOME / "models" / p["dir"] / "*.gguf")) if "mmproj" not in os.path.basename(h).lower()]
@@ -82,6 +114,19 @@ def list_models() -> list[dict]:
             "note": p["note"], "available": complete and (not p.get("vision") or bool(glob.glob(str(HOME / "models" / p["dir"] / "mmproj*.gguf")))),
         })
     return out
+
+_fit: bool | None = None
+
+def _supports_fit() -> bool:
+    """llama.cpp builds from late 2025 on can fit the GPU offload to free memory."""
+    global _fit
+    if _fit is None:
+        try:
+            r = subprocess.run([str(BIN), "--help"], capture_output=True, text=True, timeout=15)
+            _fit = "--fit" in (r.stdout + r.stderr)
+        except (OSError, subprocess.SubprocessError):
+            _fit = False
+    return _fit
 
 def _find_gguf(sub: str) -> str:
     hits = sorted(
@@ -149,15 +194,18 @@ class LlamaAdapter:
                 "-m", gguf,
                 "--port", str(PORT),
                 "--host", "127.0.0.1",
-                "-ngl", str(p["ngl"]),
                 "-c",   str(p["ctx"]),
                 "--cache-type-k", "q8_0",
                 "--cache-type-v", "q8_0",
                 "--flash-attn", "on",
-                "-t", "6",          # 12 physical cores; leave headroom for the desktop
+                "-t", str(THREADS),
                 "--parallel", "1",
                 "--no-warmup",
             ]
+            if _supports_fit() and not os.environ.get(p.get("ngl_env", "")):
+                args += ["-fit", "on"]                   # as many layers as this GPU's free VRAM allows
+            else:
+                args += ["-ngl", str(p["ngl"])]
             if p.get("vision"):
                 mm = sorted(glob.glob(str(HOME / "models" / p["dir"] / "mmproj*.gguf")), key=os.path.getsize)
                 if mm:
@@ -174,8 +222,8 @@ class LlamaAdapter:
                     if self._proc.returncode is not None:
                         raise RuntimeError(
                             f"llama-server exited with code {self._proc.returncode} "
-                            f"while loading {model} — likely out of VRAM. "
-                            f"Lower AIOS_8B_NGL in ~/aios/config/aios.env."
+                            f"while loading {model} — likely out of GPU memory. "
+                            f"Force fewer GPU layers with {p.get('ngl_env') or 'AIOS_8B_NGL'} in ~/aios/config/aios.env."
                         )
                     try:
                         r = await c.get(f"http://127.0.0.1:{PORT}/health")

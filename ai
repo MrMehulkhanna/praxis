@@ -18,7 +18,7 @@ ai — control interface for AIOS (local-first AI on this machine).
 
 Exit codes: 0 ok · 1 error · 2 usage · 3 backend down · 4 refused/denied
 """
-import json, os, pathlib, shutil, subprocess, sys, time, urllib.error, urllib.request
+import glob, json, os, pathlib, shutil, subprocess, sys, time, urllib.error, urllib.request
 
 BASE = "http://127.0.0.1:8778"
 HOME = pathlib.Path(os.environ.get("AIOS_HOME", pathlib.Path.home() / "aios"))
@@ -264,14 +264,17 @@ def cmd_doctor():
         with urllib.request.urlopen(BASE + "/api/status", timeout=3) as r: s = json.loads(r.read()); add("backend reachable on :8778", True)
     except Exception: s = None; add("backend reachable on :8778", False, "systemctl --user start aios.service")
     add("aios.service enabled", subprocess.run(["systemctl", "--user", "is-enabled", "aios.service"], capture_output=True, text=True).stdout.strip() == "enabled", "systemctl --user enable aios.service")
-    add("llama-server binary", (HOME / "llama-server").exists() and os.access(HOME / "llama-server", os.X_OK), "build llama.cpp: cmake -B build -DGGML_CUDA=ON && cmake --build build")
-    add("nvidia-smi sees the GPU", subprocess.run(["nvidia-smi", "-L"], capture_output=True).returncode == 0, "check nvidia driver / modules")
-    for mid, d, minimum in (("qwen3-4b", "qwen3-4b", 1), ("qwen3-8b", "qwen3-8b", 1), ("coder-7b", "qwen-coder-7b", 1), ("dolphin-v2-8b", "dolphin-v2-8b-abliterated", 4_500_000_000)):
-        add(f"model {mid} downloaded", any(p.stat().st_size >= minimum for p in (HOME / "models" / d).glob("*.gguf")), f"see adapters/local/llama.py PROFILES")
+    add("llama-server binary", ((HOME / "llama-server").exists() and os.access(HOME / "llama-server", os.X_OK)) or bool(shutil.which("llama-server")), "sudo pacman -S llama-cpp ggml-vulkan")
+    nvidia = any(pathlib.Path(v).read_text().strip() == "0x10de" for v in glob.glob("/sys/bus/pci/devices/*/vendor")
+                 if pathlib.Path(v).with_name("class").read_text().startswith("0x03"))
+    if nvidia:
+        add("nvidia-smi sees the GPU", subprocess.run(["nvidia-smi", "-L"], capture_output=True).returncode == 0, "check the nvidia driver / modules")
+    models = sorted(p.parent.name for p in (HOME / "models").glob("*/*.gguf") if "mmproj" not in p.name.lower() and p.stat().st_size > 100_000_000)
+    add(f"local models: {', '.join(dict.fromkeys(models)) or 'none'}", bool(models), "praxis-models recommend, then praxis-models download <id>")
     add("python venv", (HOME / ".venv/bin/python").exists())
     for mod in ("fastapi", "httpx", "faster_whisper", "sqlite_vec"):
         add(f"venv has {mod}", subprocess.run([str(HOME / ".venv/bin/python"), "-c", f"import {mod}"], capture_output=True).returncode == 0, f"{HOME}/.venv/bin/pip install {mod.replace('_', '-')}")
-    add("quickshell running", subprocess.run(["pgrep", "-x", "quickshell"], capture_output=True).returncode == 0, "toggle-qs  (Super+Esc)")
+    add("quickshell running", subprocess.run(["pgrep", "-x", "quickshell"], capture_output=True).returncode == 0, "praxis-restart-shell  (Super+Esc)")
     add("swaync running", subprocess.run(["pgrep", "-x", "swaync"], capture_output=True).returncode == 0, "swaync &")
     add("polkit agent (for root-only hardware toggles)", subprocess.run(["pgrep", "-f", "polkit-kde-authentication-agent"], capture_output=True).returncode == 0, "/usr/lib/polkit-kde-authentication-agent-1 &")
     add("pw-record (voice)", bool(shutil.which("pw-record")), "pacman -S pipewire")

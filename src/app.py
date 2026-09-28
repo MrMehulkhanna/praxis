@@ -61,13 +61,18 @@ def registry(is_online: bool | None = None) -> list[dict]:
 
 def selected_model() -> str:
     m = db.kv_get("selected_model", DEFAULT_MODEL)
-    return m if (m == "auto" or m in PROFILES or "/" in m) else DEFAULT_MODEL
+    if m == "auto" or "/" in m:
+        return m
+    if m in PROFILES and any(x["id"] == m and x["available"] for x in list_models()):
+        return m
+    # the chosen model isn't downloaded (yet): route among the ones that are
+    return "auto"
 
 # friendly aliases so IDE / CLI configs stay readable
-ALIASES = {"aios": "auto", "aios-auto": "auto", "aios-code": "local-coder-7b", "aios-coder": "local-coder-7b",
+ALIASES = {"aios": "auto", "aios-auto": "auto", "aios-code": "local-qwen3-8b", "aios-coder": "local-qwen3-8b",
            "aios-fast": "local-qwen3-4b", "aios-daily": "local-qwen3-4b", "aios-quality": "local-qwen3-8b",
            "aios-vision": "local-qwen3-vl-8b", "aios-vl": "local-qwen3-vl-8b",
-           "aios-unfiltered": "local-dolphin-v2-8b", "aios-dolphin": "local-dolphin-v2-8b"}
+           "aios-unfiltered": "local-qwen3-8b-abliterated", "aios-dolphin": "local-qwen3-8b-abliterated"}
 
 def resolve(requested: str | None, text: str = "", loaded: str | None = None, needs_vision: bool = False) -> dict:
     """→ {model, provider, mode, reason, task}. Honors explicit ids; routes 'auto'."""
