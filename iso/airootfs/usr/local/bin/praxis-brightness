@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # praxis-brightness — nudge screen brightness with a floating notification.
+# Never goes below 10 % (0 % turns an OLED panel fully black).
 # Uses brightnessctl (fast, keeps state).  Steps in 5% by default.
 #
 # Usage:  praxis-brightness up | down | set N | get
@@ -9,9 +10,9 @@ command -v brightnessctl >/dev/null || { echo "install brightnessctl" >&2; exit 
 
 step=${STEP:-5}
 case "${1:-up}" in
-    up)   brightnessctl -e -q set "${step}%+" ;;
-    down) brightnessctl -e -q set "${step}%-" ;;
-    set)  brightnessctl -e -q set "${2:?value}%" ;;
+    up)   brightnessctl -e -n10% -q set "${step}%+" ;;
+    down) brightnessctl -e -n10% -q set "${step}%-" ;;
+    set)  brightnessctl -e -n10% -q set "${2:?value}%" ;;
     get)  brightnessctl -m | awk -F, '{print $4}'; exit 0 ;;
     *)    echo "usage: praxis-brightness up|down|set N|get" >&2; exit 2 ;;
 esac

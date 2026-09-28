@@ -146,9 +146,11 @@ OverlayWindow {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
                     spacing: 2
                     Slider {
+                        // full travel = 10–100 % (see Power.minBrightness)
                         width: parent.width; icon: "sun"
-                        value: Power.brightness
-                        onMoved: v => Power.setBrightness(v)
+                        value: (Power.brightness - Power.minBrightness) / (1 - Power.minBrightness)
+                        valueText: Math.round((Power.minBrightness + (1 - Power.minBrightness) * shown) * 100) + "%"
+                        onMoved: v => Power.setBrightness(Power.minBrightness + (1 - Power.minBrightness) * v)
                     }
                     Slider {
                         width: parent.width; icon: Audio.icon

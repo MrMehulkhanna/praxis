@@ -229,6 +229,8 @@ OverlayWindow {
                 Segmented { options: [{ value: 0, label: "Off" }, { value: 0.7, label: "Snappy" }, { value: 1, label: "Normal" }, { value: 1.5, label: "Slow" }]; value: Settings.animations; onSelected: v => Settings.animations = v } }
             SettingRow { label: "Window animations"; description: "Hyprland animations:enabled"
                 Toggle { checked: HyprOpts.animations; onToggled: v => HyprOpts.set("animations:enabled", v ? 1 : 0) } }
+            SettingRow { label: "Ambient glow"; description: "Soft light behind windows that follows the time of day. Pauses on battery and under fullscreen apps."
+                Toggle { checked: Settings.ambientEnabled; onToggled: v => Settings.ambientEnabled = v } }
         }
     }
 
@@ -241,6 +243,8 @@ OverlayWindow {
                 Slider { width: 220; icon: "dock"; value: (Settings.dockIconSize - 32) / 40; valueText: ""; onMoved: v => Settings.dockIconSize = Math.round(32 + v * 40) } }
             SettingRow { label: "Auto-hide"; description: "Reveal by moving the mouse to the bottom edge"
                 Toggle { checked: Settings.dockAutoHide; onToggled: v => Settings.dockAutoHide = v } }
+            SettingRow { label: "Hide over fullscreen apps"; description: "Get the dock out of the way of videos and games"
+                Toggle { checked: Settings.dockHideOnFullscreen; onToggled: v => Settings.dockHideOnFullscreen = v } }
             SettingRow { label: "Show on every monitor"
                 Toggle { checked: Settings.dockAllScreens; onToggled: v => Settings.dockAllScreens = v } }
             H { text: "PINNED APPS  —  right-click any dock icon to pin / unpin" }
@@ -336,6 +340,16 @@ OverlayWindow {
                                 return "pc";
                             }
                             onSelected: v => Display.setProjection(v)
+                        }
+                    }
+                    SettingRow {
+                        label: "Brightness"
+                        description: "10–100 %. The floor keeps an OLED panel from going fully black."
+                        Slider {
+                            width: 240; icon: "sun"
+                            value: (Power.brightness - Power.minBrightness) / (1 - Power.minBrightness)
+                            valueText: Math.round((Power.minBrightness + (1 - Power.minBrightness) * shown) * 100) + "%"
+                            onMoved: v => Power.setBrightness(Power.minBrightness + (1 - Power.minBrightness) * v)
                         }
                     }
                     SettingRow {
