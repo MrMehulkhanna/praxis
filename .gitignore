@@ -41,3 +41,17 @@ desktop-audit-phase0.md
 
 # ── keep the desktop demo video? it's ~3 MB; comment the next line to commit it
 # docs/*.mp4
+
+# ── personal notes & coaching docs (kept locally, never published) ───────
+docs/RESUME.md
+docs/JOB-SEARCH.md
+docs/INTERVIEW-PREP.md
+docs/MORNING.md
+docs/READ-THIS-FIRST.md
+docs/GITHUB-SETUP.md
+notes/
+
+# ── machine-local utilities & runtime state ─────────────────────────────
+net/
+desktop/settings.json
+desktop/eyecomfort.json
