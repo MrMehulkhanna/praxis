@@ -38,6 +38,11 @@ read -rp "Type ERASE to continue: " answer
 # Unmount anything the desktop auto-mounted from the stick.
 for part in $(lsblk -lnpo NAME "$TARGET" | tail -n +2); do sudo umount "$part" 2>/dev/null || true; done
 
+# Clear the old partition table first — including the backup GPT at the very
+# end of the disk, which dd never reaches and firmware would otherwise see as
+# a corrupt, mismatched table next to the ISO's own.
+sudo wipefs --all --quiet "$TARGET"
+
 sudo dd if="$ISO" of="$TARGET" bs=4M conv=fsync oflag=direct status=progress
 sync
 
