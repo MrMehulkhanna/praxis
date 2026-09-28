@@ -228,8 +228,12 @@ hl.config({
 
 hl.config({
     misc = {
-        force_default_wallpaper = -1,    -- Set to 0 or 1 to disable the anime mascot wallpapers
-        disable_hyprland_logo   = false, -- If true disables the random hyprland logo / anime girl background. :(
+        -- What shows if no wallpaper program is drawing (e.g. hyprpaper failed):
+        -- a plain Praxis-dark background, not Hyprland's logo and splash text.
+        force_default_wallpaper  = 0,
+        disable_hyprland_logo    = true,
+        disable_splash_rendering = true,
+        background_color         = 0xff0b0d12,
     },
 })
 

@@ -1,6 +1,9 @@
 [Unit]
 Description=AIOS — local-first AI backend for Praxis
 After=graphical-session.target
+# Until aios-setup has installed the backend into ~/aios, skip quietly instead of
+# failing and restarting every 3 s (live session, or a fresh install before setup).
+ConditionPathExists=%h/aios/run.sh
 
 [Service]
 Type=simple

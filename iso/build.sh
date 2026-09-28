@@ -111,6 +111,16 @@ rm -f "$UNITS/multi-user.target.wants/iwd.service" "$UNITS/multi-user.target.wan
       "$UNITS/sockets.target.wants/systemd-networkd.socket" "$UNITS/dbus-org.freedesktop.network1.service" \
       "$UNITS/network-online.target.wants/systemd-networkd-wait-online.service"
 rm -rf "$AIROOT/etc/systemd/network"
+# systemd's own presets re-enable networkd during pacstrap, so mask it and its
+# sockets (its wait-online would otherwise stall boot waiting for links it can't
+# manage). Also mask systemd-loop@: a udev rule tries to loop-attach every ISO9660
+# disc, fails on the boot medium, and leaves the live system "degraded". archiso
+# mounts its image in the initramfs and doesn't need it.
+for u in systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service \
+         systemd-networkd-varlink.socket systemd-networkd-varlink-metrics.socket \
+         systemd-networkd-resolve-hook.socket systemd-loop@.service; do
+    ln -sf /dev/null "$UNITS/$u"
+done
 install -d "$UNITS/multi-user.target.wants" "$UNITS/bluetooth.target.wants"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$UNITS/multi-user.target.wants/NetworkManager.service"
 ln -sf /usr/lib/systemd/system/NetworkManager-dispatcher.service "$UNITS/dbus-org.freedesktop.nm-dispatcher.service"
@@ -119,6 +129,11 @@ ln -sf /usr/lib/systemd/system/bluetooth.service "$UNITS/dbus-org.bluez.service"
 # The live account has a published password and passwordless sudo: never
 # accept it over the network. (iso/airootfs also blocks password SSH for it.)
 rm -f "$UNITS/multi-user.target.wants/sshd.service"
+# The live session gets live wallpapers too: mpvpaper from the bundled [praxis]
+# repository. Build-time only — mkarchiso does not copy this pacman.conf into the
+# image; praxis-install registers /opt/praxis-repo on targets itself.
+printf '\n[praxis]\nSigLevel = Optional TrustAll\nServer = file://%s\n' "$AURREPO" >> "$PROFILE/pacman.conf"
+echo mpvpaper >> "$PROFILE/packages.x86_64"
 # Live image only: skip documentation and non-English translations (~0.5 GB).
 # Installed systems are pacstrapped with the stock pacman.conf and get both.
 sed -i '/^\[options\]/a NoExtract = usr/share/doc/* usr/share/gtk-doc/* usr/share/help/* usr/share/info/*\nNoExtract = usr/share/locale/* !usr/share/locale/en* !usr/share/locale/locale.alias' \
