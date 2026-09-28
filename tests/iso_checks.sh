@@ -128,6 +128,9 @@ section "packages"
 if command -v pacman >/dev/null; then
     missing=$(grep -vE '^\s*(#|$)' "$REPO/iso/packages.x86_64" | while read -r p; do pacman -Si "$p" >/dev/null 2>&1 || echo "$p"; done)
     [ -z "$missing" ] && ok "every live package exists in the repos" || bad "unknown packages: $missing"
+    # what the installers pacstrap (the bundled AUR packages come from the ISO's [praxis] repo)
+    missing=$(PRAXIS_DESKTOP_LIST=$DESK PRAXIS_REPO_DIR=/nonexistent praxis_packages | while read -r p; do pacman -Si "$p" >/dev/null 2>&1 || echo "$p"; done)
+    [ -z "$missing" ] && ok "every package the installers request exists" || bad "installers would fail on: $missing"
 fi
 
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$pass" "$fail"
