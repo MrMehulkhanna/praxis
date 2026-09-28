@@ -30,7 +30,8 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     mask: Region {}                                // fully click-through
 
-    visible: Settings.ambientEnabled
+    // a live (video) wallpaper brings its own motion — don't stack the orbs on it
+    visible: Settings.ambientEnabled && !Wallpaper.isLive
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
     readonly property bool coveredByFullscreen: !!(hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen)

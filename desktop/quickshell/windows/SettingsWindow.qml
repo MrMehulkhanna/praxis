@@ -615,6 +615,7 @@ OverlayWindow {
         id: wallpaper
         Column {
             spacing: 10
+            H { text: "STILL"; topPadding: 0 }
             Text { text: "Images in ~/.local/share/wallpapers. Click to apply to all monitors."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs }
             Flow {
                 width: parent.width; spacing: 10
@@ -622,19 +623,69 @@ OverlayWindow {
                     model: Wallpaper.files
                     Rectangle {
                         required property var modelData
-                        readonly property bool cur: Settings.wallpaper === modelData
+                        readonly property bool cur: !Wallpaper.isLive && Wallpaper.current === modelData
                         width: 200; height: 118; radius: Theme.radiusMd; clip: true
                         color: Theme.surface3
                         border.width: cur ? 3 : 1; border.color: cur ? Theme.accent : Theme.border
                         Image { anchors.fill: parent; anchors.margins: 2; source: "file://" + modelData; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(400, 240) }
                         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                             height: 24; color: Theme.alpha(Theme.bg, 0.7)
-                            Text { anchors.centerIn: parent; text: modelData.split("/").pop().replace(/\.[^.]+$/, ""); color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: parent.width - 12 } }
-                        MouseArea { anchors.fill: parent; onClicked: Wallpaper.apply(modelData) }
+                            Text { anchors.centerIn: parent; text: modelData.split("/").pop().replace(/\.[^.]+$/, ""); color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: parent.width - 12; horizontalAlignment: Text.AlignHCenter } }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Wallpaper.apply(modelData) }
+                    }
+                }
+            }
+
+            H { text: "LIVE" }
+            Text {
+                width: parent.width; wrapMode: Text.WordWrap
+                text: Wallpaper.liveSupported
+                    ? "Looping videos from ~/.local/share/wallpapers/live. They pause while windows cover them, and the ambient glow steps aside while one plays."
+                    : "Live wallpapers need mpvpaper. Install it with:  yay -S mpvpaper"
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
+            }
+            SettingRow {
+                visible: Wallpaper.liveSupported
+                label: "Play on battery"
+                description: Wallpaper.liveSuspended ? "On battery now — showing the still image; the video resumes when you plug in."
+                                                     : "Off saves power: the still image shows while unplugged."
+                Toggle { checked: Settings.liveOnBattery; onToggled: v => Settings.liveOnBattery = v }
+            }
+            Flow {
+                width: parent.width; spacing: 10
+                visible: Wallpaper.liveSupported
+                Repeater {
+                    model: Wallpaper.videos
+                    Rectangle {
+                        id: vt
+                        required property var modelData
+                        readonly property bool cur: Wallpaper.isLive && Wallpaper.live === modelData.path
+                        width: 200; height: 118; radius: Theme.radiusMd; clip: true
+                        color: Theme.surface3
+                        border.width: cur ? 3 : 1; border.color: cur ? Theme.accent : Theme.border
+                        Image { anchors.fill: parent; anchors.margins: 2; source: vt.modelData.thumb ? "file://" + vt.modelData.thumb : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(400, 240) }
+                        Rectangle {
+                            x: 8; y: 8; height: 18; radius: 9; width: liveTag.implicitWidth + 14
+                            color: vt.cur ? Theme.accent : Theme.alpha(Theme.bg, 0.75)
+                            Text { id: liveTag; anchors.centerIn: parent; text: !vt.cur ? "LIVE" : Wallpaper.liveSuspended ? "❚❚ ON AC" : "● LIVE"; color: vt.cur ? Theme.onAccent : Theme.text
+                                font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent; anchors.verticalCenterOffset: -8
+                            width: 40; height: 40; radius: 20
+                            visible: !vt.cur
+                            color: Theme.alpha(Theme.bg, vma.containsMouse ? 0.85 : 0.55)
+                            Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: 1; name: "play"; size: 18; color: Theme.text }
+                        }
+                        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: 24; color: Theme.alpha(Theme.bg, 0.7)
+                            Text { anchors.centerIn: parent; text: vt.modelData.path.split("/").pop().replace(/\.[^.]+$/, ""); color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; width: parent.width - 12; horizontalAlignment: Text.AlignHCenter } }
+                        MouseArea { id: vma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Wallpaper.applyLive(vt.modelData.path) }
                     }
                 }
             }
             Row { spacing: 6
+                Btn { icon: "pause"; label: "Stop live wallpaper"; visible: Wallpaper.isLive; onClicked: Wallpaper.stopLive() }
                 Btn { icon: "refresh"; label: "Rescan"; onClicked: Wallpaper.refresh() }
                 Btn { icon: "image"; label: "Open folder"; onClicked: { Shell.run("thunar ~/.local/share/wallpapers"); Shell.closeAll() } }
             }

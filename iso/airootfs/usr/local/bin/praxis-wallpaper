@@ -1,93 +1,211 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  praxis-wallpaper — set the desktop wallpaper (still or LIVE video)
+#  praxis-wallpaper — set the desktop wallpaper (still image or LIVE video)
 #
 #  Usage:
-#    praxis-wallpaper set <file>              set as wallpaper (auto-detects type)
-#    praxis-wallpaper live <file>             set a LIVE (video) wallpaper via mpvpaper
-#    praxis-wallpaper still <file>            force static (via hyprpaper)
-#    praxis-wallpaper cycle [interval-secs]   cycle through ~/.local/share/wallpapers/
-#    praxis-wallpaper stop                    kill any running mpvpaper
+#    praxis-wallpaper set <file>              still or live, chosen by file type
+#    praxis-wallpaper still <image>           still wallpaper (hyprpaper)
+#    praxis-wallpaper live <video> [--save-only]
+#                                             LIVE wallpaper on every monitor (mpvpaper);
+#                                             --save-only remembers it but shows the still
+#    praxis-wallpaper stop                    stop the live wallpaper, back to the last still
+#    praxis-wallpaper restore [--force]       re-apply the saved choice (login, new monitor)
+#    praxis-wallpaper suspend                 show the still for now, keep the live choice
+#                                             (the shell does this on battery)
+#    praxis-wallpaper status                  show what is set
 #    praxis-wallpaper list                    list available wallpapers
+#    praxis-wallpaper cycle [interval-secs]   cycle through the still images
 #
-#  Live wallpapers use mpvpaper (a video-as-wallpaper backend). It runs on
-#  each monitor's layer-shell surface, loops, and stops when we switch back
-#  to a still image.
+#  One program owns the background at a time — hyprpaper for stills, mpvpaper
+#  for videos — because whichever starts last covers the other. The choice
+#  lives in ~/.config/praxis/wallpaper.state, which Settings > Wallpaper reads.
 # ============================================================================
 set -uo pipefail
 
 WP_DIR="${WP_DIR:-$HOME/.local/share/wallpapers}"
 STATE="$HOME/.config/praxis/wallpaper.state"
-mkdir -p "$(dirname "$STATE")"
+CONF="$HOME/.config/hypr/hyprpaper.conf"
+# One mpvpaper for ALL monitors (one decoder, one GPU context), hardware decode,
+# cheap scaling — measured on an RTX 4050 laptop with two screens: 3 % CPU,
+# 320 MB RAM and 360 MiB VRAM, versus 5 %, 485 MB and 864 MiB for a player per
+# monitor. -p pauses it while windows cover it; panscan fills any aspect ratio.
+MPV_OPTS="no-audio loop hwdec=auto profile=fast panscan=1.0"
 
-die() { echo "$*" >&2; exit 1; }
+die() { echo "praxis-wallpaper: $*" >&2; exit 1; }
 
-stop_mpvpaper() { pkill -x mpvpaper 2>/dev/null || true; }
+monitors() { hyprctl -j monitors 2>/dev/null | jq -r '.[].name' 2>/dev/null; }
 
-set_still() {
-    local f="$1"
-    [ -e "$f" ] || die "no such file: $f"
-    stop_mpvpaper
-    # write a fresh hyprpaper.conf for the running compositor
-    for m in $(hyprctl -j monitors 2>/dev/null | jq -r '.[].name' 2>/dev/null); do
-        hyprctl hyprpaper preload "$f" >/dev/null 2>&1 || true
-        hyprctl hyprpaper wallpaper "$m,$f" >/dev/null 2>&1 || true
-    done
-    echo "still=$f" > "$STATE"
-    echo "static wallpaper: $f"
+# ── saved choice: mode=still|live, still=<image>, live=<video> ─────────────
+mode="" still="" live=""
+load_state() {
+    [ -f "$STATE" ] || return 0
+    mode=$(sed -n 's/^mode=//p' "$STATE" | tail -n1)
+    still=$(sed -n 's/^still=//p' "$STATE" | tail -n1)
+    live=$(sed -n 's/^live=//p' "$STATE" | tail -n1)
+    if [ -z "$mode" ]; then                 # older files held a single line
+        if [ -n "$live" ]; then mode=live; else mode=still; fi
+    fi
+}
+save_state() {
+    mkdir -p "${STATE%/*}"
+    printf 'mode=%s\nstill=%s\nlive=%s\n' "$mode" "$still" "$live" >"$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"
 }
 
-set_live() {
-    local f="$1"
-    [ -e "$f" ] || die "no such file: $f"
-    command -v mpvpaper >/dev/null || die "mpvpaper not installed (sudo pacman -S mpvpaper)"
-    stop_mpvpaper
-    # one mpvpaper per monitor; -o 'no-audio loop' keeps it quiet and looping
-    for m in $(hyprctl -j monitors 2>/dev/null | jq -r '.[].name' 2>/dev/null); do
-        setsid mpvpaper -o "no-audio loop hwdec=auto" "$m" "$f" >/dev/null 2>&1 &
+default_still() {
+    local f
+    for f in "$WP_DIR/deep-purple.png" "$WP_DIR"/*.png "$WP_DIR"/*.jpg "$WP_DIR"/*.jpeg "$WP_DIR"/*.webp; do
+        [ -f "$f" ] && { echo "$f"; return; }
     done
-    echo "live=$f" > "$STATE"
-    echo "live wallpaper: $f"
+}
+
+is_video() {
+    case "${1,,}" in *.mp4|*.webm|*.mkv|*.mov|*.gif) return 0 ;; esac
+    return 1
+}
+
+# A real video? (catches failed downloads that were saved as .mp4)
+playable() {
+    [ -s "$1" ] || return 1
+    command -v ffprobe >/dev/null || return 0
+    [ "$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$1" 2>/dev/null)" = video ]
+}
+
+# ── stills: hyprpaper >= 0.8 only reads the block syntax ───────────────────
+write_conf() {   # returns 0 when the file changed
+    local new
+    new=$(printf 'splash = false\nipc = true\n\nwallpaper {\n    monitor =\n    path = %s\n    fit_mode = cover\n}' "$1")
+    [ "$(cat "$CONF" 2>/dev/null)" = "$new" ] && return 1
+    mkdir -p "${CONF%/*}"
+    printf '%s\n' "$new" >"$CONF"
+}
+
+# stop processes matching pkill-style args; mpvpaper traps SIGTERM, and one that
+# never got a picture up never returns to the loop that would act on it
+stop_procs() {
+    pkill "$@" 2>/dev/null || return 0
+    local _
+    for _ in 1 2 3 4 5; do pgrep "$@" >/dev/null || return 0; sleep 0.2; done
+    pkill -KILL "$@" 2>/dev/null
+    return 0
+}
+
+show_still() {
+    stop_procs -x mpvpaper
+    if write_conf "$1" || ! pgrep -x hyprpaper >/dev/null; then
+        pkill -x hyprpaper 2>/dev/null && sleep 0.3
+        setsid -f hyprpaper >/dev/null 2>&1
+    fi
+}
+
+# ── live: one mpvpaper per monitor ─────────────────────────────────────────
+has_layer() {    # <monitor> <namespace>
+    hyprctl -j layers 2>/dev/null |
+        jq -e --arg m "$1" --arg ns "$2" '[.[$m].levels[]?[]? | select(.namespace == $ns)] | length > 0' >/dev/null 2>&1
+}
+
+show_live() {    # <video> [force]
+    command -v mpvpaper >/dev/null || die "mpvpaper is not installed (yay -S mpvpaper)"
+    pkill -x hyprpaper 2>/dev/null
+    if [ "${2:-}" = force ] || ! pgrep -x mpvpaper >/dev/null; then
+        stop_procs -x mpvpaper
+        setsid -f mpvpaper -p -o "$MPV_OPTS" ALL "$1" >/dev/null 2>&1
+        return 0
+    fi
+    # repair: a monitor that has no live surface (plugged in later) gets its own player
+    local m
+    for m in $(monitors); do
+        has_layer "$m" mpvpaper || setsid -f mpvpaper -p -o "$MPV_OPTS" "$m" "$1" >/dev/null 2>&1
+    done
+    return 0
+}
+
+# ── commands ───────────────────────────────────────────────────────────────
+cmd_still() {
+    [ -f "$1" ] || die "no such image: $1"
+    load_state
+    mode=still still=$(realpath "$1")
+    save_state
+    show_still "$still"
+    echo "still wallpaper: $still"
+}
+
+cmd_live() {
+    [ -f "$1" ] || die "no such video: $1"
+    playable "$1" || die "not a playable video: $1"
+    load_state
+    mode=live live=$(realpath "$1")
+    save_state
+    if [ "${2:-}" = --save-only ]; then
+        cmd_suspend
+        echo "live wallpaper saved (showing the still for now): $live"
+        return
+    fi
+    show_live "$live" force
+    echo "live wallpaper: $live"
+}
+
+cmd_stop() {
+    load_state
+    mode=still
+    [ -f "$still" ] || still=$(default_still)
+    save_state
+    if [ -n "$still" ]; then show_still "$still"; else stop_procs -x mpvpaper; fi
+    echo "live wallpaper stopped"
+}
+
+cmd_suspend() {
+    load_state
+    [ -f "$still" ] || still=$(default_still)
+    if [ -n "$still" ]; then show_still "$still"; else stop_procs -x mpvpaper; fi
+}
+
+cmd_restore() {
+    load_state
+    if [ "$mode" = live ] && [ -f "$live" ] && command -v mpvpaper >/dev/null && playable "$live"; then
+        show_live "$live" "$([ "${1:-}" = --force ] && echo force)"
+        return
+    fi
+    # still mode — or the saved video is missing/broken: show the still meanwhile
+    [ -f "$still" ] || still=$(default_still)
+    [ -n "$still" ] || return 0
+    [ -f "$STATE" ] || { mode=still; save_state; }      # first login: remember the default
+    show_still "$still"
 }
 
 case "${1:-help}" in
-    set|"")
+    set)
         [ -n "${2:-}" ] || die "usage: praxis-wallpaper set <file>"
-        case "${2,,}" in
-            *.mp4|*.webm|*.mkv|*.mov|*.gif) set_live "$2" ;;
-            *) set_still "$2" ;;
-        esac
+        if is_video "$2"; then cmd_live "$2"; else cmd_still "$2"; fi
         ;;
-    live)
-        [ -n "${2:-}" ] || die "usage: praxis-wallpaper live <video>"
-        set_live "$2"
-        ;;
-    still)
-        [ -n "${2:-}" ] || die "usage: praxis-wallpaper still <image>"
-        set_still "$2"
-        ;;
-    stop)
-        stop_mpvpaper
-        echo "live wallpaper stopped"
+    still)   [ -n "${2:-}" ] || die "usage: praxis-wallpaper still <image>"; cmd_still "$2" ;;
+    live)    [ -n "${2:-}" ] || die "usage: praxis-wallpaper live <video> [--save-only]"; cmd_live "$2" "${3:-}" ;;
+    stop)    cmd_stop ;;
+    restore) cmd_restore "${2:-}" ;;
+    suspend) cmd_suspend ;;
+    status)
+        load_state
+        echo "mode:  ${mode:-still}"
+        echo "still: ${still:-$(default_still)}"
+        echo "live:  ${live:--}"
         ;;
     list)
-        find "$WP_DIR" -type f \( -iname '*.mp4' -o -iname '*.webm' -o -iname '*.png' -o -iname '*.jpg' \
-             -o -iname '*.jpeg' -o -iname '*.gif' \) 2>/dev/null | sort
+        find "$WP_DIR" -maxdepth 2 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \
+             -o -iname '*.mp4' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.mov' \) 2>/dev/null | sort
         ;;
     cycle)
         iv="${2:-300}"
-        mapfile -t files < <(find "$WP_DIR" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) 2>/dev/null | sort)
+        mapfile -t files < <(find "$WP_DIR" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) 2>/dev/null | sort)
         [ "${#files[@]}" -gt 0 ] || die "no images found in $WP_DIR"
         echo "cycling ${#files[@]} images every ${iv}s (Ctrl+C to stop)"
         while :; do
             for f in "${files[@]}"; do
-                set_still "$f"
+                cmd_still "$f"
                 sleep "$iv"
             done
         done
         ;;
     help|-h|--help)
-        sed -n '3,17p' "$0" | sed 's/^# \?//'
+        sed -n '3,21p' "$0" | sed 's/^# \?//'
         ;;
     *)
         die "unknown command: $1  (praxis-wallpaper help)"
