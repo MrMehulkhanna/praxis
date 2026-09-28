@@ -7,11 +7,11 @@
     "dockAllScreens": false,
     "dockAutoHide": false,
     "dockFavorites": [
-        "google-chrome",
+        "firefox",
         "kitty",
         "thunar"
     ],
-    "dockIconSize": 32,
+    "dockIconSize": 44,
     "profile": "Normal",
     "radius": 18,
     "showSeconds": false,
