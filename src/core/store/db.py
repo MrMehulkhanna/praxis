@@ -145,3 +145,41 @@ def db_stats() -> dict:
     db_mb   = round(DB_PATH.stat().st_size / 1e6, 1) if DB_PATH.exists() else 0
     runs    = c.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
     return {"objects": rows, "runs": runs, "db_mb": db_mb}
+
+FORGET_SCOPES = ("conversations", "all")
+
+def forget(scope: str = "conversations") -> dict:
+    """Delete remembered content in one transaction.
+
+    scope="conversations"  chat messages only (objects with a conversation_id)
+    scope="all"            every stored object: chats, ingested documents, notes
+
+    Deliberately kept: settings (kv), permission grants, the audit trail and
+    the usage ledger (runs) — forgetting what was said must not erase what was
+    allowed, what was done, or what it cost.
+
+    Foreign keys are not enabled on this connection, so ON DELETE CASCADE does
+    not fire: children are removed explicitly, vectors first. The chunks_ad
+    trigger keeps the FTS index consistent as chunks are deleted.
+    """
+    if scope not in FORGET_SCOPES:
+        raise ValueError(f"scope must be one of {FORGET_SCOPES}")
+    where = "conversation_id IS NOT NULL" if scope == "conversations" else "1=1"
+    c = conn()
+    with c:
+        c.execute("CREATE TEMP TABLE IF NOT EXISTS forget_ids (id TEXT PRIMARY KEY)")
+        c.execute("DELETE FROM forget_ids")
+        c.execute(f"INSERT INTO forget_ids SELECT id FROM objects WHERE {where}")
+        chunk_ids = [r[0] for r in c.execute(
+            "SELECT id FROM chunks WHERE object_id IN (SELECT id FROM forget_ids)")]
+        if _HAS_VEC and chunk_ids:
+            c.executemany("DELETE FROM vectors WHERE chunk_id = ?", [(i,) for i in chunk_ids])
+        n_chunks = c.execute(
+            "DELETE FROM chunks WHERE object_id IN (SELECT id FROM forget_ids)").rowcount
+        n_edges = c.execute(
+            "DELETE FROM edges WHERE src_id IN (SELECT id FROM forget_ids) "
+            "OR dst_id IN (SELECT id FROM forget_ids)").rowcount
+        n_objects = c.execute(
+            "DELETE FROM objects WHERE id IN (SELECT id FROM forget_ids)").rowcount
+        c.execute("DELETE FROM forget_ids")
+    return {"scope": scope, "objects": n_objects, "chunks": n_chunks, "edges": n_edges}

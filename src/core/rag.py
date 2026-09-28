@@ -10,6 +10,7 @@ are present the vec0 cosine distance is fused in with a simple weighted score.
 """
 from __future__ import annotations
 import hashlib
+import json
 import pathlib
 import re
 import time
@@ -130,8 +131,10 @@ def ingest_path(
         content_hash = hashlib.sha256(body.encode()).hexdigest()
         # Skip if an object with the same source path + hash already exists
         existing = c.execute(
-            "SELECT id FROM objects WHERE meta_json LIKE ? AND content_hash = ?",
-            (f'%"source": "{str(f)}"%', content_hash),
+            "SELECT id FROM objects WHERE kind = 'document' "
+            "AND CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '$.source') END = ? "
+            "AND content_hash = ?",
+            (str(f), content_hash),
         ).fetchone()
         if existing:
             skipped.append(f"{f}: already indexed")
@@ -144,18 +147,16 @@ def ingest_path(
             "scope, importance, content_hash, created_at) VALUES "
             "(?, 'document', ?, ?, ?, ?, 'longterm', 0.6, ?, ?)",
             (obj_id, project_id, title, body,
-             f'{{"source": "{str(f)}", "tag": "{tag}"}}',
+             json.dumps({"source": str(f), "tag": tag}),
              content_hash, now),
         )
         chunks = chunk_text(body)
-        for i, ch in enumerate(chunks):
-            c.execute(
-                "INSERT INTO chunks (object_id, ord, text, tokens) VALUES (?, ?, ?, ?)",
-                (obj_id, i, ch, max(1, len(ch) // 4)),
-            )
-        # Sync FTS5 (external-content table needs explicit rebuild for the
-        # chunks we just inserted; simplest: rebuild the whole shadow row).
-        c.execute("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')")
+        # The chunks_ai trigger (schema.sql) indexes each row into chunks_fts
+        # as it is inserted, so no FTS rebuild is needed here.
+        c.executemany(
+            "INSERT INTO chunks (object_id, ord, text, tokens) VALUES (?, ?, ?, ?)",
+            [(obj_id, i, ch, max(1, len(ch) // 4)) for i, ch in enumerate(chunks)],
+        )
         total_files += 1
         total_chunks += len(chunks)
 

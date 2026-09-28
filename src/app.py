@@ -635,6 +635,18 @@ def rag_stats():
 def rag_embed_now():
     return rag.embed_pending()
 
+# ── memory control ──────────────────────────────────────────────────────
+class ForgetReq(BaseModel):
+    scope: str = "conversations"      # conversations | all
+
+@app.post("/api/memory/forget")
+def memory_forget(req: ForgetReq):
+    """Delete remembered content; settings, grants, audit and ledger are kept."""
+    try:
+        return db.forget(req.scope)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
 # ── serve UI ────────────────────────────────────────────────────────────
 @app.get("/")
 def root():

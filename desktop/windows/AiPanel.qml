@@ -70,8 +70,24 @@ OverlayWindow {
                     }
                     MouseArea { id: mbMa; anchors.fill: parent; hoverEnabled: true; onClicked: picker.shown = !picker.shown }
                 }
-                IconButton { icon: "trash"; iconSize: 14; anchors.verticalCenter: parent.verticalCenter; onClicked: { Quickshell.execDetached(["/home/mk/ai_hub/clear_memory.sh"]); Shell.closeAll(); } }
-                IconButton { icon: "monitor"; iconSize: 14; anchors.verticalCenter: parent.verticalCenter; onClicked: { Quickshell.execDetached(["xdg-open", "http://localhost:8501"]); Shell.closeAll(); } }
+                // Forget stored conversations — destructive, so it needs a second
+                // click within 3 s (the button turns red and says so).
+                IconButton {
+                    id: forgetBtn
+                    property bool armed: false
+                    icon: "trash"; iconSize: 14
+                    iconColor: armed ? Theme.red : Theme.text2
+                    label: armed ? "Forget all chats?" : ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: {
+                        if (!armed) { armed = true; disarm.restart(); return }
+                        armed = false
+                        Aios.forgetConversations()
+                    }
+                    Timer { id: disarm; interval: 3000; onTriggered: forgetBtn.armed = false }
+                }
+                // Open the full Praxis web UI served by the AIOS backend
+                IconButton { icon: "monitor"; iconSize: 14; anchors.verticalCenter: parent.verticalCenter; onClicked: { Quickshell.execDetached(["xdg-open", Aios.base + "/"]); Shell.closeAll(); } }
                 IconButton { icon: "plus"; iconSize: 14; anchors.verticalCenter: parent.verticalCenter; onClicked: { Aios.clearChat(); picker.shown = false } }
                 IconButton { icon: "x"; iconSize: 14; onClicked: Shell.closeAll(); anchors.verticalCenter: parent.verticalCenter }
             }

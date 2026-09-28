@@ -130,6 +130,22 @@ Singleton {
         conversationId = "shell-" + Math.floor(Date.now() / 1000)
     }
 
+    // Forget stored conversations through the backend (settings, permission
+    // grants, audit trail and usage ledger are kept). Replaces a shell script
+    // that deleted the live SQLite file out from under the running backend.
+    function forgetConversations() {
+        if (!forgetProc.running) forgetProc.running = true
+        clearChat()
+    }
+    Process {
+        id: forgetProc
+        command: ["curl", "-sf", "--max-time", "10", "-X", "POST", root.base + "/api/memory/forget",
+                  "-H", "Content-Type: application/json", "-d", "{\"scope\":\"conversations\"}"]
+        onExited: code => Notifs.notify(code === 0 ? "Memory cleared" : "Memory not cleared",
+                                        code === 0 ? "Stored conversations were forgotten."
+                                                   : "The AIOS backend is not reachable, so nothing was deleted.")
+    }
+
     Process {
         id: chatProc
         // Quickshell 0.3.1's SplitParser drops the first line after a blank line, which

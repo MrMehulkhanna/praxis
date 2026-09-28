@@ -329,7 +329,7 @@ PanelWindow {
             IconButton {
                 icon: "monitor"; iconSize: 15
                 anchors.verticalCenter: parent.verticalCenter
-                onClicked: Quickshell.execDetached(["xdg-open", "http://localhost:8501"])
+                onClicked: Quickshell.execDetached(["xdg-open", Aios.base + "/"])
             }
             IconButton {
                 icon: "sliders"; iconSize: 15

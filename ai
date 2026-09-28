@@ -12,6 +12,8 @@ ai — control interface for AIOS (local-first AI on this machine).
   ai voice [test|commands]           voice pipeline status / test / allowed phrases
   ai config [key value]              model · budget · thinking · cloud-for
   ai doctor · ai update · ai cleanup [--apply] · ai audit · ai do "…" · ai approve
+  ai rag [add|q|stats|embed]         retrieval over your own files (FTS5 + optional vectors)
+  ai forget [--all] [--yes]          delete stored conversations (--all: every stored object)
   --json  machine-readable   --model <id>  one-shot override   --auto  force routing
 
 Exit codes: 0 ok · 1 error · 2 usage · 3 backend down · 4 refused/denied
@@ -377,6 +379,21 @@ def cmd_rag(rest):
     else:
         die(f"unknown rag command: {sub}", 2)
 
+def cmd_forget(rest):
+    """ai forget [--all] [--yes] — delete stored memory via the backend."""
+    scope = "all" if "--all" in rest else "conversations"
+    what = ("EVERYTHING remembered (chats, ingested documents, notes)" if scope == "all"
+            else "all stored conversations")
+    if "--yes" not in rest and "-y" not in rest:
+        if not sys.stdin.isatty():
+            die("refusing to forget without --yes in a non-interactive shell", 2)
+        ans = input(f"Forget {what}?\n(settings, permissions, audit log and usage ledger are kept) [y/N] ")
+        if ans.strip().lower() not in ("y", "yes"):
+            print("aborted — nothing deleted"); return
+    r = api("/api/memory/forget", {"scope": scope})
+    if JSON: print(json.dumps(r)); return
+    print(f"{G}✓{RST} forgot {r['objects']} object(s) and {r['chunks']} chunk(s)  {D}(scope: {scope}){RST}")
+
 def cmd_code(text, model):
     ctx = []
     cwd = pathlib.Path.cwd()
@@ -428,6 +445,7 @@ def main():
     elif sub == "do":     cmd_do(" ".join(rest) or die("ai do \"open firefox\"", 2))
     elif sub == "approve": api("/api/settings/approve", {"run_key": "next"}); print(f"{G}✓ next paid request approved{RST}")
     elif sub == "rag":    cmd_rag(rest)
+    elif sub == "forget": cmd_forget(rest)
     elif sub == "budget": cmd_config(["budget"] + rest)
     else:
         # bare question → agent when it's about the machine, chat otherwise
