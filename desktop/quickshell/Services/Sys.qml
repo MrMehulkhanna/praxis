@@ -14,6 +14,7 @@ Singleton {
     property real memUsedGb: 0
     property real memTotalGb: 0
     property real gpu: 0              // 0..100
+    property bool gpuAsleep: false    // NVIDIA runtime-suspended: nothing is using it
     property real vramUsedGb: 0
     property real vramTotalGb: 0
     property int  gpuTempC: 0
@@ -40,7 +41,11 @@ Singleton {
         command: ["bash", "-c",
             "head -1 /proc/stat; " +
             "grep -E '^(MemTotal|MemAvailable)' /proc/meminfo; " +
-            "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null || echo 'GPU_NA'; " +
+            // Never wake a sleeping NVIDIA GPU just to read its stats: any nvidia-smi
+            // call powers it up, and on a hybrid laptop it should sleep until needed.
+            "g=''; for d in /sys/bus/pci/devices/*; do [ \"$(cat $d/vendor)\" = 0x10de ] && case $(cat $d/class) in 0x03*) g=$d; break;; esac; done; " +
+            "if [ -n \"$g\" ] && [ \"$(cat $g/power/runtime_status)\" = suspended ]; then echo GPU_ASLEEP; " +
+            "else nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null | head -1 | grep . || echo 'GPU_NA'; fi; " +
             // CPU package temperature: Intel x86_pkg_temp zone, else the
             // coretemp/k10temp/zenpower hwmon, else the hottest zone. (A plain
             // max over all zones mixes in Wi-Fi/ACPI/NVMe sensors.)
@@ -76,7 +81,9 @@ Singleton {
                 }
                 // gpu
                 const g = lines[3] || "GPU_NA"
-                if (g !== "GPU_NA") {
+                root.gpuAsleep = g === "GPU_ASLEEP"
+                if (root.gpuAsleep) { root.gpu = 0; root.vramUsedGb = 0 }
+                else if (g !== "GPU_NA") {
                     const p = g.split(",").map(s => parseFloat(s))
                     root.gpu = p[0]; root.vramUsedGb = p[1] / 1024; root.vramTotalGb = p[2] / 1024; root.gpuTempC = p[3]
                 }

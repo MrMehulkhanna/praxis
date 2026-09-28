@@ -50,7 +50,7 @@ OverlayWindow {
     property var sysInfo: ({})
     Process {
         id: sysinfo
-        command: ["bash", "-c", "echo \"host=$(cat /etc/hostname 2>/dev/null || hostnamectl hostname)\"; echo \"kernel=$(uname -r)\"; echo \"cpu=$(lscpu | sed -n 's/^Model name: *//p')\"; echo \"gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)\"; echo \"ram=$(free -g | awk '/Mem:/{print $2}') GB\"; echo \"uptime=$(uptime -p | sed 's/up //')\"; echo \"qs=$(quickshell --version 2>/dev/null | head -1)\""]
+        command: ["bash", "-c", "echo \"host=$(cat /etc/hostname 2>/dev/null || hostnamectl hostname)\"; echo \"kernel=$(uname -r)\"; echo \"cpu=$(lscpu | sed -n 's/^Model name: *//p')\"; g=''; for d in /sys/bus/pci/devices/*; do [ \"$(cat $d/vendor)\" = 0x10de ] && case $(cat $d/class) in 0x03*) g=$d; break;; esac; done; if [ -n \"$g\" ] && [ \"$(cat $g/power/runtime_status)\" = suspended ]; then echo \"gpu=NVIDIA GPU (asleep)\"; else echo \"gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)\"; fi; echo \"ram=$(free -g | awk '/Mem:/{print $2}') GB\"; echo \"uptime=$(uptime -p | sed 's/up //')\"; echo \"qs=$(quickshell --version 2>/dev/null | head -1)\""]
         stdout: StdioCollector {
             onStreamFinished: {
                 const o = {}
@@ -602,7 +602,16 @@ OverlayWindow {
                 Segmented { options: [{ value: 0, label: "Off" }, { value: 1, label: "Low" }, { value: 2, label: "Mid" }, { value: 3, label: "High" }]; value: win.hw.keyboard ? win.hw.keyboard.level : 0; onSelected: v => win.hwSet("keyboard", String(v)) } }
             SettingRow { label: "Battery charge limit"; description: "Stops charging at this level to extend battery life."
                 Segmented { options: [{ value: 60, label: "60%" }, { value: 80, label: "80%" }, { value: 100, label: "100%" }]; value: win.hw.battery ? win.hw.battery.charge_limit : 100; onSelected: v => win.hwSet("charge_limit", String(v)) } }
-            SettingRow { label: "GPU mode"; description: (win.hw.gpu ? "MUX: " + win.hw.gpu.mux_mode : "") + " · switching needs a reboot and asusctl/supergfxctl — read-only here"; Icon { name: "gpu"; size: 14; color: Theme.muted } }
+            SettingRow {
+                readonly property var mux: (win.hw.gpu && win.hw.gpu.mux) || ({})
+                visible: !!mux.supported
+                label: "GPU mode"
+                description: mux.pending_reboot ? "Restart to finish switching the GPU mode."
+                    : mux.value === "1" ? "Hybrid: the Intel GPU draws the desktop; the NVIDIA GPU sleeps until something needs it — AI models, games, or a monitor on its HDMI port. Best for battery."
+                    : "NVIDIA only: the NVIDIA GPU draws every screen — most GPU performance, but it never sleeps (~15 W at idle)."
+                Segmented { options: [{ value: "1", label: "Hybrid" }, { value: "0", label: "NVIDIA only" }]; value: parent.mux.value || ""
+                    onSelected: v => win.hwSet("gpu_mux", v === "1" ? "hybrid" : "dgpu") }
+            }
             SettingRow { label: "Temperatures"; description: win.hw.temps ? Object.keys(win.hw.temps).map(k => k + " " + win.hw.temps[k] + "°C").join(" · ") : "…"; Icon { name: "sun"; size: 14; color: Theme.muted } }
             H { text: "SESSION" }
             SettingRow { label: "Lock screen"; Btn { icon: "lock"; label: "Lock now"; onClicked: { Power.lock(); Shell.closeAll() } } }

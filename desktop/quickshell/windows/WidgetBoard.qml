@@ -258,7 +258,7 @@ OverlayWindow {
                     model: [
                         { label: "CPU",  v: Sys.cpu, txt: Math.round(Sys.cpu) + "%",           col: Theme.accent },
                         { label: "RAM",  v: Sys.mem, txt: Sys.memUsedGb.toFixed(1) + "G",       col: Theme.green },
-                        { label: "GPU",  v: Sys.gpu, txt: Sys.vramUsedGb.toFixed(1) + "G",      col: Theme.purple },
+                        { label: "GPU",  v: Sys.gpu, txt: Sys.gpuAsleep ? "asleep" : Sys.vramUsedGb.toFixed(1) + "G", col: Theme.purple },
                         { label: "TEMP", v: Math.min(100, Sys.cpuTempC), txt: Sys.cpuTempC + "°", col: Theme.yellow },
                     ]
                     Row {

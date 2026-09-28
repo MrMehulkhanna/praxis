@@ -10,6 +10,10 @@ import glob, os, pathlib, re, shutil, subprocess, time
 SYS_PROFILE  = "/sys/firmware/acpi/platform_profile"
 SYS_CHOICES  = "/sys/firmware/acpi/platform_profile_choices"
 SYS_MUX      = "/sys/class/firmware-attributes/asus-armoury/attributes/gpu_mux_mode/current_value"
+SYS_MUX_OLD  = "/sys/devices/platform/asus-nb-wmi/gpu_mux_mode"
+SYS_PENDING  = "/sys/class/firmware-attributes/asus-armoury/attributes/pending_reboot"
+# asus-wmi ABI: 0 = discrete (the NVIDIA GPU drives the screens), 1 = Optimus/hybrid
+MUX_LABELS   = {"0": "dGPU only", "1": "hybrid (iGPU + dGPU)"}
 KBD_DEV      = "asus::kbd_backlight"
 HW_HELPER    = "/usr/local/libexec/aios-hardware"
 
@@ -67,19 +71,49 @@ def memory() -> dict:
             "percent": round(100 * used / m["MemTotal"], 1) if m.get("MemTotal") else 0,
             "swap_total": m.get("SwapTotal", 0), "swap_used": m.get("SwapTotal", 0) - m.get("SwapFree", 0)}
 
+def _nvidia_dev() -> str | None:
+    for d in glob.glob("/sys/bus/pci/devices/*"):
+        if _read(f"{d}/vendor") == "0x10de" and _read(f"{d}/class").startswith("0x03"):
+            return d
+    return None
+
+def nvidia_asleep() -> bool:
+    """True while the NVIDIA GPU is runtime-suspended. Any nvidia-smi query would
+    wake it (and keep it up for its autosuspend delay), so statistics must not ask."""
+    d = _nvidia_dev()
+    return bool(d) and _read(f"{d}/power/runtime_status") == "suspended"
+
+def display_gpu() -> str:
+    """Which GPU drives the built-in screen: the card owning the connected eDP/LVDS."""
+    for c in glob.glob("/sys/class/drm/card*-eDP-*") + glob.glob("/sys/class/drm/card*-LVDS-*"):
+        if _read(f"{c}/status") == "connected":
+            card = os.path.basename(c).split("-", 1)[0]          # card2-eDP-1 -> card2
+            v = _read(f"/sys/class/drm/{card}/device/vendor")
+            return {"0x10de": "nvidia", "0x8086": "intel", "0x1002": "amd"}.get(v, v)
+    return ""
+
+def mux() -> dict:
+    raw = _read(SYS_MUX) or _read(SYS_MUX_OLD)
+    return {"supported": raw in MUX_LABELS, "value": raw, "label": MUX_LABELS.get(raw, "unknown"),
+            "pending_reboot": _read(SYS_PENDING) == "1", "display_gpu": display_gpu()}
+
 def gpu() -> dict:
+    m = mux()
+    extra = {"mux_mode": m["label"], "mux": m}
     if not shutil.which("nvidia-smi"):
-        return {"present": False}
+        return {"present": False, **extra}
+    if nvidia_asleep():
+        return {"present": True, "asleep": True, "util": 0.0, "power_w": 0.0, "processes": [], **extra}
     out = _run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit,clocks.gr,pstate",
                 "--format=csv,noheader,nounits"])
     if not out:
-        return {"present": True, "error": "nvidia-smi returned nothing (driver asleep or not loaded)"}
+        return {"present": True, "error": "nvidia-smi returned nothing (driver not loaded)", **extra}
     p = [x.strip() for x in out.split(",")]
     f = lambda x: float(x) if re.match(r"^-?\d+(\.\d+)?$", x) else None
     procs = _run(["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader,nounits"])
     return {"present": True, "name": p[0], "util": f(p[1]), "vram_used_mb": f(p[2]), "vram_total_mb": f(p[3]),
             "temp_c": f(p[4]), "power_w": f(p[5]), "power_limit_w": f(p[6]), "clock_mhz": f(p[7]), "pstate": p[8],
-            "mux_mode": {"0": "hybrid (iGPU + dGPU)", "1": "dGPU only"}.get(_read(SYS_MUX), "unknown"),
+            **extra,
             "processes": [dict(zip(("pid", "name", "vram_mb"), [s.strip() for s in l.split(",")])) for l in procs.split("\n") if l.strip()]}
 
 def storage() -> list[dict]:
@@ -233,6 +267,18 @@ def set_charge_limit(pct: int) -> tuple[bool, str]:
         return False, "no battery"
     pct = max(40, min(100, int(pct)))
     return _privileged_control("charge-limit", str(pct), f"{b[0]}/charge_control_end_threshold")
+
+def set_gpu_mux(mode: str) -> tuple[bool, str]:
+    """Switch the ASUS GPU MUX; it takes effect at the next restart.
+    hybrid — the iGPU draws the desktop, the NVIDIA GPU sleeps until something needs it
+    dgpu   — the NVIDIA GPU drives the screens: most GPU performance, most power"""
+    v = {"hybrid": "1", "dgpu": "0"}.get(mode)
+    if v is None:
+        return False, "mode must be hybrid or dgpu"
+    if not mux()["supported"]:
+        return False, "this laptop has no switchable GPU MUX"
+    ok, msg = _privileged_control("gpu-mux", v, SYS_MUX if os.path.exists(SYS_MUX) else SYS_MUX_OLD)
+    return ok, ("restart to finish switching the GPU mode" if ok else msg)
 
 def set_fan_mode(mode: str) -> tuple[bool, str]:
     a = _hwmon("asus")

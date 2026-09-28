@@ -192,9 +192,10 @@ class HwSet(BaseModel):
 @app.post("/api/hardware/set")
 async def hw_set(p: HwSet):
     fn = {"profile": lambda v: hardware.set_platform_profile(v), "keyboard": lambda v: hardware.set_keyboard_backlight(int(v)),
-          "charge_limit": lambda v: hardware.set_charge_limit(int(v)), "fan": lambda v: hardware.set_fan_mode(v)}.get(p.what)
+          "charge_limit": lambda v: hardware.set_charge_limit(int(v)), "fan": lambda v: hardware.set_fan_mode(v),
+          "gpu_mux": lambda v: hardware.set_gpu_mux(v)}.get(p.what)
     if not fn:
-        raise HTTPException(400, "what must be profile|keyboard|charge_limit|fan")
+        raise HTTPException(400, "what must be profile|keyboard|charge_limit|fan|gpu_mux")
     ok, msg = await asyncio.to_thread(fn, p.value)
     activity.emit(None, "hardware", f"{p.what} → {p.value}: {msg}")
     tools._audit("user", f"hardware {p.what}={p.value}", p.what, "allow" if ok else "deny", msg)
