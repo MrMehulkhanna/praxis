@@ -1,0 +1,4 @@
+#!/bin/sh
+# Backwards-compat alias — the command has been renamed to praxis-install-partition.
+echo "[praxis] 'aios-install-partition' is now 'praxis-install-partition' — invoking that..."
+exec /usr/local/bin/praxis-install-partition "$@"

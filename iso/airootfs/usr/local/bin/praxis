@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# praxis — discovery entry point. `praxis` lists every praxis-* tool with
+# a one-line summary; `praxis <cmd> [args]` forwards to praxis-<cmd>.
+set -uo pipefail
+
+# Pick the directory that actually holds the praxis-* tools. On an installed
+# Praxis system that's /usr/local/bin; during development it may be ~/.local/bin.
+DIR=/usr/local/bin
+if ! ls "$DIR"/praxis-* >/dev/null 2>&1; then
+    DIR="$HOME/.local/bin"
+fi
+
+# ── one-line descriptions (kept here so this file is the source of truth) ──
+declare -A DESC=(
+    [install]="Smart installer — dual-boot into free space, or full-disk wipe"
+    [install-partition]="Install into a specific existing partition"
+    [welcome]="First-login TUI wizard (Wi-Fi, timezone, GPU, model)"
+    [doctor]="Health report — services, backend, hardware, venv"
+    [update]="Update pacman + AIOS + venv, then restart the backend"
+    [net-bond]="Combine multiple network interfaces via NetworkManager"
+    [palette]="Rofi omnibox — apps, files, AI (?), calc (=), shell (>)"
+    [wallpaper]="Still or LIVE (mp4) wallpapers via hyprpaper / mpvpaper"
+    [models]="Hardware-aware LLM catalog + downloader (uncensored too)"
+    [genie]="Voice conversation loop — mic → whisper → AIOS → piper"
+    [ai-shell]="Persistent AI REPL over AIOS with readline history"
+    [power]="Rofi power menu — lock, suspend, logout, reboot, off"
+    [quicknote]="Fast note into ~/aios/notes/ — search, edit, ingest to RAG"
+    [brightness]="Adjust screen brightness with a floating indicator"
+    [mic]="Toggle / mute / unmute the microphone with a notification"
+    [ocr]="OCR a screen region (or file) → text on the clipboard"
+    [ai-setup]="Set up the AIOS backend (venv, model, service)"
+)
+
+# ── colours ────────────────────────────────────────────────────────────────
+if [ -t 1 ]; then B="\033[1m"; C="\033[36m"; D="\033[2m"; X="\033[0m"
+else B=""; C=""; D=""; X=""; fi
+
+usage() {
+    printf "${B}Praxis Linux — command index${X}\n"
+    printf "${D}Type any command below with 'praxis <name>' or the full 'praxis-<name>'.${X}\n\n"
+    # collect all praxis-* actually present, sort, show matched descriptions
+    for f in "$DIR"/praxis-*; do
+        [ -e "$f" ] || continue
+        name=${f##*/praxis-}
+        [ "$name" = "$(basename "$f")" ] && continue
+        desc=${DESC[$name]:-"(no description)"}
+        printf "  ${C}%-20s${X} %s\n" "praxis $name" "$desc"
+    done
+    printf "\n${D}Environment${X}\n"
+    printf "  ${C}%-20s${X} %s\n" "aios-setup" "AIOS venv + optional model download"
+    printf "  ${C}%-20s${X} %s\n" "ai <query>" "Ask the local model directly"
+    printf "  ${C}%-20s${X} %s\n" "ai rag …"    "Retrieval-augmented AI over your notes"
+}
+
+if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
+    usage
+    exit 0
+fi
+
+sub="$1"; shift
+target="$DIR/praxis-$sub"
+if [ ! -x "$target" ]; then
+    # allow bare 'praxis foo' → praxis-foo lookup in PATH too
+    if command -v "praxis-$sub" >/dev/null; then
+        exec "praxis-$sub" "$@"
+    fi
+    printf "unknown command: praxis-%s\n\n" "$sub" >&2
+    usage
+    exit 2
+fi
+exec "$target" "$@"

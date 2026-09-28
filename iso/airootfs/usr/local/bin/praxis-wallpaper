@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-wallpaper — set the desktop wallpaper (still or LIVE video)
+#
+#  Usage:
+#    praxis-wallpaper set <file>              set as wallpaper (auto-detects type)
+#    praxis-wallpaper live <file>             set a LIVE (video) wallpaper via mpvpaper
+#    praxis-wallpaper still <file>            force static (via hyprpaper)
+#    praxis-wallpaper cycle [interval-secs]   cycle through ~/.local/share/wallpapers/
+#    praxis-wallpaper stop                    kill any running mpvpaper
+#    praxis-wallpaper list                    list available wallpapers
+#
+#  Live wallpapers use mpvpaper (a video-as-wallpaper backend). It runs on
+#  each monitor's layer-shell surface, loops, and stops when we switch back
+#  to a still image.
+# ============================================================================
+set -uo pipefail
+
+WP_DIR="${WP_DIR:-$HOME/.local/share/wallpapers}"
+STATE="$HOME/.config/praxis/wallpaper.state"
+mkdir -p "$(dirname "$STATE")"
+
+die() { echo "$*" >&2; exit 1; }
+
+stop_mpvpaper() { pkill -x mpvpaper 2>/dev/null || true; }
+
+set_still() {
+    local f="$1"
+    [ -e "$f" ] || die "no such file: $f"
+    stop_mpvpaper
+    # write a fresh hyprpaper.conf for the running compositor
+    for m in $(hyprctl -j monitors 2>/dev/null | jq -r '.[].name' 2>/dev/null); do
+        hyprctl hyprpaper preload "$f" >/dev/null 2>&1 || true
+        hyprctl hyprpaper wallpaper "$m,$f" >/dev/null 2>&1 || true
+    done
+    echo "still=$f" > "$STATE"
+    echo "static wallpaper: $f"
+}
+
+set_live() {
+    local f="$1"
+    [ -e "$f" ] || die "no such file: $f"
+    command -v mpvpaper >/dev/null || die "mpvpaper not installed (sudo pacman -S mpvpaper)"
+    stop_mpvpaper
+    # one mpvpaper per monitor; -o 'no-audio loop' keeps it quiet and looping
+    for m in $(hyprctl -j monitors 2>/dev/null | jq -r '.[].name' 2>/dev/null); do
+        setsid mpvpaper -o "no-audio loop hwdec=auto" "$m" "$f" >/dev/null 2>&1 &
+    done
+    echo "live=$f" > "$STATE"
+    echo "live wallpaper: $f"
+}
+
+case "${1:-help}" in
+    set|"")
+        [ -n "${2:-}" ] || die "usage: praxis-wallpaper set <file>"
+        case "${2,,}" in
+            *.mp4|*.webm|*.mkv|*.mov|*.gif) set_live "$2" ;;
+            *) set_still "$2" ;;
+        esac
+        ;;
+    live)
+        [ -n "${2:-}" ] || die "usage: praxis-wallpaper live <video>"
+        set_live "$2"
+        ;;
+    still)
+        [ -n "${2:-}" ] || die "usage: praxis-wallpaper still <image>"
+        set_still "$2"
+        ;;
+    stop)
+        stop_mpvpaper
+        echo "live wallpaper stopped"
+        ;;
+    list)
+        find "$WP_DIR" -type f \( -iname '*.mp4' -o -iname '*.webm' -o -iname '*.png' -o -iname '*.jpg' \
+             -o -iname '*.jpeg' -o -iname '*.gif' \) 2>/dev/null | sort
+        ;;
+    cycle)
+        iv="${2:-300}"
+        mapfile -t files < <(find "$WP_DIR" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) 2>/dev/null | sort)
+        [ "${#files[@]}" -gt 0 ] || die "no images found in $WP_DIR"
+        echo "cycling ${#files[@]} images every ${iv}s (Ctrl+C to stop)"
+        while :; do
+            for f in "${files[@]}"; do
+                set_still "$f"
+                sleep "$iv"
+            done
+        done
+        ;;
+    help|-h|--help)
+        sed -n '3,17p' "$0" | sed 's/^# \?//'
+        ;;
+    *)
+        die "unknown command: $1  (praxis-wallpaper help)"
+        ;;
+esac

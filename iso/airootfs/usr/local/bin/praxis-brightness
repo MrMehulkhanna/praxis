@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# praxis-brightness — nudge screen brightness with a floating notification.
+# Uses brightnessctl (fast, keeps state).  Steps in 5% by default.
+#
+# Usage:  praxis-brightness up | down | set N | get
+set -uo pipefail
+
+command -v brightnessctl >/dev/null || { echo "install brightnessctl" >&2; exit 1; }
+
+step=${STEP:-5}
+case "${1:-up}" in
+    up)   brightnessctl -e -q set "${step}%+" ;;
+    down) brightnessctl -e -q set "${step}%-" ;;
+    set)  brightnessctl -e -q set "${2:?value}%" ;;
+    get)  brightnessctl -m | awk -F, '{print $4}'; exit 0 ;;
+    *)    echo "usage: praxis-brightness up|down|set N|get" >&2; exit 2 ;;
+esac
+
+pct=$(brightnessctl -m | awk -F, '{print $4}' | tr -d '%')
+if command -v notify-send >/dev/null; then
+    notify-send -a "Praxis" -t 900 -h "int:value:$pct" -h "string:x-canonical-private-synchronous:brightness" \
+        "󰃞 Brightness" "${pct}%"
+fi

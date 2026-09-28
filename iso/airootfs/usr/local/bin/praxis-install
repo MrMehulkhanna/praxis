@@ -1,0 +1,329 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  Praxis Linux — smart installer
+#  Behavior on the picked target disk:
+#    1. If there's UNALLOCATED space (>= 30 GiB): install into that free space
+#       ONLY. Nothing else on the disk is touched. Existing Windows/Linux
+#       partitions stay. GRUB is installed to the existing EFI System
+#       Partition (or one is created in the free space), and os-prober adds
+#       the existing OSes to the boot menu.
+#    2. If there's no free space: ask whether to WIPE the whole disk.
+# ============================================================================
+set -euo pipefail
+die() { echo -e "\n\033[1;31m!! $*\033[0m" >&2; exit 1; }
+log() { echo -e "\n\033[1;36m==> $*\033[0m"; }
+ask() { local p="$1" d="${2-}" v; read -rp "$p${d:+ [$d]}: " v; echo "${v:-$d}"; }
+
+echo '
+  ┌─────────────────────────────────────────────┐
+  │   Praxis Linux — smart installer            │
+  │   unofficial · based on Arch · powered AIOS │
+  └─────────────────────────────────────────────┘
+'
+[ "$(id -u)" -eq 0 ] || die "Run as root: sudo praxis-install"
+[ -d /sys/firmware/efi ] || die "UEFI mode required (disable Legacy/CSM)."
+
+# shellcheck source=../lib/praxis/hwdetect.sh
+. /usr/local/lib/praxis/hwdetect.sh || die "missing /usr/local/lib/praxis/hwdetect.sh"
+# shellcheck source=../lib/praxis/install-common.sh
+. /usr/local/lib/praxis/install-common.sh || die "missing /usr/local/lib/praxis/install-common.sh"
+
+# ---------------------------------------------------------------------------
+# Step 0 — networking. Installer needs internet for pacstrap; walk the user
+# through connecting Wi-Fi (nmtui) and optionally pairing Bluetooth here so
+# they don't have to do it in a separate terminal.
+online_check() {
+    timeout 4 curl -sI https://archlinux.org >/dev/null 2>&1
+}
+if ! online_check; then
+    log "Not online yet — launching Wi-Fi picker (nmtui)"
+    echo "  In nmtui: pick 'Activate a connection', choose your Wi-Fi, enter password."
+    echo "  When done, choose 'Back' then 'Quit' to return here."
+    read -rp "Press Enter to open the Wi-Fi picker..."
+    if command -v nmtui >/dev/null; then
+        # Some installer images don't have NetworkManager running yet.
+        systemctl is-active NetworkManager >/dev/null 2>&1 || systemctl start NetworkManager
+        sleep 2
+        nmtui-connect || nmtui
+    else
+        die "nmtui missing — no way to configure Wi-Fi. Use 'iwctl' from another terminal."
+    fi
+    for i in 1 2 3 4 5; do online_check && break; sleep 2; done
+    online_check || die "Still not online. Fix Wi-Fi first, then re-run 'sudo praxis-install'."
+    echo "  \033[32m✓\033[0m online"
+else
+    echo "  \033[32m✓\033[0m already online"
+fi
+
+# Optional: bluetooth pairing (skip if the target has no BT adapter)
+if command -v bluetoothctl >/dev/null && [ -e /sys/class/bluetooth ] && [ -n "$(ls /sys/class/bluetooth 2>/dev/null)" ]; then
+    read -rp "Pair a Bluetooth device now? [y/N] " ans
+    if [[ "${ans,,}" == y* ]]; then
+        systemctl start bluetooth 2>/dev/null || true
+        bluetoothctl power on >/dev/null 2>&1
+        bluetoothctl agent on >/dev/null 2>&1
+        echo "  Put the device in pairing mode, then in the bluetoothctl prompt run:"
+        echo "     scan on"
+        echo "     (wait for your device to appear)"
+        echo "     pair <MAC>   trust <MAC>   connect <MAC>   exit"
+        bluetoothctl || true
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+log "Disks on this PC"
+lsblk -dpno NAME,SIZE,MODEL,TRAN | grep -viE "loop|zram|sr[0-9]"
+LIVE_SRC=$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null | sed 's/[0-9]*$//;s/p$//' || true)
+[ -n "$LIVE_SRC" ] && echo "(live medium = $LIVE_SRC — do NOT pick it)"
+DISK=$(ask "Target disk (e.g. /dev/nvme0n1)")
+[ -b "$DISK" ] || die "$DISK not a block device"
+[ "$DISK" = "$LIVE_SRC" ] && die "That's the live installer."
+findmnt -no SOURCE / | grep -q "^$DISK" && die "That disk is running the installer."
+
+# suffix helper: nvme uses 'p', sata does not
+case "$DISK" in *[0-9]) P="${DISK}p" ;; *) P="${DISK}" ;; esac
+
+# ---------------------------------------------------------------------------
+log "Scanning $DISK for unallocated space"
+# Ensure GPT (parted print will complain otherwise). If disk has no label:
+if ! parted -s "$DISK" print >/dev/null 2>&1; then
+    HAS_LABEL=no
+else
+    HAS_LABEL=yes
+fi
+
+# Find the largest free region (>= 30 GiB) in MiB.
+FREE=$(praxis_largest_free "$(parted -sm "$DISK" unit MiB print free 2>/dev/null)")
+if [ -n "$FREE" ]; then
+    FREE_START=$(echo "$FREE" | awk '{print $1}')
+    FREE_END=$(echo "$FREE" | awk '{print $2}')
+    FREE_MIB=$(echo "$FREE" | awk '{print $3}')
+    FREE_GIB=$((FREE_MIB / 1024))
+    echo "  Found ${FREE_GIB} GiB of unallocated space at ${FREE_START} → ${FREE_END}"
+    MODE=dualboot
+else
+    echo "  No unallocated space (>= 30 GiB) on $DISK."
+    MODE=wipe
+fi
+
+# ---------------------------------------------------------------------------
+# Detect existing EFI System Partition on this disk (GPT type EF00 / GUID
+# c12a7328-f81f-11d2-ba4b-00a0c93ec93b). Reused if present, made otherwise.
+find_esp() {
+    lsblk -lno NAME,PARTTYPE "$DISK" 2>/dev/null | \
+        awk 'tolower($2)=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b"{print "/dev/"$1; exit}'
+}
+EXISTING_ESP=$(find_esp || true)
+
+# ---------------------------------------------------------------------------
+# Ask identity here so a second confirmation doesn't interrupt pacstrap.
+HOST=$(ask "Hostname" "praxis")
+USER_NAME=$(ask "Username" "user")
+while :; do
+    read -rsp "Password for $USER_NAME (also root): " PW; echo
+    [ -n "$PW" ] || { echo "  empty not allowed"; continue; }
+    read -rsp "Confirm: " PW2; echo
+    [ "$PW" = "$PW2" ] && break || echo "  didn't match"
+done
+TZ=$(ask "Timezone" "UTC")
+[ -f "/usr/share/zoneinfo/$TZ" ] || die "Unknown timezone."
+
+# ---------------------------------------------------------------------------
+# Hardware detection
+UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
+read -ra GPU <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null)")"
+
+# ---------------------------------------------------------------------------
+cat <<S
+
+  ┌─── Install plan ─────────────────────────────
+  │  Disk        : $DISK
+  │  Mode        : $MODE   $([ "$MODE" = dualboot ] && echo "(uses ${FREE_GIB} GiB free — nothing else touched)" || echo "(ENTIRE DISK WILL BE ERASED)")
+  │  EFI (ESP)   : ${EXISTING_ESP:-will be created in free space}
+  │  Hostname    : $HOST     User: $USER_NAME
+  │  Timezone    : $TZ
+  │  CPU ucode   : ${UCODE:-none}
+  │  GPU drivers : ${GPU[*]}
+  │  Bootloader  : GRUB + os-prober (existing OSes appear in the boot menu)
+  └───────────────────────────────────────────────
+S
+if [ "$MODE" = wipe ]; then
+    echo "  !!! ALL DATA ON $DISK WILL BE PERMANENTLY ERASED !!!"
+fi
+c=$(ask "Type PROCEED to continue"); [ "$c" = PROCEED ] || die "aborted"
+
+umount -R /mnt 2>/dev/null || true
+swapoff -a 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+if [ "$MODE" = wipe ]; then
+    log "Wiping $DISK and creating fresh GPT (1 GiB ESP + rest ext4)"
+    wipefs -af "$DISK" 2>/dev/null || true
+    sgdisk --zap-all "$DISK" 2>/dev/null || true
+    dd if=/dev/zero of="$DISK" bs=1M count=10 conv=fsync 2>/dev/null || true
+    sgdisk -og "$DISK"
+    sgdisk -n1:0:+1G -t1:ef00 -c1:EFI    "$DISK"
+    sgdisk -n2:0:0   -t2:8300 -c2:praxis "$DISK"
+    partprobe "$DISK"; udevadm settle; sleep 2
+    ESP="${P}1"; ROOT="${P}2"
+    mkfs.fat -F32 -n PRAXIS_EFI "$ESP"
+else
+    # Dual-boot: only touch the free space region.
+    if [ "$HAS_LABEL" = no ]; then
+        # Fresh disk but user picked dual-boot? Convert to GPT first.
+        sgdisk -og "$DISK"
+    fi
+    if [ -z "$EXISTING_ESP" ]; then
+        log "No ESP found — carving a 512 MiB ESP + Praxis root from the free space"
+        NEW_ESP_END=$(awk "BEGIN{printf \"%d\", $FREE_START + 512}")
+        parted -s "$DISK" mkpart EFI    fat32 "${FREE_START}MiB" "${NEW_ESP_END}MiB"
+        parted -s "$DISK" set  "$(sgdisk -p "$DISK" | tail -1 | awk '{print $1}')" esp on
+        parted -s "$DISK" mkpart praxis ext4  "${NEW_ESP_END}MiB" "${FREE_END}MiB"
+        partprobe "$DISK"; udevadm settle; sleep 2
+        # newly-created partitions are the last two
+        mapfile -t PARTS < <(lsblk -lno NAME,TYPE "$DISK" | awk '$2=="part"{print "/dev/"$1}')
+        ESP="${PARTS[-2]}"; ROOT="${PARTS[-1]}"
+        mkfs.fat -F32 -n PRAXIS_EFI "$ESP"
+    else
+        log "Reusing existing ESP $EXISTING_ESP; new Praxis root in the free space"
+        parted -s "$DISK" mkpart praxis ext4 "${FREE_START}MiB" "${FREE_END}MiB"
+        partprobe "$DISK"; udevadm settle; sleep 2
+        ESP="$EXISTING_ESP"
+        ROOT=$(lsblk -lno NAME,TYPE "$DISK" | awk '$2=="part"{print "/dev/"$1}' | tail -1)
+    fi
+fi
+
+log "Formatting Praxis root $ROOT (ext4)"
+mkfs.ext4 -F -L PRAXIS_ROOT "$ROOT"
+mount "$ROOT" /mnt
+mkdir -p /mnt/boot/efi
+mount "$ESP" /mnt/boot/efi
+
+# ---------------------------------------------------------------------------
+BASE_PKGS=(
+    base base-devel linux linux-firmware sudo
+    networkmanager openssh
+    pipewire pipewire-alsa pipewire-jack pipewire-pulse wireplumber
+    hyprland quickshell waybar swaync hypridle hyprlock hyprpaper uwsm
+    xdg-desktop-portal-hyprland xdg-utils qt5-wayland qt6-wayland polkit-gnome
+    kitty thunar rofi grim slurp wl-clipboard brightnessctl
+    firefox
+    python python-pip python-virtualenv git vim nano htop
+    noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd ttf-nerd-fonts-symbols-mono
+    mkinitcpio grub efibootmgr os-prober ntfs-3g
+    llama-cpp ggml-vulkan
+    libnewt
+)
+[ -n "$UCODE" ] && BASE_PKGS+=("$UCODE")
+BASE_PKGS+=("${GPU[@]}")
+
+LOCAL_REPO=/opt/praxis-repo
+if [ -d "$LOCAL_REPO" ]; then
+    grep -q '^\[praxis\]' /etc/pacman.conf || cat >>/etc/pacman.conf <<EOF
+
+[praxis]
+SigLevel = Optional TrustAll
+Server = file://$LOCAL_REPO
+EOF
+    BASE_PKGS+=(piper-tts-bin yay-bin mpvpaper)   # from the bundled [praxis] repo
+fi
+
+log "Installing base + Praxis desktop (pacstrap)"
+pacstrap -K /mnt "${BASE_PKGS[@]}"
+genfstab -U /mnt >> /mnt/etc/fstab
+
+# ---------------------------------------------------------------------------
+log "Copying Praxis assets"
+praxis_copy_assets /mnt
+
+# ---------------------------------------------------------------------------
+log "Chroot: configure system + install GRUB"
+arch-chroot /mnt /bin/bash -euo pipefail <<CHROOT
+set -euo pipefail
+
+ln -sf /usr/share/zoneinfo/$TZ /etc/localtime
+hwclock --systohc 2>/dev/null || true
+sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+locale-gen
+echo LANG=en_US.UTF-8 > /etc/locale.conf
+echo "$HOST" > /etc/hostname
+cat >/etc/hosts <<H
+127.0.0.1  localhost
+::1        localhost
+127.0.1.1  $HOST.localdomain  $HOST
+H
+
+# Portable initramfs (works after moving the drive)
+sed -i 's/autodetect //' /etc/mkinitcpio.conf
+mkinitcpio -P
+
+useradd -m -G wheel,video,audio,input,network,storage,users -s /bin/bash "$USER_NAME"
+echo "$USER_NAME:$PW" | chpasswd
+echo "root:$PW"       | chpasswd
+install -d -m750 /etc/sudoers.d
+echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/10-wheel
+chmod 440 /etc/sudoers.d/10-wheel
+cp -aT /etc/skel /home/$USER_NAME
+chown -R $USER_NAME:$USER_NAME /home/$USER_NAME
+
+# tty1 autologin -> Hyprland
+if ! grep -q 'uwsm start hyprland' /home/$USER_NAME/.bash_profile 2>/dev/null; then
+cat >>/home/$USER_NAME/.bash_profile <<'BP'
+if [[ -z "\${WAYLAND_DISPLAY:-}" && "\$(tty)" == "/dev/tty1" ]]; then
+    # First-login onboarding (blocks the desktop start until finished; skips
+    # itself on subsequent logins via ~/.praxis-onboarded).
+    [ -x /usr/local/bin/praxis-welcome ] && /usr/local/bin/praxis-welcome
+    if command -v uwsm >/dev/null && uwsm check may-start >/dev/null 2>&1; then
+        exec uwsm start hyprland.desktop
+    else
+        exec Hyprland
+    fi
+fi
+BP
+    chown $USER_NAME:$USER_NAME /home/$USER_NAME/.bash_profile
+fi
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat >/etc/systemd/system/getty@tty1.service.d/autologin.conf <<AL
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/agetty --autologin $USER_NAME --noclear %I 38400 linux
+AL
+
+systemctl enable NetworkManager
+systemctl enable systemd-timesyncd 2>/dev/null || true
+
+# GRUB — writes ONLY into /EFI/Praxis on the ESP; other OSes' entries stay.
+# os-prober picks up Windows / other Linuxes and adds them to the grub menu.
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --recheck
+sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub
+grub-mkconfig -o /boot/grub/grub.cfg
+
+# AIOS CPU-only default
+if [ -f /opt/aios/config/aios.env.example ]; then
+    install -d -m755 /opt/aios/config
+    cp /opt/aios/config/aios.env.example /opt/aios/config/aios.env
+    sed -i \\
+      -e 's/^AIOS_VL_NGL=.*/AIOS_VL_NGL=0/' \\
+      -e 's/^AIOS_DOLPHIN_NGL=.*/AIOS_DOLPHIN_NGL=0/' \\
+      -e 's/^AIOS_BUDGET_MODE=.*/AIOS_BUDGET_MODE=ZERO_COST/' \\
+      /opt/aios/config/aios.env
+    chmod 600 /opt/aios/config/aios.env
+fi
+CHROOT
+
+sync
+umount -R /mnt
+
+echo
+cat <<END
+============================================================
+  Praxis Linux installed on $DISK.
+
+  Mode: $MODE  ${MODE:+$([ "$MODE" = dualboot ] && echo "— existing OSes preserved and visible in the GRUB menu (via os-prober)")}
+
+  1. Reboot, remove the installer USB.
+  2. GRUB menu will show Praxis (default) + any other OS found.
+  3. Log in as '$USER_NAME' (or root) with the password you set.
+  4. First run:  aios-setup   (builds the AIOS venv)
+============================================================
+END

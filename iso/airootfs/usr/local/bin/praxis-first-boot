@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# praxis-first-boot — one welcome notification per account (every boot on
+# live media, where nothing persists). On live media it carries an
+# "Install Praxis Linux" action that opens the installer.
+set -uo pipefail
+command -v notify-send >/dev/null || exit 0
+
+# The notification daemon starts with the compositor; give it a moment.
+for _ in $(seq 1 40); do
+    busctl --user status org.freedesktop.Notifications >/dev/null 2>&1 && break
+    sleep 0.5
+done
+
+if [ -d /run/archiso ]; then
+    action=$(notify-send -a "Praxis" -u normal -t 0 --wait \
+        --action=install="Install Praxis Linux" \
+        "Welcome to Praxis Linux — live session" \
+        "Everything is running from the USB drive. Install Praxis to this computer from here or from the dock. If the disk has free space, Windows is kept.")
+    [ "$action" = "install" ] && exec gtk-launch praxis-install
+    exit 0
+fi
+
+notify-send -a "Praxis" -t 12000 "Welcome to Praxis Linux" \
+    "SUPER+SPACE opens the palette, SUPER+B the widget board. Type 'praxis' in a terminal to see every command."
+touch "$HOME/.praxis-first-boot-done"

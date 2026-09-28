@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# praxis-live-setup — runs once per live boot (praxis-live-setup.service,
+# before getty@tty1). Creates the autologin user and pins the installer to
+# the dock. Only ever active on live media (ConditionPathExists=/run/archiso).
+set -euo pipefail
+
+USER_NAME=praxis
+HOME_DIR=/home/$USER_NAME
+
+if ! id "$USER_NAME" &>/dev/null; then
+    useradd -m -G wheel,video,audio,input,network,storage,users -s /bin/bash "$USER_NAME"
+    # Well-known live password (the session autologs in; sudo is passwordless
+    # on live media only). Installed systems use the password chosen in the installer.
+    echo "${USER_NAME}:praxis" | chpasswd
+    echo "root:praxis" | chpasswd
+fi
+
+# Populate the home from /etc/skel if it is still empty.
+if [ ! -e "$HOME_DIR/.bash_profile" ]; then
+    cp -aT /etc/skel "$HOME_DIR"
+fi
+
+# Live dock: the installer first, then the everyday apps.
+install -d "$HOME_DIR/.config/quickshell"
+if [ ! -e "$HOME_DIR/.config/quickshell/settings.json" ]; then
+    cat > "$HOME_DIR/.config/quickshell/settings.json" <<'EOF'
+{
+    "dockFavorites": ["praxis-install", "firefox", "kitty", "thunar"]
+}
+EOF
+fi
+
+chown -R "$USER_NAME:$USER_NAME" "$HOME_DIR"
+exit 0

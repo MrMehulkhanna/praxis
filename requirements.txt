@@ -1,0 +1,23 @@
+# AIOS backend — direct runtime dependencies.
+# Tested with Python 3.12–3.14 on Arch Linux. Install into the project venv:
+#   python -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+# web service
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+pydantic>=2.10,<3
+httpx>=0.28,<1
+
+# context store & retrieval
+sqlite-vec>=0.1.9,<0.2
+numpy>=2.0
+onnxruntime>=1.20
+tokenizers>=0.20            # sentence embeddings for vector search (optional at runtime)
+
+# models & voice
+huggingface-hub>=0.27,<1
+hf_transfer>=0.1.9          # faster model downloads (HF_HUB_ENABLE_HF_TRANSFER=1)
+faster-whisper>=1.1         # speech-to-text
+
+# optional: PDF ingestion for `ai rag add`
+pypdf>=5.0

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Install Praxis Linux
+GenericName=System Installer
+Comment=Install Praxis to this computer's disk — keeps Windows if there is free space
+Icon=system-software-install
+Exec=kitty --class praxis-installer --title "Install Praxis Linux" -e /usr/local/bin/praxis-install-window
+Terminal=false
+Categories=System;
+Keywords=install;installer;setup;disk;
+StartupNotify=true

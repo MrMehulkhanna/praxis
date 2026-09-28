@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+# ============================================================================
+#  praxis-models — hardware-aware local LLM catalog + downloader
+#
+#  Detects your VRAM/RAM, shows what fits, and downloads via huggingface-cli.
+#  Includes uncensored / abliterated variants (Dolphin, "Uncensored", etc.)
+#  for direct answers without corporate safety refusals — legal, widely
+#  distributed on Hugging Face, but they'll be blunt so use responsibly.
+#
+#  Commands
+#  --------
+#    praxis-models list                   full catalog
+#    praxis-models recommend              only what fits YOUR hardware
+#    praxis-models download <id>          fetch and store in ~/aios/models/<id>
+#    praxis-models remove   <id>          delete the local copy
+#    praxis-models installed              show what's already downloaded
+#    praxis-models space                  show disk / VRAM budget
+# ============================================================================
+import argparse, json, os, pathlib, shutil, subprocess, sys, textwrap
+
+HOME = pathlib.Path.home()
+MODELS = pathlib.Path(os.environ.get("AIOS_HOME", HOME / "aios")) / "models"
+MODELS.mkdir(parents=True, exist_ok=True)
+
+# ── colours (skip when piped) ───────────────────────────────────────────────
+_C = sys.stdout.isatty()
+B, G, Y, R, C, M, D, X = (
+    ("\033[1m","\033[32m","\033[33m","\033[31m","\033[36m","\033[35m","\033[2m","\033[0m")
+    if _C else ("",)*8
+)
+
+# ── curated catalog (small; picked to actually run on <=8 GB VRAM) ─────────
+# `q` = quant + rough size. `censored` = whether it will refuse harsh prompts.
+# `uncensored` = tuned/abliterated so the safety layer is stripped or minimal.
+# Sizes are GGUF sizes at the listed quant; halve for Q4_K_M etc. as noted.
+CATALOG = [
+    # ---- general chat / assistants ----
+    {"id": "qwen2.5-3b-instruct",
+     "repo": "bartowski/Qwen2.5-3B-Instruct-GGUF",
+     "file": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+     "size_gb": 2.1, "vram_gb": 3, "tags": ["chat", "small", "fast"],
+     "censored": True,
+     "desc": "Tight small model. Fast on CPU, sails on any GPU. Good default."},
+    {"id": "qwen2.5-7b-instruct",
+     "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+     "file": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+     "size_gb": 4.7, "vram_gb": 6, "tags": ["chat", "balanced"],
+     "censored": True,
+     "desc": "Balanced chat + coding, fits a 6 GB card at Q4_K_M."},
+    {"id": "llama-3.1-8b-instruct",
+     "repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+     "file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+     "size_gb": 4.9, "vram_gb": 6, "tags": ["chat", "reasoning"],
+     "censored": True,
+     "desc": "Meta's Llama 3.1 8B. Strong reasoning, standard safety layer."},
+
+    # ---- uncensored / abliterated ----
+    {"id": "dolphin-2.9-llama3-8b",
+     "repo": "cognitivecomputations/dolphin-2.9-llama3-8b-gguf",
+     "file": "dolphin-2.9-llama3-8b-q4_K_M.gguf",
+     "size_gb": 4.9, "vram_gb": 6, "tags": ["chat", "uncensored", "direct"],
+     "censored": False,
+     "desc": "Dolphin fine-tune — assistant-y but no safety refusals. Blunt. Legal."},
+    {"id": "llama-3-8b-abliterated",
+     "repo": "failspy/Meta-Llama-3-8B-Instruct-abliterated-v3-GGUF",
+     "file": "Meta-Llama-3-8B-Instruct-abliterated-v3_q4.gguf",
+     "size_gb": 4.9, "vram_gb": 6, "tags": ["chat", "uncensored", "harsh"],
+     "censored": False,
+     "desc": "Abliteration ablates the refusal circuit. It will answer questions "
+             "most 8B models refuse. Use responsibly."},
+    {"id": "qwen2.5-7b-uncensored",
+     "repo": "QuantFactory/Qwen2.5-7B-Instruct-Uncensored-GGUF",
+     "file": "Qwen2.5-7B-Instruct-Uncensored.Q4_K_M.gguf",
+     "size_gb": 4.7, "vram_gb": 6, "tags": ["chat", "uncensored"],
+     "censored": False,
+     "desc": "Qwen 7B with the safety fine-tune removed. Same size as base."},
+
+    # ---- coding ----
+    {"id": "qwen2.5-coder-7b",
+     "repo": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
+     "file": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+     "size_gb": 4.7, "vram_gb": 6, "tags": ["coding"],
+     "censored": True,
+     "desc": "Best-in-class 7B coder. Beats DeepSeek-Coder-6.7B on most benches."},
+    {"id": "deepseek-coder-v2-lite-16b",
+     "repo": "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
+     "file": "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+     "size_gb": 10.4, "vram_gb": 12, "tags": ["coding", "big"],
+     "censored": True,
+     "desc": "16 B MoE (2.4 B active), needs 12 GB+ VRAM. Very strong at code."},
+
+    # ---- vision ----
+    {"id": "qwen2-vl-7b",
+     "repo": "bartowski/Qwen2-VL-7B-Instruct-GGUF",
+     "file": "Qwen2-VL-7B-Instruct-Q4_K_M.gguf",
+     "size_gb": 5.0, "vram_gb": 6, "tags": ["vision", "multimodal"],
+     "censored": True,
+     "desc": "Vision + language. OCR, image Q&A, scene understanding."},
+
+    # ---- tiny / edge ----
+    {"id": "phi-3.5-mini-3.8b",
+     "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+     "file": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+     "size_gb": 2.4, "vram_gb": 3, "tags": ["chat", "small"],
+     "censored": True,
+     "desc": "MS Phi-3.5, 3.8 B. Runs comfortably on CPU."},
+    {"id": "gemma-2-2b-it",
+     "repo": "bartowski/gemma-2-2b-it-GGUF",
+     "file": "gemma-2-2b-it-Q4_K_M.gguf",
+     "size_gb": 1.7, "vram_gb": 3, "tags": ["chat", "tiny"],
+     "censored": True,
+     "desc": "Google Gemma-2 2 B — surprisingly capable for its size."},
+
+    # ---- embeddings ----
+    {"id": "nomic-embed-text",
+     "repo": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+     "file": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+     "size_gb": 0.09, "vram_gb": 1, "tags": ["embed", "rag"],
+     "censored": True,
+     "desc": "Text embedder for the AIOS RAG pipeline. 768-dim, tiny."},
+]
+
+# ---------------------------------------------------------------------------
+
+def detect_hardware() -> dict:
+    """Return a dict of {vram_gb, ram_gb, cpu, gpu_name, disk_free_gb}."""
+    hw = {"vram_gb": 0, "ram_gb": 0, "cpu": "", "gpu_name": "", "disk_free_gb": 0}
+    # VRAM (NVIDIA)
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=3)
+        if r.returncode == 0 and r.stdout.strip():
+            name, mib = [x.strip() for x in r.stdout.splitlines()[0].split(",")]
+            hw["gpu_name"] = name
+            hw["vram_gb"] = int(mib) // 1024
+    except FileNotFoundError:
+        pass
+    # RAM
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    hw["ram_gb"] = int(line.split()[1]) // (1024 * 1024)
+                    break
+    except OSError:
+        pass
+    # CPU model
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    hw["cpu"] = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        pass
+    # Disk free (models dir)
+    try:
+        s = shutil.disk_usage(str(MODELS))
+        hw["disk_free_gb"] = round(s.free / (1024 ** 3), 1)
+    except OSError:
+        pass
+    return hw
+
+
+def print_hw(hw: dict) -> None:
+    print(f"{B}Your machine{X}")
+    print(f"  GPU        {hw['gpu_name'] or D+'no NVIDIA detected — CPU-only inference'+X}")
+    print(f"  VRAM       {hw['vram_gb']} GiB")
+    print(f"  CPU        {hw['cpu']}")
+    print(f"  RAM        {hw['ram_gb']} GiB")
+    print(f"  Free disk  {hw['disk_free_gb']} GiB (models dir: {MODELS})")
+
+
+def catalog_row(m: dict, ok: bool) -> str:
+    tags = f"{C}{' '.join(m['tags'])}{X}"
+    warn = "" if m["censored"] else f" {Y}·UNCENSORED{X}"
+    tick = f"{G}✓{X}" if ok else f"{D}✗{X}"
+    return (f"  {tick} {B}{m['id']:<32}{X} {D}{m['size_gb']:.1f} GB · VRAM≥{m['vram_gb']} GB{X}\n"
+            f"      {tags}{warn}\n"
+            f"      {m['desc']}")
+
+
+def cmd_list(hw: dict) -> None:
+    print_hw(hw); print()
+    print(f"{B}Full catalog{X}  ({G}✓{X} = fits your hardware, {D}✗{X} = won't run comfortably)\n")
+    for m in CATALOG:
+        ok = fits(m, hw)
+        print(catalog_row(m, ok))
+
+
+def fits(m: dict, hw: dict) -> bool:
+    """
+    A model fits when the GPU has ~its VRAM budget (nvidia-smi under-reports
+    total by ~1 GiB after driver overhead, so accept vram-1), or partial-
+    offload is viable (RAM covers the whole file with headroom).
+    """
+    if hw["vram_gb"] + 1 >= m["vram_gb"]:
+        return True
+    if hw["ram_gb"] >= m["size_gb"] * 2:
+        return True
+    return False
+
+
+def cmd_recommend(hw: dict) -> None:
+    print_hw(hw); print()
+    fits_list = [m for m in CATALOG if fits(m, hw)]
+    if not fits_list:
+        print(f"{Y}Nothing in the catalog is a comfortable fit for this hardware.{X}")
+        print("Try the tiny models with --force, but expect swap thrash.")
+        return
+    # sort: fitting-with-headroom first, then by size desc
+    fits_list.sort(key=lambda m: (-m["size_gb"]))
+    print(f"{B}Recommended for your hardware{X}\n")
+    for m in fits_list:
+        print(catalog_row(m, True))
+    print(f"\n{D}Download one with:  praxis-models download <id>{X}")
+
+
+def cmd_installed() -> None:
+    if not MODELS.exists():
+        print(f"no models in {MODELS}")
+        return
+    found = []
+    for d in sorted(MODELS.iterdir()):
+        if d.is_dir():
+            size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / (1024**3)
+            found.append((d.name, size))
+    if not found:
+        print(f"{D}no models installed under {MODELS}{X}")
+        return
+    print(f"{B}Installed models{X}  {D}({MODELS}){X}\n")
+    for n, s in found:
+        print(f"  {G}✓{X} {n:<40} {D}{s:.2f} GB{X}")
+
+
+def cmd_download(model_id: str, hw: dict, force: bool) -> None:
+    m = next((x for x in CATALOG if x["id"] == model_id), None)
+    if not m:
+        die(f"unknown model id: {model_id}. Try: praxis-models list")
+    if not fits(m, hw) and not force:
+        die(f"{model_id} needs {m['vram_gb']} GB VRAM; you have {hw['vram_gb']} GB. "
+            f"Pass --force to try anyway.")
+    if hw["disk_free_gb"] and hw["disk_free_gb"] < m["size_gb"] + 1:
+        die(f"only {hw['disk_free_gb']} GB free; {model_id} needs {m['size_gb']:.1f} GB + margin.")
+
+    # On a fresh system the CLI lives in the AIOS venv (created by aios-setup).
+    venv_bin = MODELS.parent / ".venv" / "bin"
+    hf_cli = (shutil.which("huggingface-cli") or shutil.which("hf")
+              or next((str(venv_bin / n) for n in ("huggingface-cli", "hf")
+                       if (venv_bin / n).exists()), None))
+    if not hf_cli:
+        die("huggingface-cli not found — run 'aios-setup' first (it creates the AIOS venv).")
+
+    dest = MODELS / m["id"]
+    dest.mkdir(parents=True, exist_ok=True)
+    print(f"{B}Downloading{X} {m['id']}  ({m['size_gb']:.1f} GB)")
+    print(f"  from  {m['repo']}")
+    print(f"  file  {m['file']}")
+    print(f"  to    {dest}\n")
+    r = subprocess.run(
+        [hf_cli, "download", m["repo"], m["file"], "--local-dir", str(dest)],
+        env={**os.environ, "HF_HUB_ENABLE_HF_TRANSFER": "1"},
+    )
+    if r.returncode == 0:
+        print(f"\n{G}✓ downloaded to {dest}{X}")
+        if not m["censored"]:
+            print(f"{Y}note{X}: this model is uncensored — it will answer bluntly without refusals.")
+    else:
+        die("download failed.")
+
+
+def cmd_remove(model_id: str) -> None:
+    dest = MODELS / model_id
+    if not dest.exists():
+        die(f"not installed: {model_id}")
+    shutil.rmtree(dest)
+    print(f"{G}✓ removed {dest}{X}")
+
+
+def cmd_space(hw: dict) -> None:
+    print_hw(hw); print()
+    # per-model sizes on disk
+    inst_sizes = {}
+    if MODELS.exists():
+        for d in MODELS.iterdir():
+            if d.is_dir():
+                inst_sizes[d.name] = sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / (1024**3)
+    total = sum(inst_sizes.values())
+    print(f"Installed model dir: {MODELS} — {total:.1f} GB across {len(inst_sizes)} models")
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"{R}✗ {msg}{X}", file=sys.stderr); sys.exit(code)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(prog="praxis-models",
+        description=textwrap.dedent(__doc__ or ""),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=False)
+    sub.add_parser("list")
+    sub.add_parser("recommend")
+    sub.add_parser("installed")
+    sub.add_parser("space")
+    dl = sub.add_parser("download"); dl.add_argument("id"); dl.add_argument("--force", action="store_true")
+    rm = sub.add_parser("remove");   rm.add_argument("id")
+    args = p.parse_args()
+    hw = detect_hardware()
+    if not args.cmd or args.cmd == "recommend": cmd_recommend(hw)
+    elif args.cmd == "list":                     cmd_list(hw)
+    elif args.cmd == "installed":                cmd_installed()
+    elif args.cmd == "space":                    cmd_space(hw)
+    elif args.cmd == "download":                 cmd_download(args.id, hw, args.force)
+    elif args.cmd == "remove":                   cmd_remove(args.id)
+
+
+if __name__ == "__main__":
+    main()

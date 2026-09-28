@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-palette — one-line omnibox
+#
+#  Input                  Action
+#  -----                  ------
+#  firefox                launch app "firefox"
+#  ~/Notes/idea.md        open the file (xdg-open)
+#  ? why is my GPU 100%   send to AIOS `ai ask`, notify with the answer
+#  = 12 * (3+4)           evaluate arithmetic via python
+#  > cmd args             run shell command in a terminal
+#  https://…              open URL in default browser
+#
+#  Uses rofi -dmenu. Bind to SUPER+SPACE in your compositor.
+# ============================================================================
+set -uo pipefail
+
+if ! command -v rofi >/dev/null; then
+    notify-send "Praxis palette" "rofi not installed"
+    exit 1
+fi
+
+# Pre-populate with app names + recent files for quick fuzzy-select.
+apps=$(find /usr/share/applications ~/.local/share/applications -maxdepth 2 -name '*.desktop' 2>/dev/null \
+        | xargs -r -I{} sh -c 'awk -F= "/^Name=/{print \$2; exit}" "{}"' | sort -u)
+recent=$(find ~/Documents ~/Downloads ~/Desktop -maxdepth 3 -type f -mtime -14 -printf '%p\n' 2>/dev/null | head -50)
+menu=$(printf '%s\n%s' "$apps" "$recent")
+
+sel=$(printf '%s\n' "$menu" | rofi -dmenu -i -p "praxis" -theme-str '@import "/usr/share/rofi/themes/gruvbox-dark.rasi"' 2>/dev/null || true)
+[ -z "$sel" ] && exit 0
+
+# ---- dispatch ----
+case "$sel" in
+    "? "*|"?"*)
+        q="${sel#\?}"; q="${q# }"
+        notify-send "Praxis · thinking…" "$q"
+        # blocking call — answer arrives as a notification
+        ans=$(ai ask "$q" 2>/dev/null | tail -c 400 || echo "no answer")
+        notify-send -t 15000 "AIOS answered" "$ans"
+        ;;
+    "= "*|"="*)
+        expr="${sel#=}"; expr="${expr# }"
+        val=$(python3 -c "print(eval(${expr!r}))" 2>/dev/null || echo error)
+        notify-send "= $expr" "$val"
+        # copy result to clipboard if wl-clipboard is present
+        command -v wl-copy >/dev/null && printf '%s' "$val" | wl-copy || true
+        ;;
+    "> "*|">"*)
+        cmd="${sel#>}"; cmd="${cmd# }"
+        setsid kitty --hold bash -c "$cmd" &
+        ;;
+    http://*|https://*)
+        xdg-open "$sel" &
+        ;;
+    *)
+        # existing file? open it. else try to launch as app.
+        expanded="${sel/#\~/$HOME}"
+        if [ -e "$expanded" ]; then
+            xdg-open "$expanded" &
+        else
+            # find best-match .desktop and launch
+            match=$(find /usr/share/applications ~/.local/share/applications -maxdepth 2 -name '*.desktop' 2>/dev/null \
+                    | while read -r f; do
+                        n=$(awk -F= '/^Name=/{print $2; exit}' "$f")
+                        [ "$n" = "$sel" ] && { echo "$f"; break; }
+                      done | head -1)
+            if [ -n "$match" ]; then
+                gtk-launch "$(basename "$match" .desktop)" 2>/dev/null &
+            else
+                # last resort: run as command
+                setsid bash -c "$sel" &
+            fi
+        fi
+        ;;
+esac

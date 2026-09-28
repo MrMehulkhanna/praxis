@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# praxis-ocr — draw a region, OCR it with tesseract, put the text on the
+# clipboard, and notify.  Wayland-native (grim + slurp + wl-copy).
+#
+# Usage:
+#   praxis-ocr             region select then OCR
+#   praxis-ocr --all       OCR the whole focused screen
+#   praxis-ocr FILE        OCR an existing image file
+set -uo pipefail
+
+need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
+need tesseract
+need wl-copy
+
+TMP=$(mktemp --suffix=.png)
+trap 'rm -f "$TMP" "${TMP%.png}.txt"' EXIT
+
+case "${1:-}" in
+    --all|-a)
+        need grim
+        grim "$TMP" ;;
+    -h|--help)
+        sed -n '2,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    "" )
+        need grim
+        need slurp
+        geom=$(slurp) || { echo "cancelled"; exit 0; }
+        grim -g "$geom" "$TMP" ;;
+    * )
+        [ -f "$1" ] || { echo "no such file: $1" >&2; exit 1; }
+        cp -- "$1" "$TMP" ;;
+esac
+
+# -l eng for English; user can override with TESS_LANG=eng+deu etc.
+lang=${TESS_LANG:-eng}
+tesseract "$TMP" "${TMP%.png}" -l "$lang" --psm 6 quiet 2>/dev/null
+text=$(cat "${TMP%.png}.txt" 2>/dev/null | sed '/^$/N;/^\n$/D')
+
+if [ -z "$text" ]; then
+    command -v notify-send >/dev/null && notify-send -a "Praxis OCR" "no text detected"
+    exit 1
+fi
+
+printf '%s' "$text" | wl-copy
+if command -v notify-send >/dev/null; then
+    preview=$(printf '%s' "$text" | head -c 200)
+    notify-send -a "Praxis OCR" "copied to clipboard" "$preview…"
+fi
+printf '%s\n' "$text"

@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+"""
+praxis-genie — conversational voice assistant loop.
+
+Uses the existing AIOS voice pipeline: pw-record for audio, faster-whisper
+(or the AIOS /api/voice/transcribe endpoint) for STT, AIOS /api/chat for the
+answer, and piper for the spoken reply.
+
+Interaction model
+-----------------
+By default: energy-triggered. Speak, and after ~0.8 s of silence the clip
+is transcribed and answered. Say "stop", "bye", or "shut up" to end.
+
+Alternatives
+------------
+  --oneshot      record 6 s once, answer, exit.
+  --wake WORD    ignore any utterance that doesn't start with WORD (e.g. "praxis").
+  --model ID     force a specific AIOS model.
+  --no-speak     print the answer instead of speaking it.
+
+Requires: pw-record (pipewire), python3, and either a running AIOS backend
+or faster-whisper installed locally.
+"""
+import argparse, json, os, pathlib, shlex, signal, subprocess, sys, time, urllib.request
+
+HOME = pathlib.Path.home()
+AIOS_HOME = pathlib.Path(os.environ.get("AIOS_HOME", HOME / "aios"))
+sys.path.insert(0, str(AIOS_HOME / "voice"))
+
+RECORD_CMD = ["pw-record", "--rate=16000", "--channels=1", "--format=s16"]
+CLIP = "/tmp/praxis-genie.wav"
+CHAT_URL = "http://127.0.0.1:8778/api/chat"
+STT_URL  = "http://127.0.0.1:8778/api/voice/transcribe"
+CONVO_ID = f"genie-{int(time.time())}"
+
+BYE_WORDS = {"stop", "bye", "goodbye", "shut up", "quit", "exit", "sleep now"}
+
+# ── colour ──────────────────────────────────────────────────────────────────
+_C = sys.stdout.isatty()
+B, D, G, Y, R, X = (
+    ("\033[1m","\033[2m","\033[32m","\033[33m","\033[31m","\033[0m") if _C else ("",)*6
+)
+
+# ── audio capture ───────────────────────────────────────────────────────────
+def record_until_silence(max_secs: float = 12.0, silence_secs: float = 0.9,
+                         silence_rms: int = 320) -> str:
+    """Start pw-record streaming into CLIP, poll its size and RMS via sox to
+    detect silence, stop and return the file path. Falls back to a fixed 5 s
+    grab if sox isn't around."""
+    if not _which("pw-record"):
+        raise RuntimeError("pw-record missing (install pipewire)")
+
+    open(CLIP, "wb").close()
+    p = subprocess.Popen(RECORD_CMD + [CLIP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    end = time.time() + max_secs
+    silent_start = None
+    try:
+        # simple energy detector: read the tail of the file every 100 ms
+        while time.time() < end:
+            time.sleep(0.1)
+            rms = _tail_rms(CLIP)
+            if rms is None:
+                continue
+            if rms < silence_rms:
+                if silent_start is None:
+                    silent_start = time.time()
+                elif time.time() - silent_start > silence_secs:
+                    break
+            else:
+                silent_start = None
+    finally:
+        p.send_signal(signal.SIGINT)
+        try: p.wait(timeout=1.5)
+        except subprocess.TimeoutExpired: p.kill()
+    return CLIP
+
+
+def _tail_rms(path: str) -> int | None:
+    if not _which("sox"):
+        return None
+    try:
+        # last 0.3 s
+        r = subprocess.run(
+            ["sox", path, "-n", "trim", "-0.3", "stats"],
+            capture_output=True, text=True, timeout=1.5,
+        )
+        for line in r.stderr.splitlines():
+            if line.startswith("RMS lev dB"):
+                dB = float(line.split()[-1])
+                # convert to a rough integer scale
+                return int(max(0, 32767 * (10 ** (dB / 20))))
+    except Exception:
+        return None
+    return None
+
+
+def _which(x: str) -> str | None:
+    from shutil import which
+    return which(x)
+
+
+# ── transcription ───────────────────────────────────────────────────────────
+def transcribe(path: str) -> str:
+    """Prefer AIOS backend endpoint; fall back to local faster-whisper."""
+    try:
+        req = urllib.request.Request(
+            STT_URL,
+            data=json.dumps({"path": path}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read()).get("text", "").strip()
+    except Exception:
+        pass
+    try:
+        from faster_whisper import WhisperModel
+        m = WhisperModel("base", device="cpu", compute_type="int8")
+        segments, _info = m.transcribe(path, vad_filter=True)
+        return " ".join(seg.text.strip() for seg in segments).strip()
+    except Exception as e:
+        return f"[transcription failed: {e}]"
+
+
+# ── chat ────────────────────────────────────────────────────────────────────
+def ask(text: str, model: str = "auto") -> str:
+    payload = {
+        "message": text,
+        "conversation_id": CONVO_ID,
+        "model": model,
+    }
+    try:
+        req = urllib.request.Request(
+            CHAT_URL,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            body = resp.read().decode()
+        # /api/chat streams — take the tail of the last content event
+        # (works whether server returns JSON or SSE).
+        try:
+            j = json.loads(body)
+            for k in ("content", "text", "answer", "message"):
+                if isinstance(j, dict) and k in j:
+                    return str(j[k]).strip()
+            return json.dumps(j)[:400]
+        except json.JSONDecodeError:
+            out = []
+            for line in body.splitlines():
+                if line.startswith("data:"):
+                    chunk = line[5:].strip()
+                    if chunk in ("[DONE]", ""): continue
+                    try:
+                        j = json.loads(chunk)
+                        for k in ("delta", "content", "text"):
+                            if isinstance(j, dict) and k in j:
+                                out.append(str(j[k])); break
+                    except json.JSONDecodeError:
+                        out.append(chunk)
+            return "".join(out).strip() or "(no answer)"
+    except Exception as e:
+        return f"[chat failed: {e}]"
+
+
+# ── TTS ─────────────────────────────────────────────────────────────────────
+def speak(text: str) -> None:
+    try:
+        from voice_speak import speak as _speak
+        _speak(text)
+    except Exception:
+        # dumb fallback: espeak if installed, else print
+        if _which("espeak-ng"):
+            subprocess.run(["espeak-ng", text], check=False)
+        elif _which("espeak"):
+            subprocess.run(["espeak", text], check=False)
+        else:
+            print(text)
+
+
+# ── loop ────────────────────────────────────────────────────────────────────
+def main() -> None:
+    p = argparse.ArgumentParser(prog="praxis-genie", description=__doc__ or "",
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--oneshot", action="store_true", help="Record once, answer, exit.")
+    p.add_argument("--wake", default=None,
+                   help="Only respond when utterance starts with this word.")
+    p.add_argument("--model", default="auto")
+    p.add_argument("--no-speak", action="store_true",
+                   help="Print the answer instead of speaking it.")
+    args = p.parse_args()
+
+    print(f"{B}Praxis Genie{X}  {D}(say '{'/'.join(sorted(BYE_WORDS))[:40]}…' to stop){X}")
+    if args.wake:
+        print(f"{D}wake word: {args.wake!r}{X}")
+
+    intro = "Genie ready."
+    if not args.no_speak: speak(intro)
+
+    while True:
+        print(f"{G}▶ listening…{X}", end="", flush=True)
+        try:
+            path = record_until_silence()
+        except RuntimeError as e:
+            print(f"\n{R}{e}{X}"); sys.exit(1)
+        print(" transcribing… ", end="", flush=True)
+        text = transcribe(path).strip()
+        print(f"\r{D}heard:{X} {text or '(nothing)':<80}")
+
+        if not text:
+            if args.oneshot: return
+            continue
+
+        low = text.lower().strip(".!? ")
+        if any(low == b or low.startswith(b + " ") or low.endswith(" " + b) for b in BYE_WORDS):
+            farewell = "Goodbye."
+            print(f"{Y}{farewell}{X}")
+            if not args.no_speak: speak(farewell)
+            return
+
+        if args.wake and not low.startswith(args.wake.lower()):
+            print(f"{D}(no wake word — ignoring){X}")
+            if args.oneshot: return
+            continue
+
+        if args.wake:
+            text = text[len(args.wake):].lstrip(",: ").strip()
+
+        answer = ask(text, model=args.model)
+        print(f"{B}genie:{X} {answer}")
+        if not args.no_speak:
+            speak(answer)
+
+        if args.oneshot:
+            return
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()

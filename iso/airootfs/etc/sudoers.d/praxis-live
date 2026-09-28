@@ -1,0 +1,4 @@
+# Live session only: the autologin user may sudo without a password so the
+# installer can run. Installed systems get a normal password-protected
+# %wheel rule written by praxis-install instead of this file.
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL

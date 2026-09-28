@@ -7,12 +7,16 @@ Auto-unloads after idle — this is what keeps Hyprland smooth.
 KV cache at q8_0 = half the VRAM of fp16 cache.
 Flash attention on = faster, lower VRAM for long contexts.
 """
-import asyncio, glob, json, os, pathlib, time
+import asyncio, glob, json, os, pathlib, shutil, time
 import httpx
 from core.gateway.iface import Capability, Request, attach_images
 
 HOME     = pathlib.Path(os.environ.get("AIOS_HOME", pathlib.Path.home() / "aios"))
-BIN      = HOME / "llama-server"
+# A locally built server (AIOS_HOME/llama-server, e.g. a CUDA build) wins;
+# otherwise use the distribution's llama-server (Arch: `llama-cpp` + a
+# `ggml-vulkan`/`ggml-cuda` backend), so a fresh install works out of the box.
+_LOCAL_BIN = HOME / "llama-server"
+BIN = _LOCAL_BIN if _LOCAL_BIN.exists() else pathlib.Path(shutil.which("llama-server") or _LOCAL_BIN)
 PORT     = int(os.environ.get("LLAMA_PORT", "8779"))
 IDLE_SEC = int(os.environ.get("AIOS_IDLE_UNLOAD", "120"))
 

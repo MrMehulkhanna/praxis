@@ -25,6 +25,15 @@ PanelWindow {
     readonly property var hyprMon: Hyprland.monitorFor(screen)
     readonly property bool isFocusedScreen: Hyprland.focusedMonitor && hyprMon && Hyprland.focusedMonitor.name === hyprMon.name
 
+    // Responsive tiers from the SCREEN width (never from measured content or the
+    // window width, which layer-shell can derive from content → binding loop).
+    //   0  ≥ 1800 px   everything
+    //   1  ≥ 1300 px   shorter title + media text, CPU/RAM stats only,
+    //                  web-UI and activity buttons folded away (both are
+    //                  reachable from the AI panel / right-click on the AI chip)
+    //   2  < 1300 px   media icon only, no stats, no search button
+    readonly property int tier: !screen ? 0 : screen.width >= 1800 ? 0 : screen.width >= 1300 ? 1 : 2
+
     Glass {
         anchors { fill: parent; leftMargin: Theme.barMargin; rightMargin: Theme.barMargin; topMargin: Theme.barMargin; bottomMargin: 0 }
         radius: Theme.radiusMd
@@ -84,7 +93,7 @@ PanelWindow {
                 color: Theme.text2
                 font.family: Theme.font; font.pixelSize: Theme.fontSm; font.weight: Font.Medium
                 elide: Text.ElideRight
-                width: Math.min(implicitWidth, 320)
+                width: Math.min(implicitWidth, bar.tier === 0 ? 320 : 200)
             }
         }
 
@@ -122,7 +131,7 @@ PanelWindow {
             // system stats (profile-dependent)
             Row {
                 id: stats
-                visible: Settings.statsVisible
+                visible: Settings.statsVisible && bar.tier < 2
                 spacing: 8
                 anchors.verticalCenter: parent.verticalCenter
                 rightPadding: 8
@@ -145,7 +154,7 @@ PanelWindow {
                         { icon: "pulse", v: Math.min(100, (Sys.netDown + Sys.netUp) / 1e5),
                           txt: stats.fmtBps(Sys.netDown + Sys.netUp) },
                         { icon: "sun", v: Sys.cpuTempC, txt: Sys.cpuTempC + "°" },
-                    ]
+                    ].slice(0, bar.tier === 0 ? 5 : 2)
                     Row {
                         spacing: 4
                         anchors.verticalCenter: parent.verticalCenter
@@ -155,6 +164,17 @@ PanelWindow {
                 }
             }
 
+            Rectangle {
+                id: statusPill
+                height: 30; radius: 15
+                width: statusRow.width + 6
+                color: Theme.alpha(Theme.text, 0.05)
+                border.width: 1; border.color: Theme.border
+                anchors.verticalCenter: parent.verticalCenter
+            Row {
+            id: statusRow
+            anchors.centerIn: parent
+            spacing: 0
             VoiceButton { anchors.verticalCenter: parent.verticalCenter }
 
             IconButton {
@@ -181,6 +201,8 @@ PanelWindow {
                     onWheel: wheel => Audio.step(wheel.angleDelta.y > 0 ? 0.05 : -0.05)
                 }
             }
+            }   // statusRow
+            }   // statusPill
             // ── media chip: hides when no MPRIS player is active ────────────
             Rectangle {
                 id: mediaChip
@@ -210,7 +232,8 @@ PanelWindow {
                         color: Theme.text2
                         font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.Medium
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, 140)
+                        visible: bar.tier < 2
+                        width: bar.tier < 2 ? Math.min(implicitWidth, bar.tier === 0 ? 150 : 84) : 0
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -315,6 +338,7 @@ PanelWindow {
                 }
             }
             IconButton {
+                visible: bar.tier === 0
                 icon: "pulse"; iconSize: 16
                 active: Shell.overlay === "activity"
                 badge: Aios.jobs.length > 0
@@ -322,11 +346,13 @@ PanelWindow {
                 onClicked: Shell.toggle("activity")
             }
             IconButton {
+                visible: bar.tier < 2
                 icon: "search"; iconSize: 15
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: Shell.toggle("launcher")
             }
             IconButton {
+                visible: bar.tier === 0
                 icon: "monitor"; iconSize: 15
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: Quickshell.execDetached(["xdg-open", Aios.base + "/"])

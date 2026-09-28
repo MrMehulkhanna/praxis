@@ -1,0 +1,12 @@
+[Unit]
+Description=Praxis welcome notification (and installer prompt on live media)
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionPathExists=!%h/.praxis-first-boot-done
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/praxis-first-boot
+
+[Install]
+WantedBy=graphical-session.target

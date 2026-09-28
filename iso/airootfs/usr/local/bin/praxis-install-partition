@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# Praxis Linux — install into an EXISTING Linux partition, keep Windows.
+# You must have already: shrunk Windows / created an empty partition for Linux.
+# Uses GRUB (safe on a small 100 MB Windows ESP; picks up Windows via os-prober).
+set -euo pipefail
+die(){ echo -e "\n\033[1;31m!! $*\033[0m" >&2; exit 1; }
+log(){ echo -e "\n\033[1;36m==> $*\033[0m"; }
+ask(){ local p="$1" d="${2-}" v; read -rp "$p${d:+ [$d]}: " v; echo "${v:-$d}"; }
+
+[ "$(id -u)" -eq 0 ] || die "Run as root."
+[ -d /sys/firmware/efi ] || die "UEFI mode required."
+
+echo "=== Partitions ==="
+lsblk -o NAME,SIZE,FSTYPE,TYPE,PARTLABEL,MOUNTPOINTS
+echo
+ROOT=$(ask "Linux target partition (WILL BE FORMATTED, e.g. /dev/nvme0n1p5)")
+ESP=$(ask "Windows EFI partition (WILL NOT BE FORMATTED, e.g. /dev/nvme0n1p1)")
+[ -b "$ROOT" ] || die "$ROOT not a partition"
+[ -b "$ESP" ]  || die "$ESP not a partition"
+[ "$(blkid -o value -s TYPE "$ESP")" = vfat ] || die "$ESP is not vfat — that's not the Windows EFI."
+
+HOST=$(ask "Hostname" "praxis")
+USER_NAME=$(ask "Username" "user")
+while :; do
+  read -rsp "Password: " PW; echo; read -rsp "Confirm: " PW2; echo
+  [ -n "$PW" ] && [ "$PW" = "$PW2" ] && break || echo "  try again"
+done
+
+# hardware detect (shared with praxis-install)
+# shellcheck source=../lib/praxis/hwdetect.sh
+. /usr/local/lib/praxis/hwdetect.sh || die "missing /usr/local/lib/praxis/hwdetect.sh"
+# shellcheck source=../lib/praxis/install-common.sh
+. /usr/local/lib/praxis/install-common.sh || die "missing /usr/local/lib/praxis/install-common.sh"
+UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
+read -ra GPU <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null)")"
+
+cat <<S
+
+  Target root : $ROOT  (WILL BE FORMATTED ext4)
+  Windows EFI : $ESP   (REUSED, NOT formatted)
+  Hostname    : $HOST     User: $USER_NAME
+  Microcode   : ${UCODE:-none}      GPU: ${GPU[*]}
+  Windows on other partitions of this disk stays intact.
+S
+c=$(ask "Type PROCEED to install"); [ "$c" = PROCEED ] || die "aborted"
+
+log "Formatting $ROOT (ext4)"
+umount -R /mnt 2>/dev/null || true
+mkfs.ext4 -F -L PRAXIS_ROOT "$ROOT"
+mount "$ROOT" /mnt
+mkdir -p /mnt/boot/efi
+mount "$ESP" /mnt/boot/efi         # SHARED with Windows — no format
+
+log "pacstrap base + Praxis desktop (grub, not systemd-boot)"
+pacstrap -K /mnt base base-devel linux linux-firmware sudo networkmanager \
+  pipewire pipewire-alsa pipewire-pulse wireplumber \
+  hyprland quickshell waybar swaync hypridle hyprlock hyprpaper uwsm \
+  xdg-desktop-portal-hyprland xdg-utils qt5-wayland qt6-wayland polkit-gnome \
+  kitty thunar rofi grim slurp wl-clipboard brightnessctl firefox \
+  python python-pip git vim nano htop \
+  noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd \
+  mkinitcpio grub efibootmgr os-prober ntfs-3g llama-cpp ggml-vulkan \
+  ${UCODE:+$UCODE} "${GPU[@]}"
+
+genfstab -U /mnt >> /mnt/etc/fstab
+
+# copy Praxis assets from the live env (shared with praxis-install)
+praxis_copy_assets /mnt
+
+log "Chroot: locale, user, GRUB, os-prober"
+arch-chroot /mnt /bin/bash -euo pipefail <<CHROOT
+ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen; locale-gen
+echo LANG=en_US.UTF-8 > /etc/locale.conf
+echo "$HOST" > /etc/hostname
+cat >/etc/hosts <<H
+127.0.0.1  localhost
+::1        localhost
+127.0.1.1  $HOST
+H
+sed -i 's/autodetect //' /etc/mkinitcpio.conf
+mkinitcpio -P
+
+useradd -m -G wheel,video,audio,input,network,storage -s /bin/bash "$USER_NAME"
+echo "$USER_NAME:$PW" | chpasswd
+echo "root:$PW"       | chpasswd
+echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel; chmod 440 /etc/sudoers.d/wheel
+cp -aT /etc/skel /home/$USER_NAME
+chown -R $USER_NAME:$USER_NAME /home/$USER_NAME
+
+# tty1 autologin -> Hyprland
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat >/etc/systemd/system/getty@tty1.service.d/autologin.conf <<AL
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/agetty --autologin $USER_NAME --noclear %I 38400 linux
+AL
+
+systemctl enable NetworkManager
+systemctl enable systemd-timesyncd 2>/dev/null || true
+
+# GRUB into the Windows ESP — writes only into /EFI/Praxis, doesn't touch /EFI/Microsoft
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --recheck
+# Enable os-prober so Windows shows up in the grub menu
+sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub
+grub-mkconfig -o /boot/grub/grub.cfg
+CHROOT
+
+sync; umount -R /mnt
+echo
+cat <<END
+============================================================
+ Done. Reboot, and use the firmware boot menu (F12/F9/Esc):
+   * "Praxis" -> Praxis Linux (grub menu also shows Windows)
+   * "Windows Boot Manager" -> Windows as before
+ Login: $USER_NAME (or root) with the password you set.
+============================================================
+END

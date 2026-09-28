@@ -1,0 +1,47 @@
+#compdef praxis
+# zsh completion for the `praxis` meta-command.  Discovers subcommands from
+# praxis-* binaries on PATH so this also covers any tools added later.
+
+_praxis() {
+    local -a subs descs
+    local ln name desc
+
+    # Static descriptions matching the meta-command's own table.
+    typeset -A KNOWN=(
+        [install]="Smart installer (dual-boot or full-disk)"
+        [install-partition]="Install into a specific existing partition"
+        [welcome]="First-login TUI wizard"
+        [doctor]="Health report"
+        [update]="Update pacman + AIOS + venv"
+        [net-bond]="Combine multiple network interfaces"
+        [palette]="Rofi omnibox (apps, files, AI, calc, shell)"
+        [wallpaper]="Still or LIVE wallpapers"
+        [models]="LLM catalog + downloader"
+        [genie]="Voice conversation loop"
+        [ai-shell]="Persistent AI REPL"
+        [power]="Power menu"
+        [quicknote]="Quick note into ~/aios/notes/"
+        [ai-setup]="Set up the AIOS backend"
+    )
+
+    if (( CURRENT == 2 )); then
+        # collect subcommand stems
+        for ln in ${(f)"$(whence -pa 'praxis-*' 2>/dev/null)"}; do
+            name=${ln:t#praxis-}
+            desc=${KNOWN[$name]:-"praxis $name"}
+            descs+=("$name:$desc")
+        done
+        descs+=("help:show the command index")
+        _describe -t subcommands 'praxis subcommand' descs && return 0
+    fi
+
+    # Deeper: hand off to the child binary's own completion if any.
+    local sub=${words[2]}
+    if (( $+functions[_praxis-$sub] )); then
+        _praxis-$sub
+        return
+    fi
+    _files
+}
+
+_praxis "$@"

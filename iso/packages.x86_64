@@ -1,0 +1,88 @@
+# Praxis live image — packages added on top of archiso's `releng` base
+# (which already provides linux, linux-firmware, microcode, grub, parted,
+# gptfdisk, dosfstools, arch-install-scripts, archinstall, iwd, openssh, …).
+#
+# Keep this list lean: it is what runs the live session and the installer.
+# The installed system is pacstrapped from the internet by praxis-install,
+# which also adds hardware-specific drivers (e.g. NVIDIA) for the target.
+# Blank lines and comments are stripped by build.sh.
+
+# ── desktop ──────────────────────────────────────────────────────────────
+hyprland
+quickshell
+swaync
+hypridle
+hyprlock
+hyprpaper
+uwsm
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+xdg-utils
+qt5-wayland
+qt6-wayland
+polkit-kde-agent
+
+# ── everyday apps ────────────────────────────────────────────────────────
+firefox
+kitty
+thunar
+rofi
+pavucontrol
+network-manager-applet
+blueman
+grim
+slurp
+swappy
+cliphist
+wl-clipboard
+brightnessctl
+playerctl
+
+# ── audio ────────────────────────────────────────────────────────────────
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+wireplumber
+gst-plugin-pipewire
+libpulse
+
+# ── network & bluetooth ──────────────────────────────────────────────────
+networkmanager
+bluez
+bluez-utils
+
+# ── graphics: open-source stack for the live session ────────────────────
+mesa
+vulkan-intel
+vulkan-radeon
+vulkan-nouveau
+intel-media-driver
+libva-intel-driver
+
+# ── power ────────────────────────────────────────────────────────────────
+power-profiles-daemon
+zram-generator
+
+# ── installer extras (dual-boot detection, NTFS, TUI dialogs) ───────────
+os-prober
+ntfs-3g
+libnewt
+
+# ── AIOS runtime & Praxis tools ──────────────────────────────────────────
+python-pip
+python-virtualenv
+git
+jq
+wget
+htop
+nvtop
+smartmontools
+tesseract
+tesseract-data-eng
+
+# ── fonts ────────────────────────────────────────────────────────────────
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono-nerd
+ttf-nerd-fonts-symbols-mono

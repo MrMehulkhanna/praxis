@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-net-bond
+#  Combine multiple network interfaces via NetworkManager for aggregated
+#  throughput or failover — most useful with two active WANs, e.g.
+#  Wi-Fi + tethered phone or Ethernet + Wi-Fi.
+#
+#  Modes:
+#    active-backup  (default) — failover; one link active, other stands by.
+#                    Works on ANY network path; safe default.
+#    balance-rr             — round-robin per-packet across links; boosts
+#                    throughput but ONLY works when both links terminate on a
+#                    switch/router that also does bonding (rare on home nets).
+#    balance-alb            — adaptive load-balancing without switch help;
+#                    per-flow, so a single big download does NOT get faster.
+#
+#  This is a CONFIG helper, not a promise of aggregated speed. Read the notes
+#  it prints before saying yes.
+# ============================================================================
+set -uo pipefail
+die() { echo -e "\n\033[1;31m!! $*\033[0m" >&2; exit 1; }
+log() { echo -e "\n\033[1;36m==> $*\033[0m"; }
+
+command -v nmcli >/dev/null || die "NetworkManager (nmcli) not installed."
+[ "$(id -u)" -eq 0 ] || die "Run as root:  sudo praxis-net-bond"
+
+log "Interfaces available"
+nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev | awk -F: '$2!="bridge"&&$2!="loopback"&&$2!="bond"&&$2!="tun"&&$2!="p2p-wireless"{printf "  %-15s %-10s %-10s  %s\n", $1, $2, $3, $4}'
+echo
+
+# collect interface names to bond
+mapfile -t IFACES < <(nmcli -t -f DEVICE,TYPE dev | awk -F: '$2=="ethernet"||$2=="wifi"{print $1}')
+[ "${#IFACES[@]}" -lt 2 ] && die "Need at least two ethernet/wifi interfaces; found ${#IFACES[@]}."
+
+read -rp "Space-separated slave interfaces (e.g. '${IFACES[0]} ${IFACES[1]}'): " -a SLAVES
+[ "${#SLAVES[@]}" -ge 2 ] || die "Pick at least two."
+for s in "${SLAVES[@]}"; do
+    ip link show "$s" >/dev/null 2>&1 || die "unknown interface: $s"
+done
+
+echo
+echo "Bonding modes:"
+echo "  1) active-backup  (failover — safe default, works anywhere)"
+echo "  2) balance-alb    (per-flow load balancing, no switch needed)"
+echo "  3) balance-rr     (per-packet, needs switch-side bond too)"
+read -rp "Mode [1]: " M
+case "${M:-1}" in
+    1|active-backup) MODE=active-backup ;;
+    2|balance-alb)   MODE=balance-alb   ;;
+    3|balance-rr)    MODE=balance-rr    ;;
+    *)               die "unknown mode" ;;
+esac
+
+BOND=$(nmcli -t -f NAME con show | grep -c '^praxis-bond') || true
+BOND_NAME="praxis-bond$([ "$BOND" -gt 0 ] && echo "-$BOND")"
+
+cat <<PLAN
+
+  Plan:
+    Bond name : $BOND_NAME
+    Mode      : $MODE
+    Slaves    : ${SLAVES[*]}
+
+  The bond will get DHCP. Existing per-interface connections stay,
+  but you'll want to disconnect them so their routes don't compete
+  with the bond's:
+    for s in ${SLAVES[*]}; do nmcli dev disconnect \$s; done
+
+PLAN
+read -rp "Type PROCEED to create: " c; [ "$c" = PROCEED ] || die "aborted"
+
+log "Creating bond master"
+nmcli con add type bond ifname "$BOND_NAME" con-name "$BOND_NAME" \
+    bond.options "mode=$MODE,miimon=100"
+
+log "Adding slaves"
+for s in "${SLAVES[@]}"; do
+    SLAVE_CON="$BOND_NAME-slave-$s"
+    TYPE=$(nmcli -t -f DEVICE,TYPE dev | awk -F: -v d="$s" '$1==d{print $2}')
+    nmcli con add type "$TYPE" ifname "$s" master "$BOND_NAME" con-name "$SLAVE_CON"
+done
+
+log "Bringing up bond"
+nmcli con up "$BOND_NAME"
+
+echo
+echo "============================================================"
+echo "  Bond $BOND_NAME is up.  Check:  nmcli dev status"
+echo "                                    ip -br link show $BOND_NAME"
+echo
+echo "  Undo:                             nmcli con delete $BOND_NAME"
+echo "                                    (and slave connections)"
+echo "============================================================"

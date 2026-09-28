@@ -1,0 +1,14 @@
+[Unit]
+Description=AIOS — local-first AI backend for Praxis
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/aios/run.sh
+Restart=on-failure
+RestartSec=3
+# keep the desktop responsive: the backend and llama-server never starve the compositor
+Nice=5
+
+[Install]
+WantedBy=default.target

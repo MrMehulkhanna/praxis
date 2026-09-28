@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Praxis diagnostic tool — dumps a health report the user can read or paste.
+# No sudo required for most checks.
+set -uo pipefail
+
+RC=0
+OUT="${1:-/tmp/praxis-doctor-$(date +%Y%m%d-%H%M).txt}"
+: > "$OUT"
+
+log()  { echo -e "$*" | tee -a "$OUT"; }
+sec()  { log "\n\033[1;36m== $* ==\033[0m"; }
+row()  {
+    local label="$1" val="$2" ok="${3:-1}"
+    if [ "$ok" = 1 ]; then log "  \033[32m✔\033[0m $label: $val"
+    else                   log "  \033[31m✘\033[0m $label: $val"; RC=1; fi
+}
+check() { if command -v "$1" >/dev/null; then row "$1" "$($1 --version 2>&1 | head -1)"; else row "$1" "missing" 0; fi; }
+
+log "Praxis doctor — $(date -Is)"
+log "Report saved to: $OUT"
+
+# ---------------------------------------------------------------------------
+sec "OS"
+row "kernel"  "$(uname -r)"
+row "distro"  "$(. /etc/os-release; echo "$PRETTY_NAME")"
+row "uptime"  "$(uptime -p 2>/dev/null || uptime)"
+row "boot"    "$([ -d /sys/firmware/efi ] && echo UEFI || echo BIOS)"
+
+# ---------------------------------------------------------------------------
+sec "Hardware"
+row "cpu"     "$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
+row "cores"   "$(nproc)"
+row "ram"     "$(free -h | awk '/^Mem:/ {print $2 " total, " $3 " used, " $7 " avail"}')"
+if command -v lspci >/dev/null; then
+    GPU=$(lspci | grep -iE 'vga|3d|display' | sed 's/^[^:]*: //' | head -1)
+    row "gpu"     "${GPU:-none detected}"
+fi
+if command -v nvidia-smi >/dev/null; then
+    NV=$(nvidia-smi --query-gpu=name,memory.total,memory.used,temperature.gpu --format=csv,noheader 2>/dev/null | head -1)
+    row "nvidia"  "${NV:-not accessible}"
+fi
+
+# ---------------------------------------------------------------------------
+sec "Storage"
+df -h --output=source,size,used,avail,pcent,target 2>/dev/null | grep -vE 'tmpfs|devtmpfs|run|efivarfs' | head -10 >> "$OUT"
+df -h --output=source,size,used,avail,pcent,target 2>/dev/null | grep -vE 'tmpfs|devtmpfs|run|efivarfs' | head -10 | sed 's/^/  /'
+
+# ---------------------------------------------------------------------------
+sec "Network"
+if command -v nmcli >/dev/null; then
+    for l in $(nmcli -t -f DEVICE,STATE dev 2>/dev/null | head -5); do log "  $l"; done
+fi
+if timeout 4 curl -sI https://archlinux.org >/dev/null 2>&1; then
+    row "internet" "reachable"
+else
+    row "internet" "unreachable" 0
+fi
+
+# ---------------------------------------------------------------------------
+sec "Desktop"
+row "compositor" "$( pgrep -a Hyprland | head -1 | awk '{print $2, $3}' | xargs || echo not-running)" \
+    "$( pgrep -x Hyprland >/dev/null && echo 1 || echo 0)"
+row "quickshell" "$(pgrep -a quickshell | head -1 || echo not-running)" \
+    "$(pgrep -x quickshell >/dev/null && echo 1 || echo 0)"
+is_run() { pgrep -x "$1" >/dev/null && echo 1 || echo 0; }
+say_run() { pgrep -x "$1" >/dev/null && echo running || echo stopped; }
+row "waybar"     "$(say_run waybar)" "$(is_run waybar)"
+row "swaync"     "$(say_run swaync)" "$(is_run swaync)"
+
+# ---------------------------------------------------------------------------
+sec "AIOS backend"
+if systemctl --user is-active aios.service >/dev/null 2>&1; then
+    row "aios.service" "active"
+else
+    row "aios.service" "$(systemctl --user is-active aios.service 2>&1)" 0
+fi
+PORT="${AIOS_PORT:-8778}"
+if timeout 3 curl -sf "http://127.0.0.1:$PORT/health" -o /dev/null 2>&1; then
+    row "backend"      "responding on 127.0.0.1:$PORT"
+elif timeout 3 curl -sf "http://127.0.0.1:$PORT/" -o /dev/null 2>&1; then
+    row "backend"      "responding on 127.0.0.1:$PORT (no /health)"
+else
+    row "backend"      "no response on 127.0.0.1:$PORT" 0
+fi
+
+# ---------------------------------------------------------------------------
+sec "Config"
+AENV="$HOME/aios/config/aios.env"
+if [ -f "$AENV" ]; then
+    row "aios.env"     "found"
+    log "$(grep -E '^AIOS_(BUDGET_MODE|VL_NGL|DOLPHIN_NGL|PORT)=' "$AENV" | sed 's/^/    /')"
+else
+    row "aios.env"     "missing (run: aios-setup)" 0
+fi
+
+# ---------------------------------------------------------------------------
+sec "Tools"
+for c in git python hyprctl grim slurp notify-send piper; do
+    check "$c"
+done
+# Python deps live in the AIOS venv, not on PATH.
+VENV="$HOME/aios/.venv"
+if [ -x "$VENV/bin/python" ]; then
+    for mod in fastapi uvicorn httpx sqlite_vec onnxruntime; do
+        if "$VENV/bin/python" -c "import $mod" 2>/dev/null; then
+            row "venv:$mod" "installed"
+        else
+            row "venv:$mod" "missing (run: aios-setup)" 0
+        fi
+    done
+else
+    row "venv"      "not built (run: aios-setup)" 0
+fi
+
+# ---------------------------------------------------------------------------
+sec "Praxis tools"
+_pcount=$(compgen -c praxis- 2>/dev/null | sort -u | wc -l)
+row "praxis-*" "$_pcount commands on PATH  (run 'praxis' for the index)"
+
+# ---------------------------------------------------------------------------
+sec "Summary"
+if [ "$RC" -eq 0 ]; then
+    log "\n\033[1;32mAll checks passed.\033[0m"
+else
+    log "\n\033[1;33mSome checks failed. Report saved to $OUT.\033[0m"
+fi
+exit "$RC"

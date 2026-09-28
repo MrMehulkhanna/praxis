@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Runs the installer in a terminal window and keeps the window open at the end
+# so the result stays readable. Launched by praxis-install.desktop.
+sudo /usr/local/bin/praxis-install
+rc=$?
+echo
+if [ "$rc" -eq 0 ]; then
+    echo "  Installation finished. Remove the USB drive and reboot."
+else
+    echo "  The installer stopped (exit code $rc). Nothing after that point was changed."
+fi
+read -rp "  Press Enter to close this window… " _

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Praxis rolling updater — refresh system packages + AIOS + shell config.
+# Safe to run any time; needs sudo for pacman. No-op if nothing to do.
+#
+# Flags
+#   --check   Show what would be updated without touching the system.
+set -uo pipefail
+
+log() { echo -e "\n\033[1;36m==> $*\033[0m"; }
+notify() { command -v notify-send >/dev/null && notify-send -t 3500 "Praxis update" "$1" || true; }
+
+if [ "${1:-}" = "--check" ] || [ "${1:-}" = "-n" ]; then
+    log "Pacman: repos to sync then dry-run pending"
+    ( sudo -n pacman -Sy --print --print-format '%r/%n %v' 2>/dev/null || pacman -Sy --print 2>/dev/null ) | tail -6
+    log "Pending package updates (checkupdates, if installed)"
+    if command -v checkupdates >/dev/null; then
+        checkupdates 2>/dev/null | head -30
+        c=$(checkupdates 2>/dev/null | wc -l)
+        echo "  → $c packages have newer versions"
+    else
+        echo "  install 'pacman-contrib' for a proper 'checkupdates' report"
+    fi
+    log "AIOS repo (~/aios)"
+    if [ -d "$HOME/aios/.git" ]; then
+        ( cd "$HOME/aios" && git fetch --quiet 2>/dev/null || true; \
+          git -C "$HOME/aios" log HEAD..@{u} --oneline 2>/dev/null | head -10 )
+    fi
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+log "System packages (pacman -Syu)"
+if command -v sudo >/dev/null; then
+    sudo pacman -Syu --noconfirm 2>&1 | tail -25
+else
+    pacman -Syu --noconfirm 2>&1 | tail -25
+fi
+SYS_RC=${PIPESTATUS[0]}
+
+# ---------------------------------------------------------------------------
+log "AUR (yay) if present"
+if command -v yay >/dev/null; then
+    yay -Syu --noconfirm --aur 2>&1 | tail -10
+fi
+
+# ---------------------------------------------------------------------------
+log "AIOS backend"
+if [ -d "$HOME/aios/.git" ]; then
+    ( cd "$HOME/aios" && git fetch --quiet 2>/dev/null && \
+      git status -sb | head -2 && \
+      if git log HEAD..@{u} --oneline 2>/dev/null | grep -q .; then
+          echo "  updates available:"
+          git log HEAD..@{u} --oneline | head -10 | sed 's/^/    /'
+          echo "  run 'cd ~/aios && git pull' to apply"
+      else
+          echo "  up to date"
+      fi
+    )
+fi
+
+# ---------------------------------------------------------------------------
+log "AIOS venv packages"
+if [ -x "$HOME/aios/.venv/bin/pip" ]; then
+    "$HOME/aios/.venv/bin/pip" install --upgrade --quiet pip 2>&1 | tail -3
+    if [ -f /usr/local/share/aios/aios-requirements.txt ]; then
+        "$HOME/aios/.venv/bin/pip" install --upgrade --quiet -r /usr/local/share/aios/aios-requirements.txt 2>&1 | tail -3
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+log "Restarting AIOS backend"
+if systemctl --user is-active aios.service >/dev/null 2>&1; then
+    systemctl --user restart aios.service && echo "  restarted"
+else
+    echo "  aios.service not enabled — start via 'systemctl --user enable --now aios.service'"
+fi
+
+# ---------------------------------------------------------------------------
+log "Reloading Hyprland (if running)"
+if pgrep -x Hyprland >/dev/null; then
+    hyprctl reload 2>&1 | head -1
+fi
+
+# ---------------------------------------------------------------------------
+if [ "$SYS_RC" -eq 0 ]; then
+    notify "System up to date."
+    echo -e "\n\033[1;32mDone.\033[0m"
+else
+    notify "Update ran with warnings — see terminal."
+    echo -e "\n\033[1;33mDone with warnings (pacman rc=$SYS_RC).\033[0m"
+fi

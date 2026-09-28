@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Praxis first-login wizard. Fires from ~/.bash_profile if ~/.praxis-onboarded
+# doesn't exist. Uses whiptail (already in the ISO); keyboard-only.
+set -uo pipefail
+
+MARK="$HOME/.praxis-onboarded"
+[ -e "$MARK" ] && exit 0
+
+if ! command -v whiptail >/dev/null; then
+    echo "Praxis: whiptail not present; skipping onboarding."
+    touch "$MARK"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+whiptail --title "Welcome to Praxis" --msgbox \
+"Praxis Linux — unofficial, based on Arch, powered by AIOS.
+
+This quick wizard sets up:
+  • Wi-Fi / network
+  • Timezone
+  • Local AI (VRAM budget)
+  • Optional model download
+
+Cancel at any point to skip that step." 16 68
+
+# ---------------------------------------------------------------------------
+# 1. Network
+if whiptail --title "Wi-Fi" --yesno "Connect to a Wi-Fi network now?" 8 60; then
+    if command -v nmtui >/dev/null; then
+        clear; nmtui connect
+    else
+        whiptail --msgbox "NetworkManager not installed; skipping." 8 50
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Timezone
+if whiptail --title "Timezone" --yesno \
+    "Current timezone: $(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)\n\nChange it?" 10 60; then
+    TZ=$(whiptail --title "Timezone" --inputbox \
+        "Enter a timezone (e.g. Asia/Kolkata, Europe/Berlin, America/New_York, UTC):" \
+        10 68 "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)" 3>&1 1>&2 2>&3) || TZ=""
+    if [ -n "$TZ" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
+        sudo timedatectl set-timezone "$TZ" && \
+            whiptail --msgbox "Timezone set to $TZ." 8 50
+    elif [ -n "$TZ" ]; then
+        whiptail --msgbox "Unknown timezone '$TZ' — leaving as-is." 8 50
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. AIOS VRAM budget
+AENV="$HOME/aios/config/aios.env"
+if [ -f "$AENV" ]; then
+    # Detect NVIDIA VRAM if available
+    VRAM_MIB=0
+    if command -v nvidia-smi >/dev/null; then
+        VRAM_MIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+        VRAM_MIB=${VRAM_MIB:-0}
+    fi
+    VRAM_GIB=$((VRAM_MIB / 1024))
+
+    # Recommend NGL layer counts by VRAM
+    if   [ "$VRAM_GIB" -ge 16 ]; then REC_VL=40; REC_DPH=40
+    elif [ "$VRAM_GIB" -ge 8  ]; then REC_VL=28; REC_DPH=28
+    elif [ "$VRAM_GIB" -ge 6  ]; then REC_VL=16; REC_DPH=24
+    elif [ "$VRAM_GIB" -ge 4  ]; then REC_VL=8;  REC_DPH=12
+    else                              REC_VL=0;  REC_DPH=0; fi
+
+    MSG="Detected GPU VRAM: ${VRAM_GIB} GiB
+Recommended GPU-offload layers:
+  Vision (Qwen3-VL): $REC_VL
+  Text  (Dolphin V2): $REC_DPH
+
+Apply recommended settings?"
+    if whiptail --title "AIOS GPU offload" --yesno "$MSG" 14 60; then
+        sed -i \
+            -e "s/^AIOS_VL_NGL=.*/AIOS_VL_NGL=$REC_VL/" \
+            -e "s/^AIOS_DOLPHIN_NGL=.*/AIOS_DOLPHIN_NGL=$REC_DPH/" \
+            "$AENV"
+        whiptail --msgbox "Written to $AENV. Restart aios.service to apply." 8 60
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Optional model download
+if whiptail --title "AI models" --yesno \
+"Download a local model now?
+
+The default is CPU-only (no model needed to boot).
+For local inference, Qwen3-4B is a good starter on 6 GB VRAM (~2.4 GB download).
+
+You can always run 'aios-setup' later." 14 68; then
+    whiptail --msgbox \
+"Model downloads live outside this wizard for now.
+
+Run:  aios-setup
+
+That helper checks your VRAM, suggests models, and pulls them from
+Hugging Face into ~/aios/models/." 12 68
+fi
+
+# ---------------------------------------------------------------------------
+touch "$MARK"
+whiptail --title "Done" --msgbox \
+"Praxis is set up.
+
+Handy commands:
+  praxis-doctor    diagnostic report
+  praxis-update    system + AIOS update
+  aios-setup       AI backend / model management
+
+The desktop is starting now." 14 60
+
+clear

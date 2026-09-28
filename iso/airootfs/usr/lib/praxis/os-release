@@ -1,0 +1,12 @@
+NAME="Praxis"
+PRETTY_NAME="Praxis Linux (unofficial, based on Arch)"
+ID=praxis
+ID_LIKE=arch
+BUILD_ID=rolling
+VERSION_ID="2026.09"
+ANSI_COLOR="38;2;51;204;255"
+HOME_URL="https://github.com/MrMehulkhanna/praxis"
+DOCUMENTATION_URL="https://github.com/MrMehulkhanna/praxis"
+SUPPORT_URL="https://github.com/MrMehulkhanna/praxis/issues"
+BUG_REPORT_URL="https://github.com/MrMehulkhanna/praxis/issues"
+LOGO=praxis
