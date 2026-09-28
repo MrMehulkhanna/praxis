@@ -52,7 +52,7 @@ Singleton {
             property bool   ambientEnabled: true       // 3 drifting glow orbs on the background
             property bool   dockAllScreens: false
             property list<string> dockFavorites: [
-                "google-chrome", "kitty", "thunar", "aios"
+                "firefox", "kitty", "thunar"
             ]
             property string barStats: "auto"           // auto | on | off
             property string wallpaper: ""

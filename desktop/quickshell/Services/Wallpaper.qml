@@ -17,7 +17,17 @@ Singleton {
     Process {
         id: scan
         command: ["bash", "-c", `mkdir -p "${root.dir}"; find "${root.dir}" -maxdepth 1 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) | sort`]
-        stdout: StdioCollector { onStreamFinished: root.files = this.text.trim().split("\n").filter(f => f) }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.files = this.text.trim().split("\n").filter(f => f)
+                // Fresh account: no wallpaper chosen yet. Apply a default so
+                // hyprpaper.conf gets absolute paths instead of relying on the
+                // shipped template (which uses ~).
+                if (!Settings.wallpaper && root.files.length) {
+                    root.apply(root.files.find(f => f.endsWith("/deep-purple.png")) || root.files[0])
+                }
+            }
+        }
     }
 
     function apply(path) {

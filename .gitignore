@@ -53,5 +53,5 @@ notes/
 
 # ── machine-local utilities & runtime state ─────────────────────────────
 net/
-desktop/settings.json
-desktop/eyecomfort.json
+desktop/quickshell/settings.json
+desktop/quickshell/eyecomfort.json
