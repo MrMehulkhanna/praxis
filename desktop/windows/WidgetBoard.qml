@@ -11,8 +11,8 @@ import "root:/components"
 // Full-screen widget board — iOS StandBy-style tiles laid out in a grid.
 // Bound to Shell.overlay === "widgets" (SUPER+B in Hyprland).
 // Tiles: BIG clock, calendar (month view with today highlighted), battery
-// with %, CPU/RAM/GPU meters, disk, active MPRIS media player, and a
-// weather placeholder that tries wttr.in via Quickshell.Io.
+// with 1-hour spark line, CPU/RAM/GPU meters, disk, active MPRIS media
+// player, network status, uptime, and weather from wttr.in.
 OverlayWindow {
     id: win
     name: "widgets"
