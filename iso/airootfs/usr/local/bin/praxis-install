@@ -200,33 +200,12 @@ mkdir -p /mnt/boot/efi
 mount "$ESP" /mnt/boot/efi
 
 # ---------------------------------------------------------------------------
-BASE_PKGS=(
-    base base-devel linux linux-firmware sudo
-    networkmanager openssh
-    pipewire pipewire-alsa pipewire-jack pipewire-pulse wireplumber
-    hyprland quickshell waybar swaync hypridle hyprlock hyprpaper uwsm
-    xdg-desktop-portal-hyprland xdg-utils qt5-wayland qt6-wayland polkit-gnome
-    kitty thunar rofi grim slurp wl-clipboard brightnessctl
-    firefox
-    python python-pip python-virtualenv git vim nano htop
-    noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd ttf-nerd-fonts-symbols-mono
-    mkinitcpio grub efibootmgr os-prober ntfs-3g
-    llama-cpp ggml-vulkan
-    libnewt
-)
+# the same desktop the live session runs, plus base system and this machine's drivers
+praxis_enable_local_repo
+mapfile -t BASE_PKGS < <(praxis_packages)
+[ "${#BASE_PKGS[@]}" -gt 30 ] || die "the Praxis package list is missing from this ISO"
 [ -n "$UCODE" ] && BASE_PKGS+=("$UCODE")
 BASE_PKGS+=("${GPU[@]}")
-
-LOCAL_REPO=/opt/praxis-repo
-if [ -d "$LOCAL_REPO" ]; then
-    grep -q '^\[praxis\]' /etc/pacman.conf || cat >>/etc/pacman.conf <<EOF
-
-[praxis]
-SigLevel = Optional TrustAll
-Server = file://$LOCAL_REPO
-EOF
-    BASE_PKGS+=(piper-tts-bin yay-bin mpvpaper)   # from the bundled [praxis] repo
-fi
 
 log "Installing base + Praxis desktop (pacstrap)"
 pacstrap -K /mnt "${BASE_PKGS[@]}"
@@ -290,6 +269,7 @@ ExecStart=-/usr/bin/agetty --autologin $USER_NAME --noclear %I 38400 linux
 AL
 
 systemctl enable NetworkManager
+systemctl enable bluetooth power-profiles-daemon 2>/dev/null || true
 systemctl enable systemd-timesyncd 2>/dev/null || true
 
 # GRUB — writes ONLY into /EFI/Praxis on the ESP; other OSes' entries stay.

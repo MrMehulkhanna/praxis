@@ -32,6 +32,15 @@ AUR_PKGS=(piper-tts-bin yay-bin mpvpaper)
 GITHUB_ASSET_LIMIT=$((2 * 1024 * 1024 * 1024))
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+# Delete a build tree as root without ever crossing into another filesystem:
+# an interrupted mkarchiso can leave /proc, /sys or /dev bind-mounted inside it.
+wipe() {
+    local d=$1 m
+    [ -e "$d" ] || return 0
+    while read -r m; do sudo umount -l "$m" 2>/dev/null || true; done \
+        < <(findmnt -rn -o TARGET | awk -v d="$d/" 'index($0, d) == 1' | sort -r)
+    sudo rm -rf --one-file-system -- "$d"
+}
 die() { printf '\n\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ -f /etc/arch-release ] || die "the ISO must be built on Arch Linux (archiso)"
@@ -68,7 +77,7 @@ repo-add -q "$AURREPO/praxis.db.tar.gz" "$AURREPO"/*.pkg.tar.zst
 
 # ----------------------------------------------------------------------------
 log "3/8  archiso profile (from releng)"
-sudo rm -rf "$PROFILE"              # previous mkarchiso runs leave root-owned files
+wipe "$PROFILE"                     # previous mkarchiso runs leave root-owned files
 cp -r /usr/share/archiso/configs/releng "$PROFILE"
 sed -i \
     -e 's/^iso_name=.*/iso_name="praxis"/' \
@@ -78,9 +87,38 @@ sed -i \
     "$PROFILE/profiledef.sh"
 
 # ----------------------------------------------------------------------------
-log "4/8  packages"
+log "4/8  packages + live services"
 grep -vE '^\s*(#|$)' "$ISO_DIR/packages.x86_64" >> "$PROFILE/packages.x86_64"
-sort -u -o "$PROFILE/packages.x86_64" "$PROFILE/packages.x86_64"
+# releng is a rescue disc; this image is for trying the desktop and installing
+# it. Drop the rescue / VPN / remote-admin extras (~0.3 GB) and their units.
+RELENG_DROP=(archinstall bcachefs-tools bind clonezilla cloud-init darkhttpd ddrescue dmraid dnsmasq
+             edk2-shell fatresize fsarchiver gpart gpm grml-zsh-config irssi jfsutils ldns lftp linux-atm
+             lsscsi lynx mc mmc-utils modemmanager nbd ndisc6 nfs-utils nilfs-utils nmap open-iscsi
+             open-vm-tools openconnect openpgp-card-tools openvpn partclone partimage pcsclite ppp
+             pptpclient refind rxvt-unicode-terminfo screen sdparm sequoia-sq sg3_utils tcpdump testdisk
+             tmux tpm2-tools udftools vim vpnc wvdial xl2tpd)
+grep -vxF -f <(printf '%s\n' "${RELENG_DROP[@]}") "$PROFILE/packages.x86_64" | sort -u > "$PROFILE/packages.new"
+mv "$PROFILE/packages.new" "$PROFILE/packages.x86_64"
+UNITS=$AIROOT/etc/systemd/system
+rm -rf "$UNITS/cloud-init.target.wants"
+rm -f "$UNITS/dbus-org.freedesktop.ModemManager1.service" "$UNITS/multi-user.target.wants/ModemManager.service" \
+      "$UNITS/multi-user.target.wants/vmtoolsd.service" "$UNITS/multi-user.target.wants/vmware-vmblock-fuse.service" \
+      "$UNITS/sockets.target.wants/pcscd.socket"
+# NetworkManager owns the network — the shell's Wi-Fi panel and the installer's
+# nmtui both talk to it. releng's iwd + systemd-networkd would fight it for the
+# Wi-Fi card, so they go; Bluetooth comes on for the shell's Bluetooth panel.
+rm -f "$UNITS/multi-user.target.wants/iwd.service" "$UNITS/multi-user.target.wants/systemd-networkd.service" \
+      "$UNITS/sockets.target.wants/systemd-networkd.socket" "$UNITS/dbus-org.freedesktop.network1.service" \
+      "$UNITS/network-online.target.wants/systemd-networkd-wait-online.service"
+rm -rf "$AIROOT/etc/systemd/network"
+install -d "$UNITS/multi-user.target.wants" "$UNITS/bluetooth.target.wants"
+ln -sf /usr/lib/systemd/system/NetworkManager.service "$UNITS/multi-user.target.wants/NetworkManager.service"
+ln -sf /usr/lib/systemd/system/NetworkManager-dispatcher.service "$UNITS/dbus-org.freedesktop.nm-dispatcher.service"
+ln -sf /usr/lib/systemd/system/bluetooth.service "$UNITS/bluetooth.target.wants/bluetooth.service"
+ln -sf /usr/lib/systemd/system/bluetooth.service "$UNITS/dbus-org.bluez.service"
+# The live account has a published password and passwordless sudo: never
+# accept it over the network. (iso/airootfs also blocks password SSH for it.)
+rm -f "$UNITS/multi-user.target.wants/sshd.service"
 # Live image only: skip documentation and non-English translations (~0.5 GB).
 # Installed systems are pacstrapped with the stock pacman.conf and get both.
 sed -i '/^\[options\]/a NoExtract = usr/share/doc/* usr/share/gtk-doc/* usr/share/help/* usr/share/info/*\nNoExtract = usr/share/locale/* !usr/share/locale/en* !usr/share/locale/locale.alias' \
@@ -89,6 +127,9 @@ sed -i '/^\[options\]/a NoExtract = usr/share/doc/* usr/share/gtk-doc/* usr/shar
 # ----------------------------------------------------------------------------
 log "5/8  overlay (iso/airootfs)"
 cp -a "$ISO_DIR/airootfs/." "$AIROOT/"
+# the desktop half of packages.x86_64 — praxis-install puts exactly this on targets
+install -d "$AIROOT/usr/local/share/praxis"
+sed '/^# @live-only/,$d' "$ISO_DIR/packages.x86_64" | grep -vE '^\s*(#|$)' > "$AIROOT/usr/local/share/praxis/desktop-packages.txt"
 
 # ----------------------------------------------------------------------------
 log "6/8  desktop defaults → /etc/skel"
@@ -96,7 +137,7 @@ install -d "$SKEL/.config" "$SKEL/.local/share/wallpapers"
 rsync -a --exclude settings.json --exclude eyecomfort.json \
     "$REPO/desktop/quickshell/" "$SKEL/.config/quickshell/"
 for d in hypr swaync rofi; do rsync -a "$REPO/desktop/$d/" "$SKEL/.config/$d/"; done
-cp "$REPO"/desktop/wallpapers/* "$SKEL/.local/share/wallpapers/"
+cp -r "$REPO"/desktop/wallpapers/. "$SKEL/.local/share/wallpapers/"     # stills + live/ videos
 # The backend's user unit ships disabled; aios-setup enables it after the venv exists.
 install -Dm644 "$REPO/config/systemd/aios.service" "$SKEL/.config/systemd/user/aios.service"
 
@@ -121,7 +162,7 @@ log "8/8  permissions + mkarchiso"
 } >> "$PROFILE/profiledef.sh"
 bash -n "$PROFILE/profiledef.sh" || die "generated profiledef.sh is invalid"
 
-sudo rm -rf "$WORK"
+wipe "$WORK"
 sudo mkarchiso -v -w "$WORK" -o "$OUT" "$PROFILE"
 
 ISO=$(ls -t "$OUT"/praxis-*.iso | head -1)

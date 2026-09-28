@@ -1,11 +1,12 @@
-# Praxis live image — packages added on top of archiso's `releng` base
-# (which already provides linux, linux-firmware, microcode, grub, parted,
-# gptfdisk, dosfstools, arch-install-scripts, archinstall, iwd, openssh, …).
+# Praxis — the desktop package set, added on top of archiso's `releng` base
+# (linux, linux-firmware, microcode, parted, gptfdisk, iwd, openssh, …;
+# build.sh drops releng's rescue-only extras).
 #
-# Keep this list lean: it is what runs the live session and the installer.
-# The installed system is pacstrapped from the internet by praxis-install,
-# which also adds hardware-specific drivers (e.g. NVIDIA) for the target.
-# Blank lines and comments are stripped by build.sh.
+# Everything ABOVE the "@live-only" line is the Praxis desktop: the live
+# session runs it, and praxis-install installs exactly this set on the target
+# (plus the base system, build tools and the drivers for the target's own
+# GPU), so an installed system matches what you tried live.
+# One package per line; blank lines and comments are ignored.
 
 # ── desktop ──────────────────────────────────────────────────────────────
 hyprland
@@ -18,7 +19,6 @@ uwsm
 xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
 xdg-utils
-qt5-wayland
 qt6-wayland
 polkit-kde-agent
 
@@ -52,37 +52,35 @@ networkmanager
 bluez
 bluez-utils
 
-# ── graphics: open-source stack for the live session ────────────────────
+# ── power ────────────────────────────────────────────────────────────────
+power-profiles-daemon
+zram-generator
+
+# ── installer & dual-boot (os-prober finds Windows, ntfs-3g reads it) ────
+os-prober
+ntfs-3g
+libnewt
+
+# ── Praxis tools (praxis-top and the AIOS scripts need python) ───────────
+python
+jq
+wget
+htop
+nvtop
+smartmontools
+
+# ── fonts (the shell is drawn in Adwaita Sans / Adwaita Mono) ────────────
+adwaita-fonts
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono
+ttf-nerd-fonts-symbols-mono
+
+# @live-only ─ hardware coverage for the live session. praxis-install does not
+# copy these: it detects the target's real GPU and installs only its drivers.
 mesa
 vulkan-intel
 vulkan-radeon
 vulkan-nouveau
 intel-media-driver
 libva-intel-driver
-
-# ── power ────────────────────────────────────────────────────────────────
-power-profiles-daemon
-zram-generator
-
-# ── installer extras (dual-boot detection, NTFS, TUI dialogs) ───────────
-os-prober
-ntfs-3g
-libnewt
-
-# ── AIOS runtime & Praxis tools ──────────────────────────────────────────
-python-pip
-python-virtualenv
-git
-jq
-wget
-htop
-nvtop
-smartmontools
-tesseract
-tesseract-data-eng
-
-# ── fonts ────────────────────────────────────────────────────────────────
-noto-fonts
-noto-fonts-emoji
-ttf-jetbrains-mono-nerd
-ttf-nerd-fonts-symbols-mono

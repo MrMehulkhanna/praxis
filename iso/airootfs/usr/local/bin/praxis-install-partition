@@ -52,15 +52,11 @@ mkdir -p /mnt/boot/efi
 mount "$ESP" /mnt/boot/efi         # SHARED with Windows — no format
 
 log "pacstrap base + Praxis desktop (grub, not systemd-boot)"
-pacstrap -K /mnt base base-devel linux linux-firmware sudo networkmanager \
-  pipewire pipewire-alsa pipewire-pulse wireplumber \
-  hyprland quickshell waybar swaync hypridle hyprlock hyprpaper uwsm \
-  xdg-desktop-portal-hyprland xdg-utils qt5-wayland qt6-wayland polkit-gnome \
-  kitty thunar rofi grim slurp wl-clipboard brightnessctl firefox \
-  python python-pip git vim nano htop \
-  noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd \
-  mkinitcpio grub efibootmgr os-prober ntfs-3g llama-cpp ggml-vulkan \
-  ${UCODE:+$UCODE} "${GPU[@]}"
+praxis_enable_local_repo
+mapfile -t PKGS < <(praxis_packages)
+[ "${#PKGS[@]}" -gt 30 ] || die "the Praxis package list is missing from this ISO"
+[ -n "$UCODE" ] && PKGS+=("$UCODE")
+pacstrap -K /mnt "${PKGS[@]}" "${GPU[@]}"
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
@@ -97,6 +93,7 @@ ExecStart=-/usr/bin/agetty --autologin $USER_NAME --noclear %I 38400 linux
 AL
 
 systemctl enable NetworkManager
+systemctl enable bluetooth power-profiles-daemon 2>/dev/null || true
 systemctl enable systemd-timesyncd 2>/dev/null || true
 
 # GRUB into the Windows ESP — writes only into /EFI/Praxis, doesn't touch /EFI/Microsoft
