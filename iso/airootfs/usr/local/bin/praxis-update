@@ -23,7 +23,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "-n" ]; then
     log "AIOS repo (~/aios)"
     if [ -d "$HOME/aios/.git" ]; then
         ( cd "$HOME/aios" && git fetch --quiet 2>/dev/null || true; \
-          git -C "$HOME/aios" log HEAD..@{u} --oneline 2>/dev/null | head -10 )
+          git -C "$HOME/aios" log 'HEAD..@{u}' --oneline 2>/dev/null | head -10 )
     fi
     exit 0
 fi
@@ -48,9 +48,9 @@ log "AIOS backend"
 if [ -d "$HOME/aios/.git" ]; then
     ( cd "$HOME/aios" && git fetch --quiet 2>/dev/null && \
       git status -sb | head -2 && \
-      if git log HEAD..@{u} --oneline 2>/dev/null | grep -q .; then
+      if git log 'HEAD..@{u}' --oneline 2>/dev/null | grep -q .; then
           echo "  updates available:"
-          git log HEAD..@{u} --oneline | head -10 | sed 's/^/    /'
+          git log 'HEAD..@{u}' --oneline | head -10 | sed 's/^/    /'
           echo "  run 'cd ~/aios && git pull' to apply"
       else
           echo "  up to date"

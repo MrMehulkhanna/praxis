@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: |
+          pip install pytest
+          python -m pytest tests/ -q
+      - name: Dependencies resolve
+        run: pip install --dry-run -r requirements.txt
+
+  iso:
+    name: ISO tree & scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck desktop-file-utils
+      - name: shellcheck
+        run: |
+          shellcheck -S warning -x iso/*.sh iso/airootfs/usr/local/lib/praxis/*.sh tests/iso_checks.sh
+          grep -lE '^#!.*bash' iso/airootfs/usr/local/bin/* | xargs -d '\n' shellcheck -S warning -x
+      - name: ISO checks (hardware detection, installer guards, live session, branding)
+        run: bash tests/iso_checks.sh

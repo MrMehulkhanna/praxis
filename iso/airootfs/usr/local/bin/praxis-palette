@@ -21,8 +21,8 @@ if ! command -v rofi >/dev/null; then
 fi
 
 # Pre-populate with app names + recent files for quick fuzzy-select.
-apps=$(find /usr/share/applications ~/.local/share/applications -maxdepth 2 -name '*.desktop' 2>/dev/null \
-        | xargs -r -I{} sh -c 'awk -F= "/^Name=/{print \$2; exit}" "{}"' | sort -u)
+apps=$(find /usr/share/applications ~/.local/share/applications -maxdepth 2 -name '*.desktop' \
+        -exec awk -F= '/^Name=/{print $2; nextfile}' {} + 2>/dev/null | sort -u)
 recent=$(find ~/Documents ~/Downloads ~/Desktop -maxdepth 3 -type f -mtime -14 -printf '%p\n' 2>/dev/null | head -50)
 menu=$(printf '%s\n%s' "$apps" "$recent")
 

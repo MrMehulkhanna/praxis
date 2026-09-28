@@ -14,7 +14,7 @@ section() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 section "shell syntax"
 while IFS= read -r f; do
     check "bash -n ${f#"$REPO"/}" bash -n "$f"
-done < <(find "$REPO/iso" -type f \( -name '*.sh' -o -perm -u+x \) ! -name '*.py' | xargs grep -lE '^#!.*(ba)?sh' ; find "$AIRO/usr/local/lib" -name '*.sh')
+done < <(find "$REPO/iso" -type f \( -name '*.sh' -o -perm -u+x \) -exec grep -lE '^#!.*(ba)?sh' {} + ; find "$AIRO/usr/local/lib" -name '*.sh')
 while IFS= read -r f; do
     check "python syntax ${f#"$REPO"/}" python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"
 done < <(grep -lE '^#!.*python' "$AIRO"/usr/local/bin/* 2>/dev/null)
