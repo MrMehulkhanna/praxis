@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS runs (
   out_tok          INTEGER DEFAULT 0,
   cost_est         REAL DEFAULT 0.0,
   ms               INTEGER,
-  status           TEXT,       -- ok | error | denied | timeout
+  status           TEXT,       -- ok | error | denied | timeout | cancelled
   error            TEXT,
   created_at       REAL NOT NULL
 );

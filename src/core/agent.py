@@ -129,6 +129,9 @@ async def run(question: str, adapter, model: str, mode: str, reason: str, conver
     status, err = "ok", None
 
     for rnd in range(MAX_ROUNDS):
+        if activity.stopped(jid):
+            status = "cancelled"
+            break
         activity.emit(jid, "generate", f"round {rnd + 1} · {model}")
         yield f"event: step\ndata: {json.dumps({'stage': 'generate', 'msg': f'{model} is answering'})}\n\n"
         greq = GReq(system=SYSTEM + ("\n\n" + engine.render_system(pkg, model).split("<retrieved_context>")[-1] if pkg["retrieved"] else ""),
@@ -136,9 +139,14 @@ async def run(question: str, adapter, model: str, mode: str, reason: str, conver
                     images=(images or []) if rnd == 0 else [])
         buf = []
         try:
-            async for tok in adapter.run(greq):
+            async for tok in activity.guard(jid, adapter.run(greq)):
                 buf.append(tok)
                 yield f"data: {json.dumps(tok)}\n\n"
+        except activity.Cancelled:
+            status = "cancelled"
+            full_answer.append("".join(buf))
+            yield f"data: {json.dumps(chr(10) * 2 + '⏹ stopped')}\n\n"
+            break
         except Exception as e:
             status, err = "error", str(e)
             activity.emit(jid, "error", str(e))

@@ -250,7 +250,7 @@ async def tool_propose(req: ToolRequest):
     t0 = time.time()
     try:
         activity.emit(jid, "generate", f"turning request into a command ({model})")
-        result = await tools.propose(req.request, LOCAL, model, policy.classify)
+        result = await tools.propose(req.request, LOCAL, model, policy.classify, jid=jid)
         stage = {"auto": "executed", "confirm": "approval", "forbidden": "refused", "noop": "result"}.get(result["tier"], "result")
         activity.emit(jid, stage, result.get("cmd") or result.get("reason", ""))
         activity.end_job(jid, ok=result["tier"] != "forbidden", msg=result.get("output", "")[:120] or result["tier"])
@@ -271,6 +271,14 @@ async def tool_exec(t: ToolToken):
     r = await tools.execute(t.token)
     activity.emit(None, "executed" if r.get("executed") else "error", r.get("cmd") or r.get("output", ""))
     return r
+
+@app.post("/api/jobs/{jid}/cancel")
+async def job_cancel(jid: str):
+    """Stop a running generation (Activity panel ✕, AI panel stop button).
+    async on purpose: the stop signal is an asyncio.Event on this loop."""
+    if not activity.cancel_job(jid):
+        raise HTTPException(404, "no such running job")
+    return {"cancelled": jid}
 
 @app.post("/api/tool/cancel")
 def tool_cancel(t: ToolToken):
@@ -332,9 +340,12 @@ async def chat(req: ChatRequest):
         activity.emit(jid, "generate", f"{model} is answering")
         parts, status_, err = [], "ok", ""
         try:
-            async for tok in adapter.run(greq):
+            async for tok in activity.guard(jid, adapter.run(greq)):
                 parts.append(tok)
                 yield f"data: {json.dumps(tok)}\n\n"
+        except activity.Cancelled:
+            status_ = "cancelled"
+            yield f"data: {json.dumps(chr(10) * 2 + '⏹ stopped')}\n\n"
         except Exception as e:
             status_, err = "error", str(e)
             yield f"event: error\ndata: {json.dumps(err)}\n\n"
@@ -464,7 +475,7 @@ async def oai_chat(req: OAIRequest):
             out, status_, err = [], "ok", None
             activity.emit(jid, "generate", f"{model} · IDE")
             try:
-                async for tok in adapter.run(greq):
+                async for tok in activity.guard(jid, adapter.run(greq)):
                     out.append(tok)
                     chunk = {"id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
                              "choices": [{"index": 0, "delta": {"content": tok}, "finish_reason": None}]}
@@ -485,7 +496,7 @@ async def oai_chat(req: OAIRequest):
     # non-streaming
     out = []
     try:
-        async for tok in adapter.run(greq):
+        async for tok in activity.guard(jid, adapter.run(greq)):
             out.append(tok)
     except Exception as e:
         activity.end_job(jid, ok=False, msg=str(e))
@@ -564,7 +575,7 @@ async def oai_responses(body: dict):
             out, err = [], None
             activity.emit(jid, "generate", f"{model} · Codex")
             try:
-                async for tok in adapter.run(greq):
+                async for tok in activity.guard(jid, adapter.run(greq)):
                     out.append(tok)
                     yield ev("response.output_text.delta", {"item_id": "msg_0", "output_index": 0, "content_index": 0, "delta": tok})
             except Exception as e:
@@ -587,7 +598,7 @@ async def oai_responses(body: dict):
 
     out = []
     try:
-        async for tok in adapter.run(greq):
+        async for tok in activity.guard(jid, adapter.run(greq)):
             out.append(tok)
     except Exception as e:
         activity.end_job(jid, ok=False, msg=str(e)); raise HTTPException(502, str(e))

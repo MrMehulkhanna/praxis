@@ -63,7 +63,7 @@ def _sweep():
     for k in [k for k, v in _pending.items() if v["expires_at"] < now]:
         _pending.pop(k, None)
 
-async def propose(request: str, adapter, model: str, classify) -> dict:
+async def propose(request: str, adapter, model: str, classify, jid: str | None = None) -> dict:
     from core.gateway.iface import Request as GReq
     greq = GReq(
         system="You are a precise Linux command generator.",
@@ -71,7 +71,9 @@ async def propose(request: str, adapter, model: str, classify) -> dict:
         model=model, max_tokens=120, temperature=0.1,
     )
     parts = []
-    async for tok in adapter.run(greq):
+    from core import activity
+    tokens = adapter.run(greq)
+    async for tok in (activity.guard(jid, tokens) if jid else tokens):
         parts.append(tok)
     cmd = _strip_fences("".join(parts))
     if not cmd or cmd.upper() == "NOOP":
