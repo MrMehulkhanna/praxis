@@ -142,7 +142,7 @@ PanelWindow {
                         { icon: "memory", v: Sys.mem, txt: Sys.memUsedGb.toFixed(1) + "G" },
                         { icon: "gpu", v: Sys.gpu, txt: Sys.vramUsedGb.toFixed(1) + "G" },
                         // net: heat 0..100 mapped from combined B/s vs ~10 MB/s ceiling
-                        { icon: "activity", v: Math.min(100, (Sys.netDown + Sys.netUp) / 1e5),
+                        { icon: "pulse", v: Math.min(100, (Sys.netDown + Sys.netUp) / 1e5),
                           txt: stats.fmtBps(Sys.netDown + Sys.netUp) },
                         { icon: "sun", v: Sys.cpuTempC, txt: Sys.cpuTempC + "°" },
                     ]

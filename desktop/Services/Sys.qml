@@ -41,7 +41,12 @@ Singleton {
             "head -1 /proc/stat; " +
             "grep -E '^(MemTotal|MemAvailable)' /proc/meminfo; " +
             "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null || echo 'GPU_NA'; " +
-            "cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1; " +
+            // CPU package temperature: Intel x86_pkg_temp zone, else the
+            // coretemp/k10temp/zenpower hwmon, else the hottest zone. (A plain
+            // max over all zones mixes in Wi-Fi/ACPI/NVMe sensors.)
+            "t=''; for z in /sys/class/thermal/thermal_zone*; do [ \"$(cat $z/type 2>/dev/null)\" = x86_pkg_temp ] && t=$(cat $z/temp) && break; done; " +
+            "[ -z \"$t\" ] && for h in /sys/class/hwmon/hwmon*; do case $(cat $h/name 2>/dev/null) in coretemp|k10temp|zenpower) t=$(cat $h/temp1_input 2>/dev/null); break;; esac; done; " +
+            "[ -z \"$t\" ] && t=$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1); echo \"${t:-0}\"; " +
             "awk 'NR>2 && $1!=\"lo:\" {rx+=$2; tx+=$10} END {print \"NET\", rx, tx}' /proc/net/dev; " +
             // total across all real ext4/btrfs/xfs mounts (skip tmpfs/overlay)
             "df -k --output=fstype,size,used --local 2>/dev/null | " +

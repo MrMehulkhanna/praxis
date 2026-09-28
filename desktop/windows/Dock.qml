@@ -20,19 +20,27 @@ PanelWindow {
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
     readonly property bool fullscreenHere: hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen
-    // Debounced hidden — an internal `_want` re-evaluates instantly but the
-    // exposed `hidden` only follows after a 350 ms grace period, which stops
-    // rapid on/off flicker if the mouse skims the hover zone or a workspace
-    // transition briefly reports fullscreen.
-    readonly property bool _want:
+    // Asymmetric debounce: the dock REVEALS instantly but only HIDES after the
+    // hide condition has held for 350 ms. The old instant toggle flapped
+    // (visible as "vibration") whenever the pointer skimmed the hover zone or
+    // a workspace transition briefly reported fullscreen.
+    readonly property bool wantHidden:
         (Settings.dockAutoHide && !hoverZone.containsMouse && !dockMa.containsMouse)
         || (fullscreenHere && Settings.dockHideOnFullscreen)
     property bool hidden: false
-    onWantChanged: hideDebounce.restart()
+    onWantHiddenChanged: {
+        if (wantHidden) {
+            hideDebounce.restart()
+        } else {
+            hideDebounce.stop()
+            hidden = false
+        }
+    }
+    Component.onCompleted: hidden = wantHidden
     Timer {
         id: hideDebounce
         interval: 350
-        onTriggered: dock.hidden = dock._want
+        onTriggered: dock.hidden = dock.wantHidden
     }
     readonly property int  iconSize: Theme.dockIcon
     readonly property int  padding: 8

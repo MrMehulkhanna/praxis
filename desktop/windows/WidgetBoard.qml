@@ -2,122 +2,185 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
-import Quickshell.Services.UPower
 import Quickshell.Services.Mpris
 import "root:/Config"
 import "root:/Services"
 import "root:/components"
 
-// Full-screen widget board — iOS StandBy-style tiles laid out in a grid.
-// Bound to Shell.overlay === "widgets" (SUPER+B in Hyprland).
-// Tiles: BIG clock, calendar (month view with today highlighted), battery
-// with 1-hour spark line, CPU/RAM/GPU meters, disk, active MPRIS media
-// player, network status, uptime, and weather from wttr.in.
+// Widget board — a StandBy-style glance screen (SUPER+B).
+//
+//   ┌──────────── clock ────────────┐┌─────────── calendar ──────────┐
+//   ├─ battery ─┬─ system ─┬─ disk ─┬─ weather ─┤
+//   ├──────────── media ────────────┼─ network ─┬─ uptime ─┤
+//
+// Every tile reads from a singleton service (Sys, Battery, Weather, Net) or
+// from this window's own properties, referenced by id. Services only poll
+// while the board is open (refcounted via onOpened / onOpenChanged).
 OverlayWindow {
     id: win
     name: "widgets"
-    scrim: true
 
-    // pull Sys stats while open
-    Component.onCompleted: {}
-    onOpenedChanged: if (open) Sys.active++
-    Connections {
-        target: win
-        function onOpenChanged() { if (!win.open) Sys.active = Math.max(0, Sys.active - 1) }
+    onOpened: { Sys.active++; Weather.active++; uptimeProc.running = true }
+    onOpenChanged: if (!open) {
+        Sys.active = Math.max(0, Sys.active - 1)
+        Weather.active = Math.max(0, Weather.active - 1)
     }
 
-    SystemClock { id: sysClock; precision: SystemClock.Seconds }
+    readonly property int unit: 232
+    readonly property int gap: 16
+    readonly property int wide: unit * 2 + gap
+    readonly property int rowTall: 212
+    readonly property int rowStd: 176
 
-    // ── layout ─────────────────────────────────────────────────────────────
+    SystemClock { id: clock; precision: SystemClock.Seconds }
+
+    // ── uptime + kernel (cheap one-shot probe, refreshed while open) ────────
+    property string uptimeStr: ""
+    property string kernel: ""
+    Process {
+        id: uptimeProc
+        command: ["bash", "-c", "cut -d' ' -f1 /proc/uptime; uname -r"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const lines = this.text.trim().split("\n")
+                const s = parseFloat(lines[0] || "0")
+                const d = Math.floor(s / 86400)
+                const h = Math.floor((s % 86400) / 3600)
+                const m = Math.floor((s % 3600) / 60)
+                win.uptimeStr = d > 0 ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`
+                win.kernel = lines[1] || ""
+            }
+        }
+    }
+    Timer { interval: 30000; running: win.open; repeat: true; onTriggered: uptimeProc.running = true }
+
+    // ── active media player (prefer the one that is playing) ────────────────
+    readonly property var player: Mpris.players.values.length
+        ? (Mpris.players.values.find(p => p.isPlaying) || Mpris.players.values[0])
+        : null
+
+    function fmtRate(bps) {
+        if (bps < 1024) return Math.round(bps) + " B/s"
+        if (bps < 1048576) return (bps / 1024).toFixed(0) + " KB/s"
+        return (bps / 1048576).toFixed(1) + " MB/s"
+    }
+
+    // shared tile chrome
+    component Caption: Text {
+        color: Theme.muted
+        font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold
+        font.capitalization: Font.AllUppercase; font.letterSpacing: 0.8
+        anchors { top: parent.top; left: parent.left; topMargin: 14; leftMargin: 16 }
+    }
+
     GridLayout {
         anchors.centerIn: parent
         columns: 4
-        rowSpacing: 18
-        columnSpacing: 18
+        rowSpacing: win.gap
+        columnSpacing: win.gap
         opacity: win.open ? 1 : 0
-        scale: win.open ? 1 : 0.94
-        Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Theme.easePop } }
-        Behavior on scale   { NumberAnimation { duration: Theme.normal; easing.type: Theme.easePop } }
+        scale: win.open ? 1 : 0.96
+        Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+        Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Theme.easePop; easing.overshoot: Theme.popOvershoot } }
 
-        // ── 1. BIG CLOCK ────────────────────────────────────────────────
+        // ── 1 · clock ───────────────────────────────────────────────────────
         Glass {
-            Layout.preferredWidth: 380; Layout.preferredHeight: 220
             Layout.columnSpan: 2
+            Layout.preferredWidth: win.wide; Layout.preferredHeight: win.rowTall
             radius: Theme.radiusXl
             Column {
                 anchors.centerIn: parent
-                spacing: 4
+                spacing: 2
                 Text {
-                    text: Qt.formatDateTime(sysClock.date, Settings.clock24h ? "HH:mm" : "h:mm AP")
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Qt.formatDateTime(clock.date, Settings.clock24h ? "HH:mm" : "h:mm")
                     color: Theme.text
-                    font.family: Theme.font; font.pixelSize: 96; font.weight: Font.Bold
-                    horizontalAlignment: Text.AlignHCenter; anchors.horizontalCenter: parent.horizontalCenter
+                    font.family: Theme.font; font.pixelSize: 104; font.weight: Font.Bold
+                    font.features: { "tnum": 1 }
                 }
                 Text {
-                    text: Qt.formatDateTime(sysClock.date, "dddd, d MMMM")
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Qt.formatDateTime(clock.date, "dddd, d MMMM") + (Settings.clock24h ? "" : "  ·  " + Qt.formatDateTime(clock.date, "AP"))
                     color: Theme.text2
-                    font.family: Theme.font; font.pixelSize: Theme.fontMd
-                    horizontalAlignment: Text.AlignHCenter; anchors.horizontalCenter: parent.horizontalCenter
+                    font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.Medium
                 }
             }
         }
 
-        // ── 2. CALENDAR — current month with today highlighted ─────────
+        // ── 2 · calendar ────────────────────────────────────────────────────
         Glass {
-            Layout.preferredWidth: 380; Layout.preferredHeight: 220
+            id: calTile
             Layout.columnSpan: 2
+            Layout.preferredWidth: win.wide; Layout.preferredHeight: win.rowTall
             radius: Theme.radiusXl
-            Item {
-                anchors.fill: parent
-                anchors.margins: 14
-                property date today: sysClock.date
-                property int  y: today.getFullYear()
-                property int  m: today.getMonth()
-                property int  firstDow: new Date(y, m, 1).getDay()
-                property int  daysInMonth: new Date(y, m + 1, 0).getDate()
+            readonly property int year: clock.date.getFullYear()
+            readonly property int month: clock.date.getMonth()
+            readonly property int today: clock.date.getDate()
+            readonly property int firstDow: new Date(year, month, 1).getDay()
+            readonly property int daysInMonth: new Date(year, month + 1, 0).getDate()
+            readonly property int daysLeftInYear: {
+                const end = new Date(year, 11, 31)
+                return Math.round((end - new Date(year, month, today)) / 86400000)
+            }
 
-                Row {
-                    id: header
-                    spacing: 6
-                    anchors.top: parent.top
+            Row {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 18
+
+                // big day number
+                Column {
+                    width: 130
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 0
                     Text {
-                        text: Qt.formatDateTime(parent.parent.today, "MMMM yyyy")
-                        color: Theme.accent
-                        font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.Bold
+                        text: calTile.today
+                        color: Theme.red
+                        font.family: Theme.font; font.pixelSize: 72; font.weight: Font.Bold
+                    }
+                    Text {
+                        text: Qt.formatDateTime(clock.date, "MMMM")
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontLg; font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: calTile.daysLeftInYear + " days left this year"
+                        color: Theme.muted
+                        font.family: Theme.font; font.pixelSize: Theme.fontXs
                     }
                 }
+
+                // month grid
                 Grid {
-                    anchors.top: header.bottom; anchors.topMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
                     columns: 7
-                    columnSpacing: 4; rowSpacing: 3
-                    // day-of-week headers
+                    columnSpacing: 2
+                    rowSpacing: 1
                     Repeater {
-                        model: ["S","M","T","W","T","F","S"]
-                        Rectangle {
-                            width: 44; height: 18
-                            color: "transparent"
-                            Text { anchors.centerIn: parent; text: modelData; color: Theme.muted
-                                   font.family: Theme.fontMono; font.pixelSize: 10; font.weight: Font.Bold }
+                        model: ["S", "M", "T", "W", "T", "F", "S"]
+                        Text {
+                            width: 36; height: 18
+                            horizontalAlignment: Text.AlignHCenter
+                            text: modelData
+                            color: Theme.muted
+                            font.family: Theme.fontMono; font.pixelSize: 10; font.weight: Font.Bold
                         }
                     }
-                    // blank days before day 1
                     Repeater {
-                        model: parent.parent.firstDow
-                        Item { width: 44; height: 22 }
+                        model: calTile.firstDow
+                        Item { width: 36; height: 22 }
                     }
-                    // days
                     Repeater {
-                        model: parent.parent.daysInMonth
+                        model: calTile.daysInMonth
                         Rectangle {
-                            width: 44; height: 22
-                            radius: 6
-                            readonly property int day: index + 1
-                            readonly property bool isToday: day === (new Date()).getDate()
-                            color: isToday ? Theme.accent : "transparent"
+                            required property int index
+                            readonly property bool isToday: index + 1 === calTile.today
+                            width: 36; height: 22; radius: 11
+                            color: isToday ? Theme.red : "transparent"
                             Text {
                                 anchors.centerIn: parent
-                                text: day
-                                color: parent.isToday ? Theme.onAccent : Theme.text
+                                text: parent.index + 1
+                                color: parent.isToday ? "white" : Theme.text
                                 font.family: Theme.fontMono; font.pixelSize: 11
                                 font.weight: parent.isToday ? Font.Bold : Font.Normal
                             }
@@ -127,268 +190,302 @@ OverlayWindow {
             }
         }
 
-        // ── 3. BATTERY (with rolling spark line + ETA) ──────────────────
+        // ── 3 · battery (UPower ETA + 1-hour spark line) ────────────────────
         Glass {
-            Layout.preferredWidth: 220; Layout.preferredHeight: 180
+            Layout.preferredWidth: win.unit; Layout.preferredHeight: win.rowStd
             radius: Theme.radiusXl
-            visible: Battery.dev && Battery.dev.isLaptopBattery
+            Caption { text: "Battery" }
             Column {
-                anchors.centerIn: parent
-                spacing: 4
-                Text { text: "Battery"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text {
-                    text: Math.round(Battery.pct * 100) + "%"
-                    color: Theme.text
-                    font.family: Theme.font; font.pixelSize: 40; font.weight: Font.Bold
-                    anchors.horizontalCenter: parent.horizontalCenter
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
+                spacing: 6
+                Row {
+                    spacing: 8
+                    Text {
+                        text: Battery.present ? Math.round(Battery.pct * 100) + "%" : "AC"
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: 40; font.weight: Font.Bold
+                    }
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: Battery.charging ? "bolt" : "battery"
+                        level: Battery.pct; charging: Battery.charging
+                        size: 22
+                        color: Battery.charging ? Theme.green : Battery.pct < 0.2 ? Theme.red : Theme.text2
+                    }
                 }
-                // spark line — last hour of pct
                 Canvas {
-                    width: 180; height: 34
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    id: spark
+                    width: parent.width; height: 30
                     property var pts: Battery.series
                     onPtsChanged: requestPaint()
-                    onWidthChanged: requestPaint()
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.reset()
                         if (!pts || pts.length < 2) return
-                        const t0 = pts[0].t
-                        const tN = pts[pts.length - 1].t
-                        const span = Math.max(1, tN - t0)
-                        ctx.beginPath()
-                        for (let i = 0; i < pts.length; i++) {
-                            const x = ((pts[i].t - t0) / span) * width
-                            const y = height - pts[i].p * height * 0.9 - height * 0.05
-                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
-                        }
+                        const t0 = pts[0].t, span = Math.max(1, pts[pts.length - 1].t - t0)
+                        const X = p => (p.t - t0) / span * width
+                        const Y = p => height - 2 - p.p * (height - 4)
+                        const col = Battery.charging ? Theme.green : Battery.pct < 0.2 ? Theme.red : Theme.accent
+                        ctx.beginPath(); ctx.moveTo(X(pts[0]), Y(pts[0]))
+                        for (let i = 1; i < pts.length; i++) ctx.lineTo(X(pts[i]), Y(pts[i]))
+                        ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke()
                         ctx.lineTo(width, height); ctx.lineTo(0, height); ctx.closePath()
-                        // fill
-                        const grad = ctx.createLinearGradient(0, 0, 0, height)
-                        grad.addColorStop(0, Battery.charging ? Theme.green : Battery.pct < 0.2 ? Theme.red : Theme.accent)
-                        grad.addColorStop(1, "transparent")
-                        ctx.fillStyle = grad
-                        ctx.globalAlpha = 0.6
-                        ctx.fill()
-                        // line
-                        ctx.beginPath()
-                        for (let i = 0; i < pts.length; i++) {
-                            const x = ((pts[i].t - t0) / span) * width
-                            const y = height - pts[i].p * height * 0.9 - height * 0.05
-                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
-                        }
-                        ctx.strokeStyle = Battery.charging ? Theme.green : Battery.pct < 0.2 ? Theme.red : Theme.accent
-                        ctx.lineWidth = 1.5; ctx.globalAlpha = 1.0
-                        ctx.stroke()
+                        const g = ctx.createLinearGradient(0, 0, 0, height)
+                        g.addColorStop(0, Theme.alpha(col, 0.35)); g.addColorStop(1, Theme.alpha(col, 0.0))
+                        ctx.fillStyle = g; ctx.fill()
                     }
                 }
                 Text {
-                    text: Battery.eta || (Battery.charging ? "charging" : "on battery")
-                       + (Battery.rateW > 0 ? "  ·  " + Battery.rateW.toFixed(1) + " W" : "")
-                    color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: (Battery.eta || (Battery.charging ? "charging" : Battery.present ? "on battery" : "plugged in"))
+                          + (Battery.rateW > 0.1 ? "  ·  " + Battery.rateW.toFixed(1) + " W" : "")
+                    color: Theme.muted
+                    font.family: Theme.font; font.pixelSize: Theme.fontXs
                 }
             }
         }
 
-        // ── 4. SYSTEM METERS — CPU / RAM / GPU / TEMP ───────────────────
+        // ── 4 · system meters ───────────────────────────────────────────────
         Glass {
-            Layout.preferredWidth: 300; Layout.preferredHeight: 180
+            Layout.preferredWidth: win.unit; Layout.preferredHeight: win.rowStd
             radius: Theme.radiusXl
+            Caption { text: "System" }
             Column {
-                anchors.centerIn: parent
-                spacing: 10
-                width: 240
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
+                spacing: 9
                 Repeater {
                     model: [
-                        { label: "CPU",  v: Sys.cpu,  txt: Math.round(Sys.cpu) + "%",           col: Theme.accent },
-                        { label: "RAM",  v: Sys.mem,  txt: Sys.memUsedGb.toFixed(1) + "G",       col: Theme.green  },
-                        { label: "GPU",  v: Sys.gpu,  txt: Sys.vramUsedGb.toFixed(1) + "G",      col: Theme.purple },
+                        { label: "CPU",  v: Sys.cpu, txt: Math.round(Sys.cpu) + "%",           col: Theme.accent },
+                        { label: "RAM",  v: Sys.mem, txt: Sys.memUsedGb.toFixed(1) + "G",       col: Theme.green },
+                        { label: "GPU",  v: Sys.gpu, txt: Sys.vramUsedGb.toFixed(1) + "G",      col: Theme.purple },
                         { label: "TEMP", v: Math.min(100, Sys.cpuTempC), txt: Sys.cpuTempC + "°", col: Theme.yellow },
                     ]
                     Row {
-                        spacing: 10; width: parent.width
-                        Text { text: modelData.label; color: Theme.muted; width: 40
-                               font.family: Theme.fontMono; font.pixelSize: 10; font.weight: Font.Bold
-                               anchors.verticalCenter: parent.verticalCenter }
-                        Rectangle {
-                            width: 130; height: 6; radius: 3
-                            color: Theme.alpha(Theme.text, 0.08)
+                        required property var modelData
+                        width: parent.width
+                        spacing: 8
+                        Text {
+                            width: 34
                             anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.label
+                            color: Theme.muted
+                            font.family: Theme.fontMono; font.pixelSize: 10; font.weight: Font.Bold
+                        }
+                        Rectangle {
+                            width: parent.width - 34 - 44 - 16; height: 6; radius: 3
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Theme.alpha(Theme.text, 0.08)
                             Rectangle {
-                                width: parent.width * Math.min(1, modelData.v/100)
+                                width: parent.width * Math.max(0, Math.min(1, modelData.v / 100))
                                 height: parent.height; radius: parent.radius
                                 color: modelData.col
                                 Behavior on width { NumberAnimation { duration: 400 } }
                             }
                         }
-                        Text { text: modelData.txt; color: Theme.text; width: 44
-                               font.family: Theme.fontMono; font.pixelSize: 11
-                               anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            width: 44
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: Text.AlignRight
+                            text: modelData.txt
+                            color: Theme.text
+                            font.family: Theme.fontMono; font.pixelSize: 11
+                        }
                     }
                 }
             }
         }
 
-        // ── 5. DISK ─────────────────────────────────────────────────────
+        // ── 5 · disk ────────────────────────────────────────────────────────
         Glass {
-            Layout.preferredWidth: 240; Layout.preferredHeight: 180
+            Layout.preferredWidth: win.unit; Layout.preferredHeight: win.rowStd
             radius: Theme.radiusXl
-            property real usedPct: Sys.diskUsedPct || 0
-            property real totalGb: Sys.diskTotalGb || 0
-            property real usedGb: Sys.diskUsedGb || 0
-            Column {
-                anchors.centerIn: parent
-                spacing: 8
-                Row {
-                    spacing: 6
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    Icon { name: "storage"; size: 20; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "Disk"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.verticalCenter: parent.verticalCenter }
+            Caption { text: "Storage" }
+            Item {
+                anchors { fill: parent; topMargin: 34; margins: 16 }
+                // ring gauge
+                Canvas {
+                    id: ring
+                    width: 92; height: 92
+                    anchors.verticalCenter: parent.verticalCenter
+                    property real frac: Math.max(0, Math.min(1, Sys.diskUsedPct / 100))
+                    onFracChanged: requestPaint()
+                    onPaint: {
+                        const ctx = getContext("2d"); ctx.reset()
+                        const c = width / 2, r = c - 7
+                        ctx.lineWidth = 9; ctx.lineCap = "round"
+                        ctx.strokeStyle = Theme.alpha(Theme.text, 0.08)
+                        ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2); ctx.stroke()
+                        ctx.strokeStyle = frac > 0.9 ? Theme.red : frac > 0.75 ? Theme.yellow : Theme.accent
+                        ctx.beginPath(); ctx.arc(c, c, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke()
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        text: Math.round(Sys.diskUsedPct) + "%"
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.Bold
+                    }
                 }
-                Text {
-                    text: parent.parent.usedGb.toFixed(1) + " / " + parent.parent.totalGb.toFixed(0) + " G"
-                    color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontLg; font.weight: Font.Bold
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-                Text {
-                    text: Math.round(parent.parent.usedPct) + "% used"
-                    color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 11
-                    anchors.horizontalCenter: parent.horizontalCenter
+                Column {
+                    anchors { left: ring.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    spacing: 2
+                    Text {
+                        text: (Sys.diskTotalGb - Sys.diskUsedGb).toFixed(0) + " GB"
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontLg; font.weight: Font.Bold
+                    }
+                    Text {
+                        text: "free of " + Sys.diskTotalGb.toFixed(0) + " GB"
+                        color: Theme.muted
+                        font.family: Theme.font; font.pixelSize: Theme.fontXs
+                    }
                 }
             }
         }
 
-        // ── 6. MEDIA / MPRIS ────────────────────────────────────────────
+        // ── 6 · weather (wttr.in via Weather service) ───────────────────────
         Glass {
-            Layout.preferredWidth: 380; Layout.preferredHeight: 180
+            Layout.preferredWidth: win.unit; Layout.preferredHeight: win.rowStd
+            radius: Theme.radiusXl
+            Caption { text: Weather.place || "Weather" }
+            Column {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
+                spacing: 2
+                Row {
+                    spacing: 12
+                    Icon {
+                        name: Weather.icon
+                        size: 36
+                        color: Weather.icon === "sun" ? Theme.yellow : Weather.icon === "bolt" ? Theme.purple : Theme.text2
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: Weather.tempC || "—"
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: 40; font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                Text {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: Weather.cond || (Weather.lastFetch === 0 ? "fetching…" : "offline")
+                    color: Theme.text2
+                    font.family: Theme.font; font.pixelSize: Theme.fontSm
+                }
+            }
+        }
+
+        // ── 7 · media (MPRIS) ───────────────────────────────────────────────
+        Glass {
             Layout.columnSpan: 2
+            Layout.preferredWidth: win.wide; Layout.preferredHeight: win.rowStd
             radius: Theme.radiusXl
-            readonly property var player: Mpris.players.values.length
-                ? (Mpris.players.values.find(p => p.isPlaying) || Mpris.players.values[0]) : null
-            Column {
-                anchors.centerIn: parent
-                spacing: 8; width: 340
-                Text {
-                    text: parent.parent.player ? (parent.parent.player.trackTitle || "Untitled") : "Nothing playing"
-                    color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontLg; font.weight: Font.DemiBold
-                    elide: Text.ElideRight; width: parent.width; horizontalAlignment: Text.AlignHCenter
-                }
-                Text {
-                    text: parent.parent.player ? (parent.parent.player.trackArtist || parent.parent.player.identity || "") : ""
-                    color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontSm
-                    elide: Text.ElideRight; width: parent.width; horizontalAlignment: Text.AlignHCenter
-                }
-                Row {
-                    spacing: 24
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    // Optional-chain the click handlers so a player that vanishes
-                    // between the visible-check tick and a click can't throw.
-                    IconButton { icon: "prev"; iconSize: 22; visible: !!parent.parent.parent.player
-                                 onClicked: parent.parent.parent.player?.previous() }
-                    IconButton { icon: parent.parent.parent.player && parent.parent.parent.player.isPlaying ? "pause" : "play"
-                                 iconSize: 28; visible: !!parent.parent.parent.player
-                                 onClicked: parent.parent.parent.player?.togglePlaying() }
-                    IconButton { icon: "next"; iconSize: 22; visible: !!parent.parent.parent.player
-                                 onClicked: parent.parent.parent.player?.next() }
-                }
-            }
-        }
+            Caption { text: win.player ? (win.player.identity || "Now playing") : "Media" }
+            Row {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
+                spacing: 14
 
-        // ── 7b. NETWORK ─────────────────────────────────────────────────
-        Glass {
-            Layout.preferredWidth: 240; Layout.preferredHeight: 180
-            radius: Theme.radiusXl
-            Column {
-                anchors.centerIn: parent
-                spacing: 4
-                Text { text: "Network"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Icon { name: Net.icon || "wifi-off"; size: 34
-                       color: (Net.wired || Net.wifiConnected) ? Theme.accent : Theme.muted
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: Net.label || "no network"
-                       color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold
-                       elide: Text.ElideRight; width: 200
-                       horizontalAlignment: Text.AlignHCenter
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text {
-                    text: (Sys.netDown/1024).toFixed(0) + " ↓ / " + (Sys.netUp/1024).toFixed(0) + " ↑ KB/s"
-                    color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
-                    anchors.horizontalCenter: parent.horizontalCenter
+                Rectangle {
+                    width: 84; height: 84; radius: Theme.radiusMd
+                    color: Theme.alpha(Theme.text, 0.06)
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        source: win.player ? (win.player.trackArtUrl || "") : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        visible: status === Image.Ready
+                    }
+                    Icon {
+                        anchors.centerIn: parent
+                        visible: !win.player || !win.player.trackArtUrl
+                        name: "play"; size: 26; color: Theme.muted
+                    }
                 }
-            }
-        }
 
-        // ── 7c. UPTIME + KERNEL ─────────────────────────────────────────
-        Glass {
-            Layout.preferredWidth: 240; Layout.preferredHeight: 180
-            radius: Theme.radiusXl
-            property string uptimeStr: ""
-            property string kernel: ""
-            Timer {
-                interval: 30_000; running: win.open; repeat: true; triggeredOnStart: true
-                onTriggered: uptimeProc.running = true
-            }
-            Process {
-                id: uptimeProc
-                command: ["bash", "-c", "cat /proc/uptime | awk '{print $1}'; uname -r"]
-                stdout: StdioCollector {
-                    onStreamFinished: {
-                        const [ups, kern] = this.text.trim().split("\n")
-                        const s = parseFloat(ups || "0")
-                        const d = Math.floor(s / 86400)
-                        const h = Math.floor((s % 86400) / 3600)
-                        const m = Math.floor((s % 3600) / 60)
-                        parent.parent.uptimeStr = d ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`
-                        parent.parent.kernel = kern || ""
+                Column {
+                    width: parent.width - 84 - 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Text {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: win.player ? (win.player.trackTitle || "Untitled") : "Nothing playing"
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontLg; font.weight: Font.DemiBold
+                    }
+                    Text {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: win.player ? (win.player.trackArtist || "") : "Start something in any MPRIS player"
+                        color: Theme.muted
+                        font.family: Theme.font; font.pixelSize: Theme.fontSm
+                    }
+                    Row {
+                        spacing: 18
+                        visible: !!win.player
+                        IconButton { icon: "prev"; iconSize: 18; onClicked: win.player?.previous() }
+                        IconButton {
+                            icon: win.player && win.player.isPlaying ? "pause" : "play"
+                            iconSize: 22
+                            onClicked: win.player?.togglePlaying()
+                        }
+                        IconButton { icon: "next"; iconSize: 18; onClicked: win.player?.next() }
                     }
                 }
             }
+        }
+
+        // ── 8 · network ─────────────────────────────────────────────────────
+        Glass {
+            Layout.preferredWidth: win.unit; Layout.preferredHeight: win.rowStd
+            radius: Theme.radiusXl
+            Caption { text: "Network" }
             Column {
-                anchors.centerIn: parent
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
                 spacing: 4
-                Text { text: "Uptime"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: parent.parent.uptimeStr || "—"
-                       color: Theme.text; font.family: Theme.font; font.pixelSize: 30; font.weight: Font.Bold
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: "kernel " + parent.parent.kernel
-                       color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: Qt.formatDateTime(sysClock.date, "yyyy-MM-dd HH:mm")
-                       color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
-                       anchors.horizontalCenter: parent.horizontalCenter }
+                Icon {
+                    name: Net.icon || "wifi-off"
+                    size: 30
+                    color: (Net.wired || Net.wifiConnected) ? Theme.accent : Theme.muted
+                }
+                Text {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: Net.label || "Offline"
+                    color: Theme.text
+                    font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.DemiBold
+                }
+                Text {
+                    text: "↓ " + win.fmtRate(Sys.netDown) + "   ↑ " + win.fmtRate(Sys.netUp)
+                    color: Theme.muted
+                    font.family: Theme.fontMono; font.pixelSize: 10
+                }
             }
         }
 
-        // ── 7. WEATHER (via wttr.in — free, no key) ─────────────────────
+        // ── 9 · uptime ──────────────────────────────────────────────────────
         Glass {
-            Layout.preferredWidth: 240; Layout.preferredHeight: 180
+            Layout.preferredWidth: win.unit; Layout.preferredHeight: win.rowStd
             radius: Theme.radiusXl
-            Component.onCompleted: Weather.active++
-            Component.onDestruction: Weather.active = Math.max(0, Weather.active - 1)
+            Caption { text: "Uptime" }
             Column {
-                anchors.centerIn: parent
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
                 spacing: 4
-                Text { text: "Weather"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: Weather.emoji || "🌤"; font.pixelSize: 32
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: Weather.tempC || "—"; color: Theme.text
-                       font.family: Theme.font; font.pixelSize: 34; font.weight: Font.Bold
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: Weather.cond || (Weather.lastFetch === 0 ? "fetching…" : "offline")
-                       color: Theme.text2
-                       font.family: Theme.font; font.pixelSize: Theme.fontSm
-                       anchors.horizontalCenter: parent.horizontalCenter }
-                Text { text: Weather.place; color: Theme.muted; font.family: Theme.fontMono; font.pixelSize: 10
-                       anchors.horizontalCenter: parent.horizontalCenter }
+                Text {
+                    text: win.uptimeStr || "—"
+                    color: Theme.text
+                    font.family: Theme.font; font.pixelSize: 32; font.weight: Font.Bold
+                }
+                Text {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: win.kernel ? "Linux " + win.kernel : ""
+                    color: Theme.muted
+                    font.family: Theme.fontMono; font.pixelSize: 10
+                }
             }
         }
     }
-
-    // Keep tile refreshes reasonable — 5 s tick for the weather fetcher etc.
-    Timer { id: ticker; interval: 5000; running: win.open; repeat: true }
 }

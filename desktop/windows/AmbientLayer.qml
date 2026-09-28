@@ -1,16 +1,22 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
+import Quickshell.Services.UPower
 import "root:/Config"
 import "root:/Services"
 
-// Praxis Ambient — three drifting glow orbs behind everything.
-// Purely decorative, click-through, GPU-cheap.  Each orb picks up a
-// different system channel:
-//   1. hue drifts with time-of-day
-//   2. size pulses with CPU load
-//   3. brightness follows memory pressure
-// so the desktop feels alive but stays legible.
+// Ambient layer — three soft radial glows drifting slowly behind all windows.
+//
+//   hue      follows the time of day (cool at night, warm by evening)
+//   size     breathes with CPU load
+//   opacity  follows memory pressure
+//
+// Cost control: this surface sits under blurred windows, so every repaint
+// makes Hyprland re-blur them. The drift is therefore stepped at 8 fps (the
+// motion is ~6 px/s, so steps are sub-pixel), and it freezes entirely on
+// battery or while a fullscreen window covers this monitor.
 PanelWindow {
     id: root
     required property var modelData
@@ -18,72 +24,87 @@ PanelWindow {
 
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    exclusiveZone: 0
-    WlrLayershell.layer: WlrLayer.Background
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.layer: WlrLayer.Bottom          // above the wallpaper, below windows
     WlrLayershell.namespace: "praxis-ambient"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-    mask: Region { }   // input pass-through
+    mask: Region {}                                // fully click-through
 
-    // one Sys consumer while this is on screen
-    Component.onCompleted: Sys.active++
-    Component.onDestruction: Sys.active--
+    visible: Settings.ambientEnabled
 
-    // canvas
-    Item {
-        anchors.fill: parent
-        visible: Settings.ambientEnabled === undefined ? true : Settings.ambientEnabled
+    readonly property var hyprMon: Hyprland.monitorFor(screen)
+    readonly property bool coveredByFullscreen: !!(hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen)
+    readonly property bool animate: visible && !UPower.onBattery && !coveredByFullscreen
 
-        // Time-of-day hue: 0..360 across a 24h cycle (shifted so night is cool)
-        readonly property real todHue: {
-            const d = new Date()
-            const h = d.getHours() + d.getMinutes()/60
-            return (h / 24 * 360 + 200) % 360
-        }
-        readonly property real cpuLoad: Math.min(1, Sys.cpu / 100)
-        readonly property real memLoad: Math.min(1, Sys.mem / 100)
+    // shared drift phase, 0..1 over 60 s
+    property real phase: 0
+    Timer {
+        interval: 125
+        running: root.animate
+        repeat: true
+        onTriggered: root.phase = (root.phase + 0.125 / 60) % 1
+    }
 
-        // three orbs, each with a slow independent drift
-        Repeater {
-            model: [
-                { seed: 0.0,  baseX: 0.18, baseY: 0.28, r: 240, colH: 0   },
-                { seed: 0.33, baseX: 0.78, baseY: 0.35, r: 300, colH: 120 },
-                { seed: 0.66, baseX: 0.45, baseY: 0.80, r: 340, colH: 240 },
-            ]
-            Rectangle {
-                readonly property real drift: (root.driftT + modelData.seed) * 2 * Math.PI
-                x: parent.width  * (modelData.baseX + 0.09 * Math.cos(drift))       - width/2
-                y: parent.height * (modelData.baseY + 0.06 * Math.sin(drift * 1.3)) - height/2
-                width:  modelData.r * (0.85 + 0.35 * parent.cpuLoad)
-                height: width
-                radius: width / 2
-                opacity: 0.32 + 0.28 * parent.memLoad
-                // hue rotates with time of day around the orb's base offset
-                color: Qt.hsla(((parent.todHue + modelData.colH) % 360) / 360, 0.55, 0.55, 1.0)
-                // soft-glow: cheap blur emulation via layered opacity + scale
-                scale: 1.0
-                Rectangle {
-                    anchors.fill: parent; anchors.margins: -60
-                    radius: (parent.width + 120) / 2
-                    color: parent.color
-                    opacity: 0.35
+    // Hold a Sys stats reference only while animating. Idempotent, so it can't
+    // double-count no matter which of these handlers fires first.
+    property bool sysCounted: false
+    function syncSys() {
+        if (animate && !sysCounted) { Sys.active++; sysCounted = true }
+        else if (!animate && sysCounted) { Sys.active = Math.max(0, Sys.active - 1); sysCounted = false }
+    }
+    onAnimateChanged: syncSys()
+    Component.onCompleted: syncSys()
+    Component.onDestruction: if (sysCounted) Sys.active = Math.max(0, Sys.active - 1)
+
+    SystemClock { id: clock; precision: SystemClock.Minutes }
+    // 0..360; the +200 offset puts deep blues at midnight and warm hues at dusk
+    readonly property real dayHue: {
+        const d = clock.date
+        return ((d.getHours() + d.getMinutes() / 60) / 24 * 360 + 200) % 360
+    }
+    readonly property real cpuLoad: Math.min(1, Sys.cpu / 100)
+    readonly property real memLoad: Math.min(1, Sys.mem / 100)
+
+    Repeater {
+        model: [
+            { seed: 0.00, bx: 0.20, by: 0.30, r: 260, dh: 0 },
+            { seed: 0.33, bx: 0.78, by: 0.36, r: 320, dh: 110 },
+            { seed: 0.66, bx: 0.46, by: 0.78, r: 360, dh: 230 },
+        ]
+
+        Item {
+            id: orb
+            required property var modelData
+            readonly property real t: (root.phase + modelData.seed) * 2 * Math.PI
+            readonly property real radius: modelData.r * (0.9 + 0.25 * root.cpuLoad)
+            property real hue: (root.dayHue + modelData.dh) % 360
+            Behavior on hue { NumberAnimation { duration: 8000; easing.type: Easing.InOutSine } }
+
+            width: radius * 2
+            height: radius * 2
+            x: root.width  * (modelData.bx + 0.08 * Math.cos(t))       - radius
+            y: root.height * (modelData.by + 0.06 * Math.sin(t * 1.3)) - radius
+            opacity: 0.55 + 0.35 * root.memLoad
+            Behavior on width { NumberAnimation { duration: 1500; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 3000 } }
+
+            Shape {
+                anchors.fill: parent
+                ShapePath {
+                    strokeWidth: -1
+                    fillGradient: RadialGradient {
+                        centerX: orb.width / 2; centerY: orb.height / 2
+                        centerRadius: orb.width / 2
+                        focalX: orb.width / 2; focalY: orb.height / 2
+                        GradientStop { position: 0.00; color: Qt.hsla(orb.hue / 360, 0.70, 0.62, 0.42) }
+                        GradientStop { position: 0.45; color: Qt.hsla(orb.hue / 360, 0.70, 0.58, 0.16) }
+                        GradientStop { position: 1.00; color: Qt.hsla(orb.hue / 360, 0.70, 0.55, 0.00) }
+                    }
+                    startX: 0; startY: orb.height / 2
+                    PathArc { x: orb.width; y: orb.height / 2; radiusX: orb.width / 2; radiusY: orb.height / 2 }
+                    PathArc { x: 0;         y: orb.height / 2; radiusX: orb.width / 2; radiusY: orb.height / 2 }
                 }
-                Rectangle {
-                    anchors.fill: parent; anchors.margins: -120
-                    radius: (parent.width + 240) / 2
-                    color: parent.color
-                    opacity: 0.15
-                }
-                Behavior on width  { NumberAnimation { duration: 1200; easing.type: Easing.OutCubic } }
-                Behavior on color  { ColorAnimation  { duration: 6000 } }
-                Behavior on opacity{ NumberAnimation { duration: 2400 } }
             }
-        }
-
-        // drift clock — one shared 0..1 phase, wraps every 60 s
-        property real driftT: 0
-        Timer {
-            interval: 40; running: parent.visible; repeat: true
-            onTriggered: parent.driftT = (parent.driftT + 40/60000) % 1
         }
     }
 }
