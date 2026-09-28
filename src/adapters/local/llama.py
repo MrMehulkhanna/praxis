@@ -19,6 +19,18 @@ _LOCAL_BIN = HOME / "llama-server"
 BIN = _LOCAL_BIN if _LOCAL_BIN.exists() else pathlib.Path(shutil.which("llama-server") or _LOCAL_BIN)
 PORT     = int(os.environ.get("LLAMA_PORT", "8779"))
 IDLE_SEC = int(os.environ.get("AIOS_IDLE_UNLOAD", "120"))
+# On battery an idle model gives the GPU back sooner, so a hybrid laptop's
+# NVIDIA GPU can power down between questions.
+IDLE_SEC_BATTERY = int(os.environ.get("AIOS_IDLE_UNLOAD_BATTERY", "30"))
+
+def _on_battery() -> bool:
+    for status in glob.glob("/sys/class/power_supply/BAT*/status"):
+        try:
+            if pathlib.Path(status).read_text().strip() == "Discharging":
+                return True
+        except OSError:
+            pass
+    return False
 
 # ── model registry ───────────────────────────────────────────────────────
 # ngl = layers on GPU. 99 = everything. The 8B model does not fit fully in
@@ -105,7 +117,8 @@ class LlamaAdapter:
         """Background task that unloads the model after IDLE_SEC silence."""
         while True:
             await asyncio.sleep(15)
-            if self._proc and time.time() - self._last_used > IDLE_SEC:
+            limit = IDLE_SEC_BATTERY if _on_battery() else IDLE_SEC
+            if self._proc and time.time() - self._last_used > limit:
                 await self._unload()
 
     async def _unload(self):

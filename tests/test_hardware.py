@@ -26,9 +26,16 @@ def test_mux_0_is_discrete(monkeypatch):
 
 
 def test_mux_1_is_hybrid(monkeypatch):
-    fake_sys(monkeypatch, {hardware.SYS_MUX: "1", hardware.SYS_PENDING: "1"}, {})
+    fake_sys(monkeypatch, {hardware.SYS_MUX: "1"}, {})
     m = hardware.mux()
-    assert m["label"] == "hybrid (iGPU + dGPU)" and m["pending_reboot"]
+    assert m["label"] == "hybrid (iGPU + dGPU)" and not m["pending_reboot"] and m["requested"] == "1"
+
+
+def test_pending_switch_reports_the_requested_mode(monkeypatch):
+    # the firmware reports the ACTIVE mode (0) until the restart
+    fake_sys(monkeypatch, {hardware.SYS_MUX: "0", hardware.SYS_PENDING: "1", hardware.MUX_REQUEST: "1"}, {})
+    m = hardware.mux()
+    assert m["label"] == "dGPU only" and m["pending_reboot"] and m["requested"] == "1"
 
 
 def test_no_mux_is_unsupported(monkeypatch):

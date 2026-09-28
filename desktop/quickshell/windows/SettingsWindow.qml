@@ -603,13 +603,14 @@ OverlayWindow {
             SettingRow { label: "Battery charge limit"; description: "Stops charging at this level to extend battery life."
                 Segmented { options: [{ value: 60, label: "60%" }, { value: 80, label: "80%" }, { value: 100, label: "100%" }]; value: win.hw.battery ? win.hw.battery.charge_limit : 100; onSelected: v => win.hwSet("charge_limit", String(v)) } }
             SettingRow {
+                id: gpuRow
                 readonly property var mux: (win.hw.gpu && win.hw.gpu.mux) || ({})
                 visible: !!mux.supported
                 label: "GPU mode"
-                description: mux.pending_reboot ? "Restart to finish switching the GPU mode."
+                description: mux.pending_reboot ? "Restart to switch to " + (mux.requested === "1" ? "Hybrid" : "NVIDIA only") + " — until then the current mode stays active."
                     : mux.value === "1" ? "Hybrid: the Intel GPU draws the desktop; the NVIDIA GPU sleeps until something needs it — AI models, games, or a monitor on its HDMI port. Best for battery."
                     : "NVIDIA only: the NVIDIA GPU draws every screen — most GPU performance, but it never sleeps (~15 W at idle)."
-                Segmented { options: [{ value: "1", label: "Hybrid" }, { value: "0", label: "NVIDIA only" }]; value: parent.mux.value || ""
+                Segmented { options: [{ value: "1", label: "Hybrid" }, { value: "0", label: "NVIDIA only" }]; value: gpuRow.mux.requested || gpuRow.mux.value || ""
                     onSelected: v => win.hwSet("gpu_mux", v === "1" ? "hybrid" : "dgpu") }
             }
             SettingRow { label: "Temperatures"; description: win.hw.temps ? Object.keys(win.hw.temps).map(k => k + " " + win.hw.temps[k] + "°C").join(" · ") : "…"; Icon { name: "sun"; size: 14; color: Theme.muted } }

@@ -14,6 +14,8 @@ SYS_MUX_OLD  = "/sys/devices/platform/asus-nb-wmi/gpu_mux_mode"
 SYS_PENDING  = "/sys/class/firmware-attributes/asus-armoury/attributes/pending_reboot"
 # asus-wmi ABI: 0 = discrete (the NVIDIA GPU drives the screens), 1 = Optimus/hybrid
 MUX_LABELS   = {"0": "dGPU only", "1": "hybrid (iGPU + dGPU)"}
+# the firmware keeps reporting the active mode until the restart; remember what was asked
+MUX_REQUEST  = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "praxis-gpu-mux-requested")
 KBD_DEV      = "asus::kbd_backlight"
 HW_HELPER    = "/usr/local/libexec/aios-hardware"
 
@@ -94,8 +96,10 @@ def display_gpu() -> str:
 
 def mux() -> dict:
     raw = _read(SYS_MUX) or _read(SYS_MUX_OLD)
+    pending = _read(SYS_PENDING) == "1"
+    requested = (_read(MUX_REQUEST) if pending else "") or raw
     return {"supported": raw in MUX_LABELS, "value": raw, "label": MUX_LABELS.get(raw, "unknown"),
-            "pending_reboot": _read(SYS_PENDING) == "1", "display_gpu": display_gpu()}
+            "pending_reboot": pending, "requested": requested, "display_gpu": display_gpu()}
 
 def gpu() -> dict:
     m = mux()
@@ -278,6 +282,11 @@ def set_gpu_mux(mode: str) -> tuple[bool, str]:
     if not mux()["supported"]:
         return False, "this laptop has no switchable GPU MUX"
     ok, msg = _privileged_control("gpu-mux", v, SYS_MUX if os.path.exists(SYS_MUX) else SYS_MUX_OLD)
+    if ok:
+        try:
+            pathlib.Path(MUX_REQUEST).write_text(v)
+        except OSError:
+            pass
     return ok, ("restart to finish switching the GPU mode" if ok else msg)
 
 def set_fan_mode(mode: str) -> tuple[bool, str]:
