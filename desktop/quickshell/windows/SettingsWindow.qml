@@ -344,7 +344,7 @@ OverlayWindow {
                     }
                     SettingRow {
                         label: "Brightness"
-                        description: "10–100 %. The floor keeps an OLED panel from going fully black."
+                        description: Display.hasOled ? "10–100 %. The floor keeps the OLED panel from going fully black." : "1–100 %."
                         Slider {
                             width: 240; icon: "sun"
                             value: (Power.brightness - Power.minBrightness) / (1 - Power.minBrightness)
@@ -584,7 +584,7 @@ OverlayWindow {
         Column {
             spacing: 0
             readonly property var bat: UPower.displayDevice
-            SettingRow { label: "Thermal & power mode"; description: "Sets both Linux power policy and supported ASUS firmware cooling behaviour."
+            SettingRow { label: "Thermal & power mode"; description: "The Linux power profile — plus the firmware's cooling mode on laptops that have one."
                 Segmented { options: [{ value: "power-saver", label: "Quiet" }, { value: "balanced", label: "Balanced" }, { value: "performance", label: "Performance" }]; value: Power.profile; onSelected: v => { Power.profile = v; win.hwSet("profile", v) } } }
             H { text: "BATTERY" }
             Repeater {
@@ -596,11 +596,19 @@ OverlayWindow {
                               ["Model", bat.model || "—"]] : []
                 SettingRow { label: modelData[0]; Text { text: modelData[1]; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: Theme.fontSm } }
             }
-            H { text: "ASUS HARDWARE  —  " + (win.hw.model || "") }
-            SettingRow { label: "Fan"; description: (win.hw.fans ? win.hw.fans.rpm + " rpm · " : "") + "Firmware-managed on this Vivobook. Cooling changes with the Thermal & power mode above."; Icon { name: "fan"; size: 14; color: Theme.muted } }
-            SettingRow { label: "Keyboard backlight"
-                Segmented { options: [{ value: 0, label: "Off" }, { value: 1, label: "Low" }, { value: 2, label: "Mid" }, { value: 3, label: "High" }]; value: win.hw.keyboard ? win.hw.keyboard.level : 0; onSelected: v => win.hwSet("keyboard", String(v)) } }
-            SettingRow { label: "Battery charge limit"; description: "Stops charging at this level to extend battery life."
+            // only what this machine actually has
+            H { text: "HARDWARE  —  " + (win.hw.model || "") }
+            SettingRow { visible: !!(win.hw.fans && win.hw.fans.present); label: "Fan"
+                description: (win.hw.fans && win.hw.fans.present ? win.hw.fans.rpm + " rpm · " : "") + "Managed by the firmware — cooling follows the Thermal & power mode above."
+                Icon { name: "fan"; size: 14; color: Theme.muted } }
+            SettingRow { visible: !!(win.hw.keyboard && win.hw.keyboard.present); label: "Keyboard backlight"
+                Segmented {
+                    readonly property int maxLevel: win.hw.keyboard && win.hw.keyboard.max ? win.hw.keyboard.max : 3
+                    // up to four stops, whatever range the keyboard's driver uses
+                    options: (maxLevel <= 3 ? Array.from({ length: maxLevel + 1 }, (_, i) => i) : [0, Math.round(maxLevel / 3), Math.round(2 * maxLevel / 3), maxLevel])
+                        .map((v, i, all) => ({ value: v, label: i === 0 ? "Off" : i === all.length - 1 ? "High" : all.length === 4 && i === 1 ? "Low" : "Mid" }))
+                    value: win.hw.keyboard ? win.hw.keyboard.level : 0; onSelected: v => win.hwSet("keyboard", String(v)) } }
+            SettingRow { visible: !!(win.hw.battery && win.hw.battery.charge_limit_supported); label: "Battery charge limit"; description: "Stops charging at this level to extend battery life."
                 Segmented { options: [{ value: 60, label: "60%" }, { value: 80, label: "80%" }, { value: 100, label: "100%" }]; value: win.hw.battery ? win.hw.battery.charge_limit : 100; onSelected: v => win.hwSet("charge_limit", String(v)) } }
             SettingRow {
                 id: gpuRow

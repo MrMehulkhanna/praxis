@@ -27,9 +27,9 @@ Singleton {
 
     // ── brightness ─────────────────────────────────────────────────────
     property real brightness: 0.5              // 0..1
-    // Floor for every brightness control. 0 % switches an OLED panel fully
-    // black (it looks like a dead screen), so the usable range is 10–100 %.
-    readonly property real minBrightness: 0.10
+    // Floor for every brightness control. On an OLED panel 0 % switches it
+    // fully black (it looks dead), so it keeps 10 %; other screens go to 1 %.
+    readonly property real minBrightness: Display.hasOled ? 0.10 : 0.01
     property bool _settingBrightness: false
     function refreshBrightness() { if (!brtProc.running) brtProc.running = true }
     function setBrightness(v) {

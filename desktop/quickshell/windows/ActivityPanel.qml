@@ -215,7 +215,7 @@ OverlayWindow {
                         { l: "CPU", v: Math.round(stats.c.usage || Sys.cpu) + "%", s: (stats.c.temp_c || Sys.cpuTempC) + "°C", p: (stats.c.usage || Sys.cpu) / 100, view: "cpu" },
                         { l: "RAM", v: (stats.m.used ? (stats.m.used / 1e9).toFixed(1) : Sys.memUsedGb.toFixed(1)) + " G", s: Math.round(stats.m.percent || Sys.mem) + "%", p: (stats.m.percent || Sys.mem) / 100, view: "mem" },
                         { l: "GPU", v: stats.g.asleep ? "sleep" : Math.round(stats.g.util || Sys.gpu) + "%", s: stats.g.asleep ? "0 W" : (stats.g.temp_c || Sys.gpuTempC) + "°C", p: stats.g.asleep ? 0 : (stats.g.util || Sys.gpu) / 100, view: "gpu" },
-                        { l: "VRAM", v: stats.g.asleep ? "—" : ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: "of " + ((stats.g.vram_total_mb || 6141) / 1024).toFixed(0) + " G", p: stats.g.asleep ? 0 : (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / (stats.g.vram_total_mb || 6141), view: "gpu" },
+                        { l: "VRAM", v: stats.g.asleep ? "—" : ((stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / 1024).toFixed(1) + " G", s: (stats.g.vram_total_mb || Sys.vramTotalGb * 1024) ? "of " + ((stats.g.vram_total_mb || Sys.vramTotalGb * 1024) / 1024).toFixed(0) + " G" : "", p: stats.g.asleep ? 0 : (stats.g.vram_used_mb || Sys.vramUsedGb * 1024) / Math.max(1, stats.g.vram_total_mb || Sys.vramTotalGb * 1024), view: "gpu" },
                         { l: "NET", v: "↓" + win.fmtB(win.hw.network ? win.hw.network.down_bps : Sys.netDown), s: "↑" + win.fmtB(win.hw.network ? win.hw.network.up_bps : Sys.netUp), p: 0, view: "events" },
                     ]
                     Item {

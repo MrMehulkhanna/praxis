@@ -146,7 +146,7 @@ OverlayWindow {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
                     spacing: 2
                     Slider {
-                        // full travel = 10–100 % (see Power.minBrightness)
+                        // full travel = floor–100 % (10 % on OLED, else 1 %; see Power.minBrightness)
                         width: parent.width; icon: "sun"
                         value: (Power.brightness - Power.minBrightness) / (1 - Power.minBrightness)
                         valueText: Math.round((Power.minBrightness + (1 - Power.minBrightness) * shown) * 100) + "%"

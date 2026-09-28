@@ -7,7 +7,7 @@ Terminal agent: answers system questions with evidence.
 
 Everything is emitted to the activity bus so the user can watch it happen.
 """
-import json, re, time
+import glob, json, re, time
 from core import activity, router
 from core.perms import policy
 from core.tools import exec as tools
@@ -45,10 +45,17 @@ DIAG = [
      ["systemctl --user status aios.service --no-pager | head -8", "curl -s -m 2 http://127.0.0.1:8778/api/status", "ls ~/aios/models"]),
 ]
 
+def _machine() -> tuple[str, str]:
+    """(laptop|computer, its GPUs) — the agent must not assume one particular machine's hardware."""
+    from core import hardware
+    kind = "laptop" if glob.glob("/sys/class/power_supply/BAT*") else "computer"
+    return kind, " + ".join(hardware.gpus()) or "an unknown GPU"
+
+_KIND, _GPUS = _machine()
 SYSTEM = (
-    "You are AIOS, a Linux terminal agent running on the user's own Arch Linux laptop "
+    f"You are the AI assistant built into Praxis Linux, running on the user's own Arch-based {_KIND} "
     "(Hyprland with a Lua config — options via hyprctl eval 'hl.config{…}', dispatch via hyprctl dispatch 'hl.dsp.…' — "
-    "PipeWire, NetworkManager, NVIDIA RTX 4050 + Intel iGPU, systemd). "
+    f"PipeWire, NetworkManager, {_GPUS}, systemd). "
     "Diagnostic command outputs are provided as evidence — base your answer on them, quote the "
     "relevant lines, and be concrete. Keep answers short and practical.\n"
     "If you need the output of ONE more read-only command to answer, finish your reply with a "

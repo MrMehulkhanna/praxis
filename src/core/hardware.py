@@ -1,9 +1,11 @@
 """
-Hardware view + the few safe controls this ASUS Vivobook exposes.
+Hardware view + the few safe controls a laptop exposes — whatever this
+machine actually has (anything missing is reported absent, not faked).
 
-Reads: /sys (coretemp, asus hwmon fan, battery, platform_profile,
-asus-armoury), nvidia-smi, /proc. Writes that need root go through
-pkexec so the user always sees an auth prompt — nothing silent.
+Reads: /sys (coretemp, hwmon fans, battery, platform_profile, LED keyboard
+backlights, asus-armoury), nvidia-smi (only while that GPU is awake), /proc.
+Writes that need root go through pkexec so the user always sees an auth
+prompt — nothing silent.
 """
 import glob, os, pathlib, re, shutil, subprocess, time
 
@@ -16,7 +18,6 @@ SYS_PENDING  = "/sys/class/firmware-attributes/asus-armoury/attributes/pending_r
 MUX_LABELS   = {"0": "dGPU only", "1": "hybrid (iGPU + dGPU)"}
 # the firmware keeps reporting the active mode until the restart; remember what was asked
 MUX_REQUEST  = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "praxis-gpu-mux-requested")
-KBD_DEV      = "asus::kbd_backlight"
 HW_HELPER    = "/usr/local/libexec/aios-hardware"
 
 def _read(p: str, default: str = "") -> str:
@@ -101,6 +102,42 @@ def mux() -> dict:
     return {"supported": raw in MUX_LABELS, "value": raw, "label": MUX_LABELS.get(raw, "unknown"),
             "pending_reboot": pending, "requested": requested, "display_gpu": display_gpu()}
 
+_PCI_IDS = ("/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids")
+
+def _pci_name(vendor: str, device: str) -> str:
+    """Product name from the pci.ids database — never touches the device, so it
+    can't wake a sleeping GPU the way lspci or nvidia-smi would."""
+    v, d = vendor.lower().removeprefix("0x"), device.lower().removeprefix("0x")
+    for path in _PCI_IDS:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                in_vendor = False
+                for line in f:
+                    if not line.strip() or line.startswith("#"):
+                        continue
+                    if not line.startswith("\t"):
+                        if in_vendor:
+                            break
+                        in_vendor = line.startswith(v + "  ")
+                    elif in_vendor and line.startswith("\t" + d + "  "):
+                        return line.strip()[len(d):].strip()
+        except OSError:
+            continue
+    return ""
+
+def gpus() -> list[str]:
+    """Every display adapter, e.g. ['Intel Iris Xe Graphics', 'NVIDIA GeForce RTX 4050 Max-Q / Mobile']."""
+    out = []
+    for d in sorted(glob.glob("/sys/bus/pci/devices/*")):
+        if not _read(f"{d}/class").startswith("0x03"):
+            continue
+        vendor = _read(f"{d}/vendor")
+        brand = {"0x10de": "NVIDIA", "0x8086": "Intel", "0x1002": "AMD"}.get(vendor, "")
+        name = _pci_name(vendor, _read(f"{d}/device"))
+        m = re.search(r"\[(.+?)\]", name)          # 'AD107M [GeForce RTX 4050 …]' → the bracketed name
+        out.append(f"{brand} {m.group(1) if m else name}".strip() or "unknown GPU")
+    return out
+
 def gpu() -> dict:
     m = mux()
     extra = {"mux_mode": m["label"], "mux": m}
@@ -139,7 +176,10 @@ def battery() -> dict:
             "health_percent": round(100 * ef / ed, 1) if ed else None,
             "power_w": round(int(_read(f"{b}/power_now", "0")) / 1e6, 1),
             "charge_limit": int(_read(f"{b}/charge_control_end_threshold", "100") or 100),
-            "cycle_count": _read(f"{b}/cycle_count", "?"), "ac": _read("/sys/class/power_supply/ADP1/online") == "1"}
+            "charge_limit_supported": os.path.exists(f"{b}/charge_control_end_threshold"),
+            "cycle_count": _read(f"{b}/cycle_count", "?"),
+            "ac": any(_read(f"{p}/online") == "1" for p in glob.glob("/sys/class/power_supply/*")
+                      if _read(f"{p}/type") in ("Mains", "USB"))}
 
 def fans() -> dict:
     a = _hwmon("asus")
@@ -149,18 +189,24 @@ def fans() -> dict:
     return {"present": True, "rpm": int(_read(f"{a}/fan1_input", "0")),
             "mode": {"0": "full", "2": "auto"}.get(mode, mode),
             "curves": False, "control_ready": False,
-            "note": "This Vivobook firmware exposes fan telemetry only. Cooling follows the ASUS thermal profile."}
+            "note": "The firmware exposes fan telemetry only; cooling follows the thermal profile."}
 
 def platform_profile() -> dict:
     return {"current": _read(SYS_PROFILE), "choices": _read(SYS_CHOICES).split(),
             "daemon": _run(["powerprofilesctl", "get"])}
 
+def _kbd_dev() -> str | None:
+    """asus::kbd_backlight, dell::kbd_backlight, tpacpi::kbd_backlight, …"""
+    devs = sorted(glob.glob("/sys/class/leds/*::kbd_backlight"))
+    return os.path.basename(devs[0]) if devs else None
+
 def keyboard_backlight() -> dict:
-    out = _run(["brightnessctl", "-d", KBD_DEV, "-m"])
+    dev = _kbd_dev()
+    out = _run(["brightnessctl", "-d", dev, "-m"]) if dev else ""
     if not out:
         return {"present": False}
     p = out.split(",")
-    return {"present": True, "level": int(p[2]), "max": int(p[4]), "device": KBD_DEV}
+    return {"present": True, "level": int(p[2]), "max": int(p[4]), "device": dev}
 
 def temps() -> dict:
     t = {}
@@ -262,7 +308,7 @@ def set_keyboard_backlight(level: int) -> tuple[bool, str]:
     if not kb.get("present"):
         return False, "no keyboard backlight device"
     level = max(0, min(kb["max"], int(level)))
-    subprocess.run(["brightnessctl", "-q", "-d", KBD_DEV, "s", str(level)], timeout=5)
+    subprocess.run(["brightnessctl", "-q", "-d", kb["device"], "s", str(level)], timeout=5)
     return True, f"level {level}"
 
 def set_charge_limit(pct: int) -> tuple[bool, str]:
