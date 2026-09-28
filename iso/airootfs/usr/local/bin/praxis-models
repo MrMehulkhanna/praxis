@@ -2,7 +2,7 @@
 # ============================================================================
 #  praxis-models — hardware-aware local LLM catalog + downloader
 #
-#  Detects your VRAM/RAM, shows what fits, and downloads via huggingface-cli.
+#  Detects your VRAM/RAM, shows what fits, and downloads with curl (resumable).
 #  Includes uncensored / abliterated variants (Dolphin, "Uncensored", etc.)
 #  for direct answers without corporate safety refusals — legal, widely
 #  distributed on Hugging Face, but they'll be blunt so use responsibly.
@@ -273,14 +273,6 @@ def cmd_download(model_id: str, hw: dict, force: bool) -> None:
     if hw["disk_free_gb"] and hw["disk_free_gb"] < m["size_gb"] + 1:
         die(f"only {hw['disk_free_gb']} GB free; {model_id} needs {m['size_gb']:.1f} GB + margin.")
 
-    # On a fresh system the CLI lives in the AIOS venv (created by aios-setup).
-    venv_bin = MODELS.parent / ".venv" / "bin"
-    hf_cli = (shutil.which("huggingface-cli") or shutil.which("hf")
-              or next((str(venv_bin / n) for n in ("huggingface-cli", "hf")
-                       if (venv_bin / n).exists()), None))
-    if not hf_cli:
-        die("huggingface-cli not found — run 'aios-setup' first (it creates the AIOS venv).")
-
     dest = MODELS / m["id"]
     dest.mkdir(parents=True, exist_ok=True)
     files = [m["file"], *m.get("extra", [])]
@@ -288,10 +280,17 @@ def cmd_download(model_id: str, hw: dict, force: bool) -> None:
     print(f"  from  {m['repo']}")
     print(f"  files {', '.join(files)}")
     print(f"  to    {dest}\n")
-    r = subprocess.run(
-        [hf_cli, "download", m["repo"], *files, "--local-dir", str(dest)],
-        env={**os.environ, "HF_HUB_ENABLE_HF_TRANSFER": "1"},
-    )
+    # Plain HTTPS with curl: resumable (-C -), retried, no Python client needed —
+    # works before aios-setup, and avoids hf_transfer hanging on Xet-backed repos.
+    r = subprocess.CompletedProcess([], 0)
+    for f in files:
+        part = dest / (f + ".part")
+        url = f"https://huggingface.co/{m['repo']}/resolve/main/{f}"
+        r = subprocess.run(["curl", "-fL", "--retry", "5", "--retry-delay", "3", "-C", "-",
+                            "--progress-bar", "-o", str(part), url])
+        if r.returncode != 0:
+            break
+        part.rename(dest / f)
     if r.returncode == 0:
         # tells the AIOS backend how to list it (label, vision, uncensored)
         (dest / "praxis-model.json").write_text(json.dumps(
