@@ -158,7 +158,8 @@ EXTRA_CMDLINE=console=ttyS0,115200"
     esp=$(lsblk -lnpo NAME,PARTTYPE "$LOOP" | awk 'tolower($2) == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1; exit }')
     mkdir -p /mnt/praxis-live-test && mount "$esp" /mnt/praxis-live-test
     install -Dm644 /mnt/praxis-live-test/EFI/Praxis/grubx64.efi /mnt/praxis-live-test/EFI/BOOT/BOOTX64.EFI   # stands in for the NVRAM entry
-    umount /mnt/praxis-live-test; losetup -d "$LOOP"
+    umount /mnt/praxis-live-test
+    for _ in $(seq 40); do losetup -d "$LOOP" 2>/dev/null; losetup "$LOOP" >/dev/null 2>&1 || break; sleep 0.25; done
     rm -f "$W/qga.sock"
     qemu-system-x86_64 -enable-kvm -machine q35 -cpu host -smp 4 -m 4096 \
         -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" -drive if=pflash,format=raw,file="$W/vars2.fd" \

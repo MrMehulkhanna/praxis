@@ -13,7 +13,19 @@ sgdisk -o \
     -n 3:0:-750M   -t 3:0700 -c 3:"Basic data partition" \
     -n 4:0:0       -t 4:2700 -c 4:"Basic data partition" "$IMG" >/dev/null
 LOOP=$(losetup -fP --show "$IMG")
-trap 'umount -q /tmp/.mkwin 2>/dev/null; losetup -d "$LOOP"' EXIT
+# ntfs-3g is a FUSE helper: umount returns before it lets go of the device, so
+# detaching right away can fail and leave the loop device (and the image's disk
+# space) behind — retry until it's really gone
+detach() {
+    umount -q /tmp/.mkwin 2>/dev/null
+    for _ in $(seq 40); do
+        losetup -d "$LOOP" 2>/dev/null
+        losetup "$LOOP" >/dev/null 2>&1 || return 0
+        sleep 0.25
+    done
+    echo "make-windows-disk: $LOOP is still attached" >&2
+}
+trap detach EXIT
 udevadm settle
 mkfs.fat -F32 -n SYSTEM "${LOOP}p1" >/dev/null
 mkntfs -Q -L Windows "${LOOP}p3" >/dev/null 2>&1

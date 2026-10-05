@@ -36,11 +36,13 @@ QEMU_PID=""; LOOP=""
 cleanup() {
     [ -n "$QEMU_PID" ] && kill "$QEMU_PID" 2>/dev/null && sleep 1 && kill -9 "$QEMU_PID" 2>/dev/null
     umount -R /mnt/praxis-test 2>/dev/null
-    [ -n "$LOOP" ] && losetup -d "$LOOP" 2>/dev/null
+    [ -n "$LOOP" ] && detach "$LOOP"
     QEMU_PID=""; LOOP=""
 }
 trap 'cleanup; [ "${KEEP:-0}" = 1 ] || rm -rf "$W"' EXIT
 
+# detach a loop device for real (an ntfs-3g/FUSE unmount lets go of it a moment later)
+detach() { local _; for _ in $(seq 40); do losetup -d "$1" 2>/dev/null; losetup "$1" >/dev/null 2>&1 || return 0; sleep 0.25; done; echo "still attached: $1" >&2; }
 guest() { python3 "$ISO_DIR/test/qga.py" "$W/qga.sock" bash -c "$*"; }
 
 scenario() {
@@ -128,7 +130,7 @@ EOF
     fi
     install -Dm644 /mnt/praxis-test/EFI/Praxis/grubx64.efi /mnt/praxis-test/EFI/BOOT/BOOTX64.EFI
     umount /mnt/praxis-test
-    losetup -d "$LOOP"; LOOP=""
+    detach "$LOOP"; LOOP=""
 
     # ── booted ──
     cp "$OVMF_VARS" "$W/vars.fd"
