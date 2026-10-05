@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# praxis-installer — the graphical installer (Install Praxis Linux in the dock).
+# Falls back to the text installer when there is no Wayland session.
+# PRAXIS_ENGINE / PRAXIS_LIB point it at a checkout during development.
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v quickshell >/dev/null; then
+    exec quickshell -p /usr/local/share/praxis/installer/shell.qml "$@"
+fi
+exec kitty --class praxis-installer --title "Install Praxis Linux" -e /usr/local/bin/praxis-install-window

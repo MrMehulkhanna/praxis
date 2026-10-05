@@ -1,0 +1,493 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-install-engine — installs Praxis Linux from a plan. Asks nothing.
+#
+#    praxis-install-engine PLAN            install
+#    praxis-install-engine --check PLAN    only validate the plan
+#    praxis-install-engine --probe [--text]
+#                                          what is on the disks, and where
+#                                          Praxis can go (JSON / readable)
+#
+#  The text installer (praxis-install) and the graphical one write the plan;
+#  the VM test (iso/test-install.sh) writes one too. Progress lines look like
+#      @@ 42 Installing packages (311/604)
+#  and the last line is "@@ 100 done" or "@@ FAIL <reason>".
+#
+#  Plan: KEY=value lines (quotes optional; anything else is ignored):
+#    DISK=/dev/nvme0n1                the target disk
+#    MODE=alongside|free|partition|wipe
+#       alongside  shrink SHRINK_PART (Windows, NTFS) by PRAXIS_MIB and install
+#                  in the freed space — Windows keeps all its files
+#       free       install into the largest unallocated region (≥ 30 GiB)
+#       partition  format TARGET_PART and install there
+#       wipe       erase DISK
+#    SHRINK_PART=/dev/nvme0n1p3   PRAXIS_MIB=81920
+#    TARGET_PART=/dev/nvme0n1p5
+#    FS=ext4|btrfs                    btrfs: subvolumes, zstd compression and
+#                                     snapper snapshots (before/after every
+#                                     update) that GRUB can boot into
+#    HOSTNAME=praxis  USERNAME=alex  FULLNAME="Alex Doe"
+#    PASSWORD_HASH='$6$…'             (openssl passwd -6) — or PASSWORD_FILE=…,
+#                                     read once and deleted
+#    TIMEZONE=Asia/Kolkata  LOCALE=en_US.UTF-8  KEYMAP=us  XKB_LAYOUT=us
+#    LOGIN=lock|auto|password         lock (default): starts the desktop behind
+#                                     the lock screen; auto: no password at
+#                                     start; password: text login on tty1
+#    APPS="office dev"                optional bundles (praxis_app_bundles)
+#  For tests only: EXTRA_PKGS, EXTRA_SERVICES, EXTRA_CMDLINE (kernel
+#  arguments), CACHE_SERVER (pacman cache server URL), PLAN_TEST=1 (allows
+#  loop devices), STOP_AFTER=format (partition + format, then stop) and
+#  HOST_CACHE=1 (pacstrap -c: use the host's package cache).
+# ============================================================================
+set -Eeuo pipefail
+shopt -s inherit_errexit
+
+LIB=${PRAXIS_LIB:-/usr/local/lib/praxis}
+# snap-pac's pacman hooks would try to snapshot the half-built system on every
+# transaction ("fatal library error, lookup self"); snapshots start after install
+export SNAP_PAC_SKIP=y
+LOG=/var/log/praxis-install.log
+MNT=/mnt
+MIN_MIB=$((30 * 1024))
+
+STARTED=0
+progress() { printf '@@ %s %s\n' "$1" "$2"; }
+# Let go of the new system: pacman's keyring setup leaves a gpg-agent (and
+# sometimes dirmngr) running with files open inside it, which makes it "busy".
+release_target() {
+    [ "$BASHPID" = "$$" ] || return 0          # never from a subshell
+    mountpoint -q "$MNT" || return 0
+    # best effort from here on: nothing in this function may trip the error trap
+    set +eE; trap - ERR
+    sync
+    gpgconf --homedir "$MNT/etc/pacman.d/gnupg" --kill all >/dev/null 2>&1
+    local pid
+    for pid in $(fuser -m "$MNT" 2>/dev/null || true); do
+        case "$(cat "/proc/$pid/comm" 2>/dev/null)" in
+            gpg-agent|dirmngr|keyboxd|scdaemon|gpg) kill "$pid" 2>/dev/null ;;
+        esac
+    done
+    umount -R "$MNT" 2>/dev/null && return 0
+    sleep 2
+    umount -R "$MNT"
+}
+fail() {
+    [ "$BASHPID" = "$$" ] || { echo "!! $*" >&2; exit 1; }   # a subshell only reports
+    printf '@@ FAIL %s\n' "$*"
+    [ "$STARTED" = 1 ] && { echo "!! $*" >&2; release_target 2>/dev/null || true; }
+    exit 1
+}
+
+case "${1:-}" in
+    --probe) shift; exec python3 "$LIB/install_probe.py" "$@" ;;
+    -h|--help|"") sed -n '3,40p' "$0" | sed 's/^# \?//'; exit 0 ;;
+esac
+CHECK_ONLY=0
+[ "$1" = --check ] && { CHECK_ONLY=1; shift; }
+PLAN=${1:?plan file}
+[ -r "$PLAN" ] || fail "can't read the plan $PLAN"
+[ "$(id -u)" -eq 0 ] || fail "run as root"
+
+# shellcheck source=../lib/praxis/hwdetect.sh
+. "$LIB/hwdetect.sh"
+# shellcheck source=../lib/praxis/install-common.sh
+. "$LIB/install-common.sh"
+
+# ── plan: only known keys, never executed ───────────────────────────────────
+KEYS="DISK MODE SHRINK_PART PRAXIS_MIB TARGET_PART FS HOSTNAME USERNAME FULLNAME PASSWORD_HASH PASSWORD_FILE
+      TIMEZONE LOCALE KEYMAP XKB_LAYOUT LOGIN APPS EXTRA_PKGS EXTRA_SERVICES EXTRA_CMDLINE CACHE_SERVER PLAN_TEST STOP_AFTER HOST_CACHE"
+for k in $KEYS; do printf -v "$k" '%s' ""; done
+while IFS= read -r line || [ -n "$line" ]; do
+    [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]] || continue
+    k=${BASH_REMATCH[1]} v=${BASH_REMATCH[2]}
+    [[ " $KEYS " == *" $k "* ]] || continue
+    if [[ "$v" =~ ^\'(.*)\'$ ]] || [[ "$v" =~ ^\"(.*)\"$ ]]; then v=${BASH_REMATCH[1]}; fi
+    printf -v "$k" '%s' "$v"
+done <"$PLAN"
+: "${FS:=ext4}" "${HOSTNAME:=praxis}" "${TIMEZONE:=UTC}" "${LOCALE:=en_US.UTF-8}" "${KEYMAP:=us}" "${XKB_LAYOUT:=us}" "${LOGIN:=lock}"
+
+if [ -n "$PASSWORD_FILE" ] && [ -z "$PASSWORD_HASH" ]; then
+    [ -r "$PASSWORD_FILE" ] || fail "can't read the password file"
+    PASSWORD_HASH=$(openssl passwd -6 -stdin <"$PASSWORD_FILE")
+    shred -u "$PASSWORD_FILE" 2>/dev/null || rm -f "$PASSWORD_FILE"
+fi
+
+# ── validation ──────────────────────────────────────────────────────────────
+[ -d /sys/firmware/efi ] || fail "this PC started the installer in legacy BIOS mode — Praxis needs UEFI (turn off CSM/Legacy in the firmware)"
+DTYPE=$(lsblk -dno TYPE "$DISK" 2>/dev/null || true)
+[ -b "$DISK" ] && { [ "$DTYPE" = disk ] || { [ "$PLAN_TEST" = 1 ] && [ "$DTYPE" = loop ]; }; } || fail "DISK=$DISK is not a disk"
+LIVE=$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)
+if [ -n "$LIVE" ]; then
+    LIVE_DISK=/dev/$(lsblk -no PKNAME "$LIVE" | head -n1)
+    [ "$DISK" != "$LIVE_DISK" ] || fail "$DISK is the USB drive Praxis is running from"
+fi
+case "$MODE" in alongside|free|partition|wipe) ;; *) fail "MODE must be alongside, free, partition or wipe" ;; esac
+case "$FS" in ext4|btrfs) ;; *) fail "FS must be ext4 or btrfs" ;; esac
+case "$LOGIN" in lock|auto|password) ;; *) fail "LOGIN must be lock, auto or password" ;; esac
+[[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || fail "user name must be lowercase letters, digits, - or _ (and start with a letter)"
+case "$USERNAME" in root|bin|daemon|sys|adm|nobody|praxis|systemd*|dbus|polkitd|git|http) fail "the user name '$USERNAME' is reserved" ;; esac
+[[ "$HOSTNAME" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] || fail "computer name may only contain letters, digits and -"
+[[ "$PASSWORD_HASH" == '$'[1256y]'$'* ]] || fail "no usable password hash in the plan"
+[ -f "/usr/share/zoneinfo/$TIMEZONE" ] || fail "unknown time zone $TIMEZONE"
+grep -q "^#\?${LOCALE//./\\.} " /etc/locale.gen 2>/dev/null || fail "unknown locale $LOCALE"
+[[ "$FULLNAME" != *[:,=$'\n']* ]] || fail "the full name can't contain : , or ="
+for b in $APPS; do
+    praxis_app_bundles | cut -d'|' -f1 | grep -qx "$b" || fail "unknown app bundle '$b'"
+done
+
+part_of_disk() { [ "/dev/$(lsblk -no PKNAME "$1" 2>/dev/null | head -n1)" = "$DISK" ]; }
+case "$MODE" in
+    alongside)
+        [ -b "$SHRINK_PART" ] && part_of_disk "$SHRINK_PART" || fail "SHRINK_PART=$SHRINK_PART is not a partition of $DISK"
+        [ "$(blkid -o value -s TYPE "$SHRINK_PART")" = ntfs ] || fail "$SHRINK_PART is not an NTFS (Windows) partition"
+        [[ "$PRAXIS_MIB" =~ ^[0-9]+$ ]] && [ "$PRAXIS_MIB" -ge "$MIN_MIB" ] || fail "PRAXIS_MIB must be at least $MIN_MIB (30 GiB)"
+        ;;
+    partition)
+        [ -b "$TARGET_PART" ] && part_of_disk "$TARGET_PART" || fail "TARGET_PART=$TARGET_PART is not a partition of $DISK"
+        case "$(blkid -o value -s TYPE "$TARGET_PART" 2>/dev/null)" in
+            ntfs|BitLocker) fail "$TARGET_PART holds Windows data — pick another partition" ;;
+        esac
+        [ "$(lsblk -lno PARTTYPE "$TARGET_PART")" != c12a7328-f81f-11d2-ba4b-00a0c93ec93b ] || fail "$TARGET_PART is the EFI partition"
+        [ "$(( $(blockdev --getsize64 "$TARGET_PART") / 1048576 ))" -ge $((20 * 1024)) ] || fail "$TARGET_PART is smaller than 20 GiB"
+        ;;
+esac
+[ "$CHECK_ONLY" = 1 ] && { echo "plan OK"; exit 0; }
+
+# ── from here on, everything is logged ──────────────────────────────────────
+mkdir -p "${LOG%/*}"
+# one install at a time; the graphical installer also uses this to find a running one
+PIDFILE=/run/praxis-install.pid
+if [ -s "$PIDFILE" ] && [ -d "/proc/$(cat "$PIDFILE")" ]; then fail "another installation is already running"; fi
+echo $$ >"$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
+exec > >(tee -a "$LOG") 2>&1
+echo "=== praxis-install-engine $(date -Is) — $MODE on $DISK ($FS)"
+STARTED=1
+STEP="starting"
+on_error() {
+    local rc=$? line=${BASH_LINENO[0]}
+    # set -E hands this trap to every $(…) subshell too; only the engine itself
+    # may report and clean up — a subshell unmounting the target once made the
+    # packages land on the live system's RAM disk
+    [ "$BASHPID" = "$$" ] || return "$rc"
+    echo "!! failed at line $line ($STEP), exit $rc" >&2
+    trap - ERR
+    release_target 2>/dev/null || true
+    printf '@@ FAIL %s — see %s\n' "$STEP" "$LOG"
+    exit "$rc"
+}
+trap on_error ERR
+step() { STEP=$2; progress "$1" "$2"; }
+
+settle() { partprobe "$DISK" 2>/dev/null || partx -u "$DISK" 2>/dev/null || true; udevadm settle; sleep 1; }
+part_path() {   # <disk> <number> → /dev/sda3 or /dev/nvme0n1p3
+    case "$1" in *[0-9]) echo "${1}p$2" ;; *) echo "$1$2" ;; esac
+}
+
+step 1 "Getting the disk ready"
+umount -R "$MNT" 2>/dev/null || true
+# nothing on the target disk may be in use (a Windows drive opened in the file manager, swap…)
+while read -r p mp; do
+    [ -n "$mp" ] || continue
+    umount "$p" 2>/dev/null || umount -l "$p" 2>/dev/null || fail "$p is in use ($mp) — close it and try again"
+done < <(lsblk -lnpo NAME,MOUNTPOINT "$DISK" | tail -n +2)
+for sw in $(swapon --noheadings --show=NAME 2>/dev/null); do
+    part_of_disk "$sw" 2>/dev/null && swapoff "$sw"
+done
+BACKUP=/var/log/praxis-partition-table-$(date +%Y%m%d-%H%M%S).sfdisk
+sfdisk --dump "$DISK" >"$BACKUP" 2>/dev/null && echo "partition table saved to $BACKUP" || true
+
+# ── partitioning ────────────────────────────────────────────────────────────
+ESP="" ROOT="" NEW_ESP=0
+largest_free() { praxis_largest_free "$(parted -sm "$DISK" unit MiB print free 2>/dev/null)" "${1:-$MIN_MIB}"; }
+existing_esp() {
+    lsblk -lnpo NAME,PARTTYPE "$DISK" | awk 'tolower($2) == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1; exit }'
+}
+make_parts_in_free() {    # creates (ESP if needed +) root in the largest free region
+    local free start end
+    free=$(largest_free) || true
+    [ -n "$free" ] || fail "no unallocated region of 30 GiB or more on $DISK"
+    read -r start end _ <<<"$free"
+    start=${start%MiB}; start=${start%%.*}; end=${end%MiB}; end=${end%%.*}
+    start=$((start + 1))                        # whole MiB, aligned
+    ESP=$(existing_esp)
+    if [ -z "$ESP" ]; then
+        sgdisk -n "0:${start}M:+512M" -t 0:ef00 -c 0:EFI "$DISK" >/dev/null
+        start=$((start + 513)); NEW_ESP=1
+        settle
+        ESP=$(existing_esp)
+    fi
+    sgdisk -n "0:${start}M:$((end - 1))M" -t 0:8304 -c 0:praxis "$DISK" >/dev/null
+    settle
+    ROOT=$(lsblk -lnpo NAME,PARTLABEL "$DISK" | awk '$2 == "praxis" { print $1 }' | tail -n1)
+    [ -b "$ROOT" ] || fail "the new partition did not appear"
+}
+
+case "$MODE" in
+    wipe)
+        step 3 "Erasing $DISK"
+        wipefs -af "$DISK" >/dev/null
+        sgdisk --zap-all "$DISK" >/dev/null 2>&1 || true
+        sgdisk -o "$DISK" >/dev/null
+        sgdisk -n 1:1M:+1G -t 1:ef00 -c 1:EFI -n 2:0:0 -t 2:8304 -c 2:praxis "$DISK" >/dev/null
+        settle
+        ESP=$(part_path "$DISK" 1); ROOT=$(part_path "$DISK" 2); NEW_ESP=1
+        ;;
+    free)
+        step 3 "Creating partitions in the free space"
+        make_parts_in_free
+        ;;
+    alongside)
+        step 2 "Checking Windows' drive"
+        NUM=$(lsblk -no PARTN "$SHRINK_PART")
+        CUR_MIB=$(( $(blockdev --getsize64 "$SHRINK_PART") / 1048576 ))
+        NEW_MIB=$((CUR_MIB - PRAXIS_MIB))
+        INFO=$(ntfsresize --info --no-progress-bar "$SHRINK_PART" 2>&1) || fail "Windows' drive can't be resized: $(tail -n2 <<<"$INFO" | tr '\n' ' ')"
+        MIN_FS=$(sed -n 's/.*You might resize at \([0-9]*\) bytes.*/\1/p' <<<"$INFO")
+        [ -n "$MIN_FS" ] || fail "ntfsresize did not report a minimum size"
+        [ $((NEW_MIB * 1048576)) -ge $((MIN_FS + 8 * 1073741824)) ] || fail "Windows needs more room than that — choose less space for Praxis"
+        # the volume fills the new partition exactly (as GParted does): NTFS keeps a
+        # backup boot sector in the partition's last sector, where Windows looks for it
+        FS_BYTES=$((NEW_MIB * 1048576))
+        ntfsresize --no-action --size "$FS_BYTES" --no-progress-bar "$SHRINK_PART" >/dev/null 2>&1 \
+            || fail "the test run of shrinking Windows' drive failed — nothing was changed"
+        step 4 "Shrinking Windows' drive by $((PRAXIS_MIB / 1024)) GiB (this can take a few minutes)"
+        echo y | ntfsresize --size "$FS_BYTES" --no-progress-bar "$SHRINK_PART"
+        echo ",${NEW_MIB}MiB" | sfdisk --no-reread --no-tell-kernel -N "$NUM" "$DISK"
+        settle
+        [ "$(( $(blockdev --getsize64 "$SHRINK_PART") / 1048576 ))" -eq "$NEW_MIB" ] || fail "the Windows partition has an unexpected size after shrinking"
+        # ntfsresize flags the volume for one chkdsk at Windows' next start, so
+        # check it with --force; then make sure it still mounts and reads
+        ntfsresize --info --force --no-progress-bar "$SHRINK_PART" >/dev/null 2>&1 \
+            && ntfsfix --no-action "$SHRINK_PART" >/dev/null 2>&1 \
+            && mkdir -p /run/praxis-ntfs-check && ntfs-3g -o ro "$SHRINK_PART" /run/praxis-ntfs-check \
+            && ls /run/praxis-ntfs-check >/dev/null && umount /run/praxis-ntfs-check \
+            || fail "Windows' drive does not look healthy after shrinking — stopping before anything else changes (its files are still there; Windows' chkdsk can check it)"
+        echo "Windows' drive is now ${NEW_MIB} MiB; Windows checks it once at its next start (normal)."
+        step 8 "Creating partitions in the freed space"
+        make_parts_in_free
+        ;;
+    partition)
+        step 3 "Using $TARGET_PART"
+        ROOT=$TARGET_PART
+        ESP=$(existing_esp)
+        [ -n "$ESP" ] || ESP=$(lsblk -lnpo NAME,PARTTYPE | awk 'tolower($2) == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1; exit }')
+        [ -n "$ESP" ] || fail "no EFI partition found on this PC"
+        sgdisk -t "$(lsblk -no PARTN "$ROOT"):8304" -c "$(lsblk -no PARTN "$ROOT"):praxis" "$DISK" >/dev/null 2>&1 || true
+        ;;
+esac
+echo "EFI: $ESP (new: $NEW_ESP)   root: $ROOT"
+
+# ── filesystems ─────────────────────────────────────────────────────────────
+step 10 "Formatting"
+ESP_FS=$(blkid -o value -s TYPE "$ESP" 2>/dev/null || true)
+if [ "$NEW_ESP" = 1 ] || [ -z "$ESP_FS" ]; then
+    mkfs.fat -F32 -n PRAXIS_EFI "$ESP" >/dev/null     # new, or an EFI partition with nothing on it
+elif [ "$ESP_FS" != vfat ]; then
+    fail "the EFI partition $ESP has a $ESP_FS file system instead of FAT — Praxis won't change it"
+fi
+BTRFS_OPTS=noatime,compress=zstd:1,space_cache=v2
+# old signatures (a previous ext4, swap, …) would make the new file system ambiguous to mount
+wipefs -aq "$ROOT"
+if [ "$FS" = btrfs ]; then
+    mkfs.btrfs -f -L PRAXIS_ROOT "$ROOT" >/dev/null
+    udevadm settle
+    mount -t btrfs "$ROOT" "$MNT"
+    for sv in @ @home @log @pkg @snapshots; do btrfs subvolume create "$MNT/$sv" >/dev/null; done
+    umount "$MNT"
+    mount -t btrfs -o "$BTRFS_OPTS,subvol=@" "$ROOT" "$MNT"
+    mkdir -p "$MNT"/{home,var/log,var/cache/pacman/pkg,.snapshots}
+    mount -o "$BTRFS_OPTS,subvol=@home" "$ROOT" "$MNT/home"
+    mount -o "$BTRFS_OPTS,subvol=@log" "$ROOT" "$MNT/var/log"
+    mount -o "$BTRFS_OPTS,subvol=@pkg" "$ROOT" "$MNT/var/cache/pacman/pkg"
+    mount -o "$BTRFS_OPTS,subvol=@snapshots" "$ROOT" "$MNT/.snapshots"
+else
+    mkfs.ext4 -F -q -L PRAXIS_ROOT "$ROOT"
+    udevadm settle
+    mount -t ext4 "$ROOT" "$MNT"
+fi
+mkdir -p "$MNT/boot/efi"
+mount -t vfat "$ESP" "$MNT/boot/efi"
+ESP_FREE_KIB=$(df -Pk "$MNT/boot/efi" | awk 'NR == 2 { print $4 }')
+[ "${ESP_FREE_KIB:-0}" -ge 8192 ] || fail "the EFI partition $ESP has less than 8 MiB free — the boot loader needs a few MiB"
+if [ "$PLAN_TEST" = 1 ] && [ "$STOP_AFTER" = format ]; then
+    release_target; trap - ERR; progress 100 "stopped after formatting (test)"; exit 0
+fi
+
+# ── packages ────────────────────────────────────────────────────────────────
+step 12 "Preparing packages"
+praxis_enable_local_repo
+UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
+read -ra GPU <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null || true)" || echo mesa)"
+mapfile -t PKGS < <(praxis_packages)
+[ "${#PKGS[@]}" -gt 30 ] || fail "the Praxis package list is missing from this ISO"
+[ -n "$UCODE" ] && PKGS+=("$UCODE")
+PKGS+=("${GPU[@]}")
+[ "$FS" = btrfs ] && PKGS+=(btrfs-progs snapper snap-pac grub-btrfs inotify-tools)
+read -ra EXTRA <<<"$EXTRA_PKGS"; PKGS+=("${EXTRA[@]}")
+if [ -n "$CACHE_SERVER" ]; then    # tests: fetch from the host's package cache first
+    sed -i "/^\[\(core\|extra\)\]/a CacheServer = $CACHE_SERVER" /etc/pacman.conf
+fi
+[ "$PLAN_TEST" = 1 ] || pacman -Sy --noconfirm >/dev/null 2>&1 || true
+
+# pacstrap with a progress figure: downloads 12→45 %, installing 45→75 %
+parse_pacstrap() {
+    local line total=0 dl=0 inst=0
+    while IFS= read -r line; do
+        echo "$line"
+        if [[ "$line" =~ ^Packages\ \(([0-9]+)\) ]]; then
+            total=${BASH_REMATCH[1]}
+        elif [ "$total" -gt 0 ] && [[ "$line" == *" downloading..." ]]; then
+            dl=$((dl + 1)); progress $((12 + 33 * dl / total)) "Downloading packages ($dl/$total)"
+        elif [ "$total" -gt 0 ] && [[ "$line" =~ ^installing\ ([^ ]+)\.\.\.$ ]]; then
+            inst=$((inst + 1)); progress $((45 + 30 * inst / total)) "Installing ${BASH_REMATCH[1]} ($inst/$total)"
+        fi
+    done
+}
+PACSTRAP=(pacstrap -K)
+[ "$PLAN_TEST" = 1 ] && [ "$HOST_CACHE" = 1 ] && PACSTRAP+=(-c)      # tests: reuse the host's package cache
+if ! "${PACSTRAP[@]}" "$MNT" --noprogressbar "${PKGS[@]}" 2>&1 | parse_pacstrap; then
+    fail "installing the packages failed — check the internet connection (details: $LOG)"
+fi
+STEP="configuring"
+
+step 76 "Writing the file system table"
+genfstab -U "$MNT" >>"$MNT/etc/fstab"
+step 77 "Copying Praxis"
+praxis_copy_assets "$MNT"
+install -d "$MNT/var/log/praxis-install"
+[ -f "$BACKUP" ] && cp "$BACKUP" "$MNT/var/log/praxis-install/"
+
+# ── system configuration (inside the new system) ────────────────────────────
+step 80 "Setting up the system"
+install -d -m700 "$MNT/root/praxis-setup"
+{
+    for k in HOSTNAME USERNAME FULLNAME PASSWORD_HASH TIMEZONE LOCALE KEYMAP XKB_LAYOUT LOGIN FS EXTRA_SERVICES EXTRA_CMDLINE PLAN_TEST; do
+        printf '%s=%q\n' "$k" "${!k}"
+    done
+    printf 'SERVICES=%q\n' "$(praxis_target_services | paste -sd' ')"
+    # Windows keeps the hardware clock in local time; agreeing with it means
+    # neither OS shows the wrong time after switching
+    if [ -d "$MNT/boot/efi/EFI/Microsoft" ] || [ -d "$MNT/boot/efi/EFI/microsoft" ]; then echo "RTC=local"; else echo "RTC=utc"; fi
+} >"$MNT/root/praxis-setup/plan.env"
+cat >"$MNT/root/praxis-setup/setup.sh" <<'SETUP'
+set -Eeuo pipefail
+. /root/praxis-setup/plan.env
+ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+if [ "$RTC" = local ]; then printf '0.0 0 0.0\n0\nLOCAL\n' >/etc/adjtime; else printf '0.0 0 0.0\n0\nUTC\n' >/etc/adjtime; fi
+# (a test run on a developer's machine must not set that machine's clock)
+[ "${PLAN_TEST:-}" = 1 ] || hwclock --systohc $([ "$RTC" = local ] && echo --localtime) 2>/dev/null || true
+sed -i "s/^#\(en_US.UTF-8 UTF-8\)/\1/" /etc/locale.gen
+sed -i "s/^#\(${LOCALE//./\\.} \)/\1/" /etc/locale.gen
+locale-gen >/dev/null
+echo "LANG=$LOCALE" >/etc/locale.conf
+echo "KEYMAP=$KEYMAP" >/etc/vconsole.conf
+echo "$HOSTNAME" >/etc/hostname
+printf '127.0.0.1  localhost\n::1        localhost\n127.0.1.1  %s.localdomain  %s\n' "$HOSTNAME" "$HOSTNAME" >/etc/hosts
+
+# portable initramfs (still boots if the drive moves to another PC)
+sed -i 's/ autodetect//' /etc/mkinitcpio.conf
+mkinitcpio -P >/dev/null
+
+useradd -m -G wheel,video,audio,input,network,storage,users -c "$FULLNAME" -s /bin/bash "$USERNAME"
+usermod -p "$PASSWORD_HASH" "$USERNAME"
+usermod -p "$PASSWORD_HASH" root
+getent group docker >/dev/null && usermod -aG docker "$USERNAME"
+install -d -m750 /etc/sudoers.d
+echo '%wheel ALL=(ALL:ALL) ALL' >/etc/sudoers.d/10-wheel
+chmod 440 /etc/sudoers.d/10-wheel
+cp -aT /etc/skel "/home/$USERNAME"
+install -d "/home/$USERNAME/.config/praxis" "/home/$USERNAME/.config/hypr"
+printf 'hl.config({ input = { kb_layout = "%s" } })\n' "$XKB_LAYOUT" >"/home/$USERNAME/.config/hypr/praxis-local.lua"
+[ "$LOGIN" = lock ] && touch "/home/$USERNAME/.config/praxis/lock-at-login"
+chown -R "$USERNAME:$USERNAME" "/home/$USERNAME"
+
+# start the desktop on tty1 (Praxis' /etc/skel/.bash_profile already does; this
+# only covers an image whose skel lacks it)
+if ! grep -q 'uwsm start hyprland' "/home/$USERNAME/.bash_profile" 2>/dev/null; then
+cat >>"/home/$USERNAME/.bash_profile" <<'BP'
+if [[ -z "${WAYLAND_DISPLAY:-}" && "$(tty)" == "/dev/tty1" ]]; then
+    if command -v uwsm >/dev/null && uwsm check may-start >/dev/null 2>&1; then
+        exec uwsm start hyprland.desktop
+    else
+        exec Hyprland
+    fi
+fi
+BP
+fi
+chown "$USERNAME:$USERNAME" "/home/$USERNAME/.bash_profile"
+if [ "$LOGIN" != password ]; then
+    install -d /etc/systemd/system/getty@tty1.service.d
+    printf '[Service]\nExecStart=\nExecStart=-/usr/bin/agetty --autologin %s --noclear %%I 38400 linux\n' "$USERNAME" \
+        >/etc/systemd/system/getty@tty1.service.d/autologin.conf
+fi
+
+for s in $SERVICES $EXTRA_SERVICES; do systemctl enable "$s" 2>/dev/null || echo "note: could not enable $s"; done
+systemctl enable docker.socket 2>/dev/null || true
+
+# GRUB — writes only /EFI/Praxis on the EFI partition; Windows' own entry stays.
+# os-prober adds Windows (and any other OS) to the menu.
+sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub
+grep -q '^GRUB_DISABLE_OS_PROBER=' /etc/default/grub || echo 'GRUB_DISABLE_OS_PROBER=false' >>/etc/default/grub
+sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
+sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Praxis"/' /etc/default/grub
+if [ -n "$EXTRA_CMDLINE" ]; then
+    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 $EXTRA_CMDLINE\"|" /etc/default/grub
+fi
+# (a test run on a developer's machine must not add boot entries to that machine's firmware)
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --recheck \
+    $([ "${PLAN_TEST:-}" = 1 ] && echo --no-nvram) >/dev/null
+# also as the fallback loader when the firmware forgets boot entries (common on
+# some laptops) — but never over another OS's fallback loader
+if [ ! -e /boot/efi/EFI/BOOT/BOOTX64.EFI ]; then
+    install -Dm644 /boot/efi/EFI/Praxis/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
+fi
+grub-mkconfig -o /boot/grub/grub.cfg
+
+# the AI backend starts CPU-only until the user picks a model for their GPU
+if [ -f /opt/aios/config/aios.env.example ] && [ ! -f /opt/aios/config/aios.env ]; then
+    cp /opt/aios/config/aios.env.example /opt/aios/config/aios.env
+    sed -i -e 's/^AIOS_VL_NGL=.*/AIOS_VL_NGL=0/' -e 's/^AIOS_BUDGET_MODE=.*/AIOS_BUDGET_MODE=ZERO_COST/' /opt/aios/config/aios.env
+    chmod 600 /opt/aios/config/aios.env
+fi
+SETUP
+arch-chroot "$MNT" /bin/bash /root/praxis-setup/setup.sh
+
+if [ "$FS" = btrfs ]; then
+    step 88 "Turning on snapshots"
+    umount "$MNT/.snapshots" && rmdir "$MNT/.snapshots"
+    arch-chroot "$MNT" snapper --no-dbus -c root create-config / >/dev/null
+    btrfs subvolume delete "$MNT/.snapshots" >/dev/null
+    mkdir "$MNT/.snapshots"
+    mount -o "$BTRFS_OPTS,subvol=@snapshots" "$ROOT" "$MNT/.snapshots"
+    chmod 750 "$MNT/.snapshots"
+    # snapshots before/after each update (snap-pac), none on a timer; keep the last 12
+    sed -i 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/; s/^NUMBER_LIMIT=.*/NUMBER_LIMIT="12"/; s/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="6"/' \
+        "$MNT/etc/snapper/configs/root"
+    arch-chroot "$MNT" systemctl enable snapper-cleanup.timer grub-btrfsd.service >/dev/null 2>&1
+    arch-chroot "$MNT" snapper --no-dbus -c root create -d "Fresh Praxis install" >/dev/null || true
+    arch-chroot "$MNT" grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+fi
+
+# ── optional apps (a failure here never fails the install) ──────────────────
+if [ -n "$APPS" ]; then
+    step 90 "Installing apps: $APPS"
+    read -ra B <<<"$APPS"
+    mapfile -t APKGS < <(praxis_bundle_pkgs "${B[@]}" -- "${GPU[@]}")
+    if [[ " $APPS " == *" gaming "* ]]; then
+        sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' "$MNT/etc/pacman.conf"
+    fi
+    if arch-chroot "$MNT" pacman -Sy --noconfirm --needed --noprogressbar "${APKGS[@]}"; then
+        echo "apps installed: ${APKGS[*]}"
+    else
+        echo "!! some apps could not be installed — install them later with: sudo pacman -S ${APKGS[*]}"
+        echo "${APKGS[*]}" >"$MNT/var/log/praxis-install/apps-not-installed.txt"
+    fi
+fi
+
+step 97 "Finishing"
+rm -rf "$MNT/root/praxis-setup"
+cp "$LOG" "$MNT/var/log/praxis-install/install.log" 2>/dev/null || true
+trap - ERR
+release_target || { printf '@@ FAIL %s\n' "Praxis is installed, but the disk could not be released — restart anyway"; exit 1; }
+progress 100 "done"

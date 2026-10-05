@@ -35,6 +35,9 @@ slurp
 swappy
 cliphist
 wl-clipboard
+wtype
+hyprpicker
+wf-recorder
 brightnessctl
 playerctl
 
@@ -55,10 +58,12 @@ bluez-utils
 # ── power ────────────────────────────────────────────────────────────────
 power-profiles-daemon
 zram-generator
+earlyoom
 
 # ── installer & dual-boot (os-prober finds Windows, ntfs-3g reads it) ────
 os-prober
 ntfs-3g
+ntfsprogs
 libnewt
 
 # ── Praxis tools (praxis-top and the AIOS scripts need python) ───────────
@@ -84,3 +89,5 @@ vulkan-radeon
 vulkan-nouveau
 intel-media-driver
 libva-intel-driver
+# lets iso/test-live.sh drive the live session in a VM; its udev rule starts it only inside one
+qemu-guest-agent

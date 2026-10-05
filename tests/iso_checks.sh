@@ -45,6 +45,16 @@ eq "AMD Radeon"                       "$(praxis_gpu_pkgs "$RADEON")"           "
 eq "non-GPU Intel device ignored"     "$(praxis_gpu_pkgs "$ETH")"              "mesa"
 eq "nothing detected → mesa"          "$(praxis_gpu_pkgs "")"                  "mesa"
 
+section "GPU detection under the installer's strict mode"
+# the engine runs with set -Eeuo pipefail and an ERR trap; detection must never
+# trip it (no NVIDIA GPU used to fire the trap inside $(…) and unmount the target)
+VIRTIO='00:03.0 VGA compatible controller [0300]: Red Hat, Inc. Virtio 1.0 GPU [1af4:1050] (rev 01)'
+for g in "$VIRTIO" "$INTEL" "$RADEON"; do
+    out=$(bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit; . "$1"; trap "echo TRAPPED" ERR; praxis_gpu_pkgs "$2"' _ "$AIRO/usr/local/lib/praxis/hwdetect.sh" "$g" 2>&1)
+    [[ "$out" != *TRAPPED* ]] && ok "no error trap for: ${g:46:40}" || bad "error trap fired for: ${g:46:40}"
+done
+check "the engine's error trap ignores subshells" grep -q '\[ "\$BASHPID" = "\$\$" \] || return "\$rc"' "$AIRO/usr/local/bin/praxis-install-engine"
+
 section "free-space detection (parted -sm output)"
 WIN='BYT;
 /dev/nvme0n1:488386MiB:nvme:512:512:gpt:disk;
@@ -63,21 +73,34 @@ eq "< 30 GiB free is ignored"    "$(praxis_largest_free "$SMALL")" ""
 eq "custom minimum honoured"     "$(praxis_largest_free "$SMALL" 8000)" "476000MiB 486000MiB 10000"
 
 section "installer safety guards"
+ENG=$AIRO/usr/local/bin/praxis-install-engine
 INST=$AIRO/usr/local/bin/praxis-install
-check "refuses the live medium"         grep -q "That's the live installer" "$INST"
-check "refuses the running root disk"   grep -q "running the installer" "$INST"
-check "destructive steps need PROCEED"  grep -q "Type PROCEED to continue" "$INST"
-check "requires UEFI"                   grep -q "UEFI mode required" "$INST"
-check "connects Wi-Fi before pacstrap"  grep -q "online_check" "$INST"
-check "uses shared asset copy"          grep -q "praxis_copy_assets /mnt" "$INST"
-check "partition installer shares it"   grep -q "praxis_copy_assets /mnt" "$AIRO/usr/local/bin/praxis-install-partition"
+GUI=$AIRO/usr/local/share/praxis/installer
+check "refuses the USB drive it runs from"      grep -q "is the USB drive Praxis is running from" "$ENG"
+check "requires UEFI"                           grep -q "Praxis needs UEFI" "$ENG"
+check "plan values are parsed, never executed"  grep -q "only known keys, never executed" "$ENG"
+check "saves the partition table first"         grep -q 'sfdisk --dump "$DISK"' "$ENG"
+check "Windows shrink: test run before the real one" grep -q -- '--no-action --size "$FS_BYTES"' "$ENG"
+check "Windows shrink: NTFS sized to its partition"  grep -q 'FS_BYTES=$((NEW_MIB \* 1048576))' "$ENG"
+check "Windows shrink: verified before going on" grep -q "does not look healthy after shrinking" "$ENG"
+check "never formats a foreign EFI partition"   grep -q "Praxis won't change it" "$ENG"
+check "test runs never touch the host firmware" grep -q -- '--no-nvram' "$ENG"
+check "text installer: erase needs ERASE"       grep -q 'WORD=ERASE' "$INST"
+check "text installer: connects Wi-Fi first"    grep -q 'online()' "$INST"
+check "text installer hands off to the engine"  grep -q 'praxis-install-engine "$PLAN"' "$INST"
+check "graphical installer: erase needs a tick" grep -q 'wipeConfirmed' "$GUI/State/Inst.qml"
+check "graphical installer hands off to the engine" grep -q 'praxis-install-engine' "$GUI/State/Inst.qml"
+check "partition installer folded into the main one" grep -q 'exec /usr/local/bin/praxis-install' "$AIRO/usr/local/bin/praxis-install-partition"
+check "disk probe is valid python"              python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$AIRO/usr/local/lib/praxis/install_probe.py"
+check "dock entry opens the graphical installer" grep -q '^Exec=/usr/local/bin/praxis-installer$' "$AIRO/usr/share/applications/praxis-install.desktop"
+check "graphical installer launcher is executable" test -x "$AIRO/usr/local/bin/praxis-installer"
 
 section "live session"
 check "installer app entry is valid"      desktop-file-validate "$AIRO/usr/share/applications/praxis-install.desktop"
 check "live user setup only on live media" grep -q "ConditionPathExists=/run/archiso" "$AIRO/etc/systemd/system/praxis-live-setup.service"
 check "live setup service is enabled"      test -L "$AIRO/etc/systemd/system/multi-user.target.wants/praxis-live-setup.service"
 check "autologin targets 'praxis'"         grep -q -- "--autologin praxis" "$AIRO/etc/systemd/system/getty@tty1.service.d/autologin.conf"
-check "wizard is skipped on live media"    grep -q '! -d /run/archiso' "$AIRO/etc/skel/.bash_profile"
+check "login goes straight to the desktop"  bash -c "! grep -q praxis-welcome '$AIRO/etc/skel/.bash_profile'"
 check "welcome offers the installer"       grep -q 'action=install' "$AIRO/usr/local/bin/praxis-first-boot"
 
 section "installed system = live desktop"
@@ -93,8 +116,14 @@ done
 for p in vulkan-nouveau libva-intel-driver waybar polkit-gnome ttf-jetbrains-mono-nerd; do
     check "does not install $p" bash -c "! grep -qx '$p' <<<\"\$1\"" _ "$PKGS"
 done
-check "both installers use the shared list"    bash -c "grep -q 'praxis_packages' '$AIRO/usr/local/bin/praxis-install' && grep -q 'praxis_packages' '$AIRO/usr/local/bin/praxis-install-partition'"
-check "targets get Bluetooth + power profiles"  bash -c "grep -q 'enable bluetooth power-profiles-daemon' '$AIRO/usr/local/bin/praxis-install' && grep -q 'enable bluetooth power-profiles-daemon' '$AIRO/usr/local/bin/praxis-install-partition'"
+check "the engine installs the shared list"     grep -q 'praxis_packages' "$AIRO/usr/local/bin/praxis-install-engine"
+svc_has() { praxis_target_services | grep -qx "$1"; }
+for u in NetworkManager bluetooth power-profiles-daemon earlyoom fstrim.timer; do
+    check "targets enable $u" svc_has "$u"
+done
+for p in wtype earlyoom ntfsprogs; do check "installs $p" has "$p"; done
+check "memory tuning ships to targets"         bash -c "grep -q '80-praxis-memory.conf' '$AIRO/usr/local/lib/praxis/install-common.sh' && test -f '$AIRO/etc/sysctl.d/80-praxis-memory.conf'"
+check "AI service limits ship to targets"      bash -c "grep -q 'aios.service.d' '$AIRO/usr/local/lib/praxis/install-common.sh' && grep -q OOMScoreAdjust '$AIRO/usr/lib/systemd/user/aios.service.d/10-praxis.conf'"
 check "zram swap is configured"                grep -q '^\[zram0\]' "$AIRO/etc/systemd/zram-generator.conf"
 
 section "live network & remote access"
@@ -131,6 +160,12 @@ if command -v pacman >/dev/null; then
     # what the installers pacstrap (the bundled AUR packages come from the ISO's [praxis] repo)
     missing=$(PRAXIS_DESKTOP_LIST=$DESK PRAXIS_REPO_DIR=/nonexistent praxis_packages | while read -r p; do pacman -Si "$p" >/dev/null 2>&1 || echo "$p"; done)
     [ -z "$missing" ] && ok "every package the installers request exists" || bad "installers would fail on: $missing"
+    # optional app bundles ([multilib] packages are only checked when this host has that repository)
+    missing=$(praxis_app_bundles | cut -d'|' -f4 | tr ' ' '\n' | while read -r p; do
+        [ -n "$p" ] || continue
+        case "$p" in lib32-*|steam) pacman -Sl multilib >/dev/null 2>&1 || continue ;; esac
+        pacman -Si "$p" >/dev/null 2>&1 || echo "$p"; done)
+    [ -z "$missing" ] && ok "every app-bundle package exists" || bad "app bundles would fail on: $missing"
 fi
 
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$pass" "$fail"

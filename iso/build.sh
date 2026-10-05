@@ -24,7 +24,6 @@ OUT=${PRAXIS_OUT:-$BUILD/out}
 AURREPO=$BUILD/aurrepo
 AURBUILD=$BUILD/aurbuild
 AIROOT=$PROFILE/airootfs
-SKEL=$AIROOT/etc/skel
 
 # AUR packages bundled into a local [praxis] repo on the ISO. They are not
 # installed into the live image; praxis-install installs them onto targets.
@@ -49,11 +48,11 @@ git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || die "$REPO is not a git ch
 mkdir -p "$BUILD" "$OUT"
 
 # ----------------------------------------------------------------------------
-log "1/8  archiso"
+log "1/6  archiso"
 command -v mkarchiso >/dev/null || sudo pacman -S --needed --noconfirm archiso
 
 # ----------------------------------------------------------------------------
-log "2/8  AUR packages → local [praxis] repository"
+log "2/6  AUR packages → local [praxis] repository"
 mkdir -p "$AURREPO"
 collect_aur() {
     local pkg=$1 cached tmp
@@ -76,7 +75,7 @@ rm -f "$AURREPO"/*-debug-*.pkg.tar.zst "$AURREPO"/praxis.db* "$AURREPO"/praxis.f
 repo-add -q "$AURREPO/praxis.db.tar.gz" "$AURREPO"/*.pkg.tar.zst
 
 # ----------------------------------------------------------------------------
-log "3/8  archiso profile (from releng)"
+log "3/6  archiso profile (from releng)"
 wipe "$PROFILE"                     # previous mkarchiso runs leave root-owned files
 cp -r /usr/share/archiso/configs/releng "$PROFILE"
 sed -i \
@@ -87,7 +86,7 @@ sed -i \
     "$PROFILE/profiledef.sh"
 
 # ----------------------------------------------------------------------------
-log "4/8  packages + live services"
+log "4/6  packages + live services"
 grep -vE '^\s*(#|$)' "$ISO_DIR/packages.x86_64" >> "$PROFILE/packages.x86_64"
 # releng is a rescue disc; this image is for trying the desktop and installing
 # it. Drop the rescue / VPN / remote-admin extras (~0.3 GB) and their units.
@@ -140,33 +139,11 @@ sed -i '/^\[options\]/a NoExtract = usr/share/doc/* usr/share/gtk-doc/* usr/shar
     "$PROFILE/pacman.conf"
 
 # ----------------------------------------------------------------------------
-log "5/8  overlay (iso/airootfs)"
-cp -a "$ISO_DIR/airootfs/." "$AIROOT/"
-# the desktop half of packages.x86_64 — praxis-install puts exactly this on targets
-install -d "$AIROOT/usr/local/share/praxis"
-sed '/^# @live-only/,$d' "$ISO_DIR/packages.x86_64" | grep -vE '^\s*(#|$)' > "$AIROOT/usr/local/share/praxis/desktop-packages.txt"
+log "5/6  overlay, desktop defaults, AIOS backend (stage.sh)"
+"$ISO_DIR/stage.sh" "$AIROOT" "$AURREPO"
 
 # ----------------------------------------------------------------------------
-log "6/8  desktop defaults → /etc/skel"
-install -d "$SKEL/.config" "$SKEL/.local/share/wallpapers"
-rsync -a --exclude settings.json --exclude eyecomfort.json \
-    "$REPO/desktop/quickshell/" "$SKEL/.config/quickshell/"
-for d in hypr swaync rofi; do rsync -a "$REPO/desktop/$d/" "$SKEL/.config/$d/"; done
-cp -r "$REPO"/desktop/wallpapers/. "$SKEL/.local/share/wallpapers/"     # stills + live/ videos
-# The backend's user unit ships disabled; aios-setup enables it after the venv exists.
-install -Dm644 "$REPO/config/systemd/aios.service" "$SKEL/.config/systemd/user/aios.service"
-
-# ----------------------------------------------------------------------------
-log "7/8  AIOS backend → /opt/aios  (tracked files only)"
-install -d "$AIROOT/opt/aios"
-git -C "$REPO" ls-files -z -- . ':!iso' ':!.github' ':!tests' ':!desktop/wallpapers' ':!docs/*.mp4' ':!docs/*.gif' ':!docs/screenshots' \
-    | rsync -a --from0 --files-from=- "$REPO/" "$AIROOT/opt/aios/"
-install -Dm644 "$REPO/requirements.txt" "$AIROOT/usr/local/share/aios/aios-requirements.txt"
-install -d "$AIROOT/opt/praxis-repo"
-cp -a "$AURREPO/." "$AIROOT/opt/praxis-repo/"
-
-# ----------------------------------------------------------------------------
-log "8/8  permissions + mkarchiso"
+log "6/6  permissions + mkarchiso"
 # mkarchiso copies the overlay WITHOUT preserving modes; anything executable
 # must be listed in file_permissions or it lands on the ISO as 0644.
 {

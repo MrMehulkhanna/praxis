@@ -1,0 +1,7 @@
+module Ui
+Btn 1.0 Btn.qml
+Field 1.0 Field.qml
+Check 1.0 Check.qml
+Choice 1.0 Choice.qml
+PartBar 1.0 PartBar.qml
+Pick 1.0 Pick.qml

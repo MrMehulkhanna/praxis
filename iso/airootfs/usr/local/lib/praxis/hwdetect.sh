@@ -25,10 +25,13 @@ praxis_gpu_pkgs() {
     grep -qiE '\[8086:[0-9a-f]{4}\]' <<<"$gpus" && pkgs+=(mesa vulkan-intel intel-media-driver)
     grep -qiE '\[1002:[0-9a-f]{4}\]' <<<"$gpus" && pkgs+=(mesa vulkan-radeon xf86-video-amdgpu)
 
-    while read -r id; do
-        [ -n "$id" ] || continue
+    # (no NVIDIA GPU is the normal case: grep finding nothing must not count as a
+    # failure for a caller running under `set -eE` with an ERR trap — the
+    # installer's trap would otherwise fire inside this command substitution)
+    for id in $(grep -oiE '\[10de:[0-9a-f]{4}\]' <<<"$gpus" | cut -d: -f2 | tr -d ']' || true); do
+        [[ "$id" =~ ^[0-9a-fA-F]{4}$ ]] || continue
         if (( 16#$id >= 16#1e00 )); then nv_new=1; else nv_old=1; fi
-    done < <(grep -oiE '\[10de:[0-9a-f]{4}\]' <<<"$gpus" | cut -d: -f2 | tr -d ']')
+    done
 
     if [ "$nv_new" = 1 ]; then
         pkgs+=(nvidia-open nvidia-utils)

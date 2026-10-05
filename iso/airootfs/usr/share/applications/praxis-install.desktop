@@ -2,10 +2,10 @@
 Type=Application
 Name=Install Praxis Linux
 GenericName=System Installer
-Comment=Install Praxis to this computer's disk — keeps Windows if there is free space
+Comment=Install Praxis on this computer — next to Windows, in free space, or on a whole disk
 Icon=praxis-install
-Exec=kitty --class praxis-installer --title "Install Praxis Linux" -e /usr/local/bin/praxis-install-window
+Exec=/usr/local/bin/praxis-installer
 Terminal=false
 Categories=System;
-Keywords=install;installer;setup;disk;
+Keywords=install;installer;setup;disk;dual boot;windows;
 StartupNotify=true
