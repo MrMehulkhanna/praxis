@@ -30,6 +30,30 @@ CONF="$HOME/.config/hypr/hyprpaper.conf"
 # 320 MB RAM and 360 MiB VRAM, versus 5 %, 485 MB and 864 MiB for a player per
 # monitor. -p pauses it while windows cover it; panscan fills any aspect ratio.
 MPV_OPTS="no-audio loop hwdec=auto profile=fast panscan=1.0"
+MPV_ENV=()
+
+# Hybrid laptop (Intel/AMD iGPU + NVIDIA): decode and draw on the integrated GPU.
+# With hwdec=auto mpv picks NVDEC and an NVIDIA EGL context, which keeps the
+# NVIDIA GPU awake and drawing ~6 W for as long as the wallpaper plays.
+igpu_render_node() {
+    local r nv=""
+    for r in /sys/class/drm/renderD*; do
+        [ "$(cat "$r/device/vendor" 2>/dev/null)" = 0x10de ] && nv=1
+    done
+    [ -n "$nv" ] || return 1
+    for r in /sys/class/drm/renderD*; do
+        case "$(cat "$r/device/vendor" 2>/dev/null)" in
+            0x8086|0x1002) echo "/dev/dri/${r##*/}"; return 0 ;;
+        esac
+    done
+    return 1
+}
+if node=$(igpu_render_node); then
+    MPV_OPTS="no-audio loop hwdec=vaapi vaapi-device=$node gpu-hwdec-interop=vaapi profile=fast panscan=1.0"
+    [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ] &&
+        MPV_ENV=(env __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json)
+fi
+unset node
 
 die() { echo "praxis-wallpaper: $*" >&2; exit 1; }
 
@@ -53,7 +77,7 @@ save_state() {
 
 default_still() {
     local f
-    for f in "$WP_DIR/deep-purple.png" "$WP_DIR"/*.png "$WP_DIR"/*.jpg "$WP_DIR"/*.jpeg "$WP_DIR"/*.webp; do
+    for f in "$WP_DIR/aurora-still.jpg" "$WP_DIR/deep-purple.png" "$WP_DIR"/*.jpg "$WP_DIR"/*.png "$WP_DIR"/*.jpeg "$WP_DIR"/*.webp; do
         [ -f "$f" ] && { echo "$f"; return; }
     done
 }
@@ -108,13 +132,13 @@ show_live() {    # <video> [force]
     pkill -x hyprpaper 2>/dev/null
     if [ "${2:-}" = force ] || ! pgrep -x mpvpaper >/dev/null; then
         stop_procs -x mpvpaper
-        setsid -f mpvpaper -p -o "$MPV_OPTS" ALL "$1" >/dev/null 2>&1
+        setsid -f "${MPV_ENV[@]}" mpvpaper -p -o "$MPV_OPTS" ALL "$1" >/dev/null 2>&1
         return 0
     fi
     # repair: a monitor that has no live surface (plugged in later) gets its own player
     local m
     for m in $(monitors); do
-        has_layer "$m" mpvpaper || setsid -f mpvpaper -p -o "$MPV_OPTS" "$m" "$1" >/dev/null 2>&1
+        has_layer "$m" mpvpaper || setsid -f "${MPV_ENV[@]}" mpvpaper -p -o "$MPV_OPTS" "$m" "$1" >/dev/null 2>&1
     done
     return 0
 }
