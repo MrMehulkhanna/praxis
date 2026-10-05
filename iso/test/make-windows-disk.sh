@@ -13,10 +13,11 @@ sgdisk -o \
     -n 3:0:-750M   -t 3:0700 -c 3:"Basic data partition" \
     -n 4:0:0       -t 4:2700 -c 4:"Basic data partition" "$IMG" >/dev/null
 LOOP=$(losetup -fP --show "$IMG")
-# ntfs-3g is a FUSE helper: umount returns before it lets go of the device, so
-# detaching right away can fail and leave the loop device (and the image's disk
-# space) behind — retry until it's really gone
+# Leave no loop device behind (it would keep the deleted image's disk space).
+# set -e also applies inside this trap, and by now /tmp/.mkwin is normally
+# unmounted already — so nothing here may fail, or the detach never runs.
 detach() {
+    set +e
     umount -q /tmp/.mkwin 2>/dev/null
     for _ in $(seq 40); do
         losetup -d "$LOOP" 2>/dev/null
