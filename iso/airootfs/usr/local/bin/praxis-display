@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-display — change a monitor's mode or scale safely, and keep it.
+#
+#    praxis-display set OUTPUT MODE [SCALE]   e.g. praxis-display set HDMI-A-1 1920x1080@200
+#                                             applies it now and goes back on its own
+#                                             after 15 s unless you run "keep" — so a
+#                                             mode the monitor can't show never strands you
+#    praxis-display keep                      keep the change (also after a restart)
+#    praxis-display revert                    go back now
+#    praxis-display status                    pending change, if any (Settings shows it)
+#    praxis-display list                      monitors and the modes they offer
+#
+#  Kept settings live in ~/.config/hypr/praxis-local.lua (this computer only),
+#  one line per monitor marked "-- praxis-display".
+# ============================================================================
+set -uo pipefail
+RUN=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis
+PENDING=$RUN/display.pending
+LOCAL=$HOME/.config/hypr/praxis-local.lua
+WAIT=${PRAXIS_DISPLAY_WAIT:-15}
+mkdir -p "$RUN"
+
+die() { echo "praxis-display: $*" >&2; exit 1; }
+mon() { hyprctl -j monitors all 2>/dev/null | jq -c --arg o "$1" '.[] | select(.name == $o)'; }
+apply() {   # output mode scale
+    hyprctl eval "hl.monitor({ output = \"$1\", mode = \"$2\", position = \"auto\", scale = $3 })" >/dev/null
+}
+current() { # output → "mode scale"
+    local m; m=$(mon "$1"); [ -n "$m" ] || return 1
+    jq -r '"\(.width)x\(.height)@\(.refreshRate * 100 | round / 100) \(.scale)"' <<<"$m"
+}
+
+case "${1:-status}" in
+    set)
+        out=${2:?output}; mode=${3:?mode}; scale=${4:-}
+        m=$(mon "$out"); [ -n "$m" ] || die "no monitor called $out"
+        mode=${mode%Hz}
+        jq -e --arg md "$mode" '[.availableModes[] | rtrimstr("Hz")] | any(. == $md or (split("@")[0] == ($md | split("@")[0]) and ((split("@")[1] | tonumber) - (($md | split("@")[1]) // "0" | tonumber) | fabs) < 0.6))' <<<"$m" >/dev/null \
+            || die "$out doesn't offer $mode (praxis-display list)"
+        [ -n "$scale" ] || scale=$(jq -r .scale <<<"$m")
+        read -r pmode pscale <<<"$(current "$out")"
+        # a previous change that was never confirmed goes back first
+        [ -f "$PENDING" ] && "$0" revert >/dev/null
+        until=$(( $(date +%s) + WAIT ))
+        printf 'output=%s\nmode=%s\nscale=%s\nold_mode=%s\nold_scale=%s\nuntil=%s\n' \
+            "$out" "$mode" "$scale" "$pmode" "$pscale" "$until" >"$PENDING"
+        apply "$out" "$mode" "$scale"
+        # goes back by itself unless this exact change was kept (or replaced) meanwhile
+        setsid bash -c "sleep $WAIT; grep -qx 'until=$until' '$PENDING' 2>/dev/null && '$0' revert" >/dev/null 2>&1 &
+        echo "applied $out $mode ×$scale — 'praxis-display keep' within ${WAIT}s, or it goes back"
+        ;;
+    keep)
+        [ -f "$PENDING" ] || { echo "nothing to keep"; exit 0; }
+        out=$(sed -n 's/^output=//p' "$PENDING"); mode=$(sed -n 's/^mode=//p' "$PENDING"); scale=$(sed -n 's/^scale=//p' "$PENDING")
+        rm -f "$PENDING"
+        mkdir -p "${LOCAL%/*}"; touch "$LOCAL"
+        grep -v "output = \"$out\".*-- praxis-display" "$LOCAL" >"$LOCAL.tmp" || true
+        printf 'hl.monitor({ output = "%s", mode = "%s", position = "auto", scale = %s })  -- praxis-display\n' "$out" "$mode" "$scale" >>"$LOCAL.tmp"
+        mv -f "$LOCAL.tmp" "$LOCAL"
+        echo "kept $out $mode ×$scale"
+        ;;
+    revert)
+        [ -f "$PENDING" ] || { echo "nothing to revert"; exit 0; }
+        out=$(sed -n 's/^output=//p' "$PENDING"); om=$(sed -n 's/^old_mode=//p' "$PENDING"); os=$(sed -n 's/^old_scale=//p' "$PENDING")
+        rm -f "$PENDING"
+        apply "$out" "$om" "$os"
+        command -v notify-send >/dev/null && notify-send -a Praxis -i video-display "Display settings went back" "$out is at $om again."
+        echo "reverted $out to $om ×$os"
+        ;;
+    status)
+        if [ -f "$PENDING" ]; then
+            left=$(( $(sed -n 's/^until=//p' "$PENDING") - $(date +%s) ))
+            printf '{"pending":true,"output":"%s","mode":"%s","left":%d}\n' "$(sed -n 's/^output=//p' "$PENDING")" "$(sed -n 's/^mode=//p' "$PENDING")" "$(( left > 0 ? left : 0 ))"
+        else
+            echo '{"pending":false}'
+        fi
+        ;;
+    list)
+        hyprctl -j monitors all | jq -r '.[] | "\(.name)  \(.description)\n  now: \(.width)x\(.height)@\(.refreshRate * 100 | round / 100)  scale \(.scale)\n  modes: \(.availableModes | join(" "))"'
+        ;;
+    -h|--help|help) sed -n '3,16p' "$0" | sed 's/^# \?//' ;;
+    *) die "unknown command $1 (praxis-display help)" ;;
+esac

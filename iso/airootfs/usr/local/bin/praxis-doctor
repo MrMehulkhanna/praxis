@@ -1,127 +1,425 @@
-#!/usr/bin/env bash
-# Praxis diagnostic tool — dumps a health report the user can read or paste.
-# No sudo required for most checks.
-set -uo pipefail
+#!/usr/bin/env python3
+"""praxis-doctor — check this computer and say what needs fixing, and how.
 
-RC=0
-OUT="${1:-/tmp/praxis-doctor-$(date +%Y%m%d-%H%M).txt}"
-: > "$OUT"
+    praxis-doctor              problems first, each with what to do about it
+    praxis-doctor --fix        also apply the fixes that are safe to automate
+    praxis-doctor --fix ID…    apply only those (IDs are shown in the report)
+    praxis-doctor --json       the same findings as JSON (Settings › Health)
+    praxis-doctor --all        also list everything that is fine
+    praxis-doctor --report     write the full report to a file you can share
 
-log()  { echo -e "$*" | tee -a "$OUT"; }
-sec()  { log "\n\033[1;36m== $* ==\033[0m"; }
-row()  {
-    local label="$1" val="$2" ok="${3:-1}"
-    if [ "$ok" = 1 ]; then log "  \033[32m✔\033[0m $label: $val"
-    else                   log "  \033[31m✘\033[0m $label: $val"; RC=1; fi
-}
-check() { if command -v "$1" >/dev/null; then row "$1" "$($1 --version 2>&1 | head -1)"; else row "$1" "missing" 0; fi; }
+Looks at: failed services, disk space and caches, memory protection and
+pressure, what keeps the NVIDIA GPU awake, power and battery, temperatures,
+the AI backend and its model server, network, updates waiting for a restart,
+the desktop (Hyprland config errors, shell memory, crashes) and security
+leftovers from the live USB. Nothing is changed without --fix.
+"""
+import glob, json, os, re, shutil, subprocess, sys, time
 
-log "Praxis doctor — $(date -Is)"
-log "Report saved to: $OUT"
+HOME = os.path.expanduser("~")
+LIVE = os.path.isdir("/run/archiso")
+findings = []
 
-# ---------------------------------------------------------------------------
-sec "OS"
-row "kernel"  "$(uname -r)"
-row "distro"  "$(. /etc/os-release; echo "$PRETTY_NAME")"
-row "uptime"  "$(uptime -p 2>/dev/null || uptime)"
-row "boot"    "$([ -d /sys/firmware/efi ] && echo UEFI || echo BIOS)"
 
-# ---------------------------------------------------------------------------
-sec "Hardware"
-row "cpu"     "$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
-row "cores"   "$(nproc)"
-row "ram"     "$(free -h | awk '/^Mem:/ {print $2 " total, " $3 " used, " $7 " avail"}')"
-if command -v lspci >/dev/null; then
-    GPU=$(lspci | grep -iE 'vga|3d|display' | sed 's/^[^:]*: //' | head -1)
-    row "gpu"     "${GPU:-none detected}"
-fi
-if command -v nvidia-smi >/dev/null; then
-    NV=$(nvidia-smi --query-gpu=name,memory.total,memory.used,temperature.gpu --format=csv,noheader 2>/dev/null | head -1)
-    row "nvidia"  "${NV:-not accessible}"
-fi
+def sh(cmd, timeout=15):
+    try:
+        r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, "", str(e)
 
-# ---------------------------------------------------------------------------
-sec "Storage"
-df -h --output=source,size,used,avail,pcent,target 2>/dev/null | grep -vE 'tmpfs|devtmpfs|run|efivarfs' | head -10 >> "$OUT"
-df -h --output=source,size,used,avail,pcent,target 2>/dev/null | grep -vE 'tmpfs|devtmpfs|run|efivarfs' | head -10 | sed 's/^/  /'
 
-# ---------------------------------------------------------------------------
-sec "Network"
-if command -v nmcli >/dev/null; then
-    for l in $(nmcli -t -f DEVICE,STATE dev 2>/dev/null | head -5); do log "  $l"; done
-fi
-if timeout 4 curl -sI https://archlinux.org >/dev/null 2>&1; then
-    row "internet" "reachable"
-else
-    row "internet" "unreachable" 0
-fi
+def have(cmd):
+    return shutil.which(cmd) is not None
 
-# ---------------------------------------------------------------------------
-sec "Desktop"
-row "compositor" "$( pgrep -a Hyprland | head -1 | awk '{print $2, $3}' | xargs || echo not-running)" \
-    "$( pgrep -x Hyprland >/dev/null && echo 1 || echo 0)"
-row "quickshell" "$(pgrep -a quickshell | head -1 || echo not-running)" \
-    "$(pgrep -x quickshell >/dev/null && echo 1 || echo 0)"
-is_run() { pgrep -x "$1" >/dev/null && echo 1 || echo 0; }
-say_run() { pgrep -x "$1" >/dev/null && echo running || echo stopped; }
-row "waybar"     "$(say_run waybar)" "$(is_run waybar)"
-row "swaync"     "$(say_run swaync)" "$(is_run swaync)"
 
-# ---------------------------------------------------------------------------
-sec "AIOS backend"
-if systemctl --user is-active aios.service >/dev/null 2>&1; then
-    row "aios.service" "active"
-else
-    row "aios.service" "$(systemctl --user is-active aios.service 2>&1)" 0
-fi
-PORT="${AIOS_PORT:-8778}"
-if timeout 3 curl -sf "http://127.0.0.1:$PORT/health" -o /dev/null 2>&1; then
-    row "backend"      "responding on 127.0.0.1:$PORT"
-elif timeout 3 curl -sf "http://127.0.0.1:$PORT/" -o /dev/null 2>&1; then
-    row "backend"      "responding on 127.0.0.1:$PORT (no /health)"
-else
-    row "backend"      "no response on 127.0.0.1:$PORT" 0
-fi
+def read(path, default=""):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
 
-# ---------------------------------------------------------------------------
-sec "Config"
-AENV="$HOME/aios/config/aios.env"
-if [ -f "$AENV" ]; then
-    row "aios.env"     "found"
-    log "$(grep -E '^AIOS_(BUDGET_MODE|VL_NGL|DOLPHIN_NGL|PORT)=' "$AENV" | sed 's/^/    /')"
-else
-    row "aios.env"     "missing (run: aios-setup)" 0
-fi
 
-# ---------------------------------------------------------------------------
-sec "Tools"
-for c in git python hyprctl grim slurp notify-send piper; do
-    check "$c"
-done
-# Python deps live in the AIOS venv, not on PATH.
-VENV="$HOME/aios/.venv"
-if [ -x "$VENV/bin/python" ]; then
-    for mod in fastapi uvicorn httpx sqlite_vec onnxruntime; do
-        if "$VENV/bin/python" -c "import $mod" 2>/dev/null; then
-            row "venv:$mod" "installed"
-        else
-            row "venv:$mod" "missing (run: aios-setup)" 0
-        fi
-    done
-else
-    row "venv"      "not built (run: aios-setup)" 0
-fi
+def add(fid, area, status, title, detail="", fix="", cmd=None, root=False):
+    """status: ok | info | warn | fail. cmd: shell command for --fix (root: via sudo)."""
+    findings.append({"id": fid, "area": area, "status": status, "title": title, "detail": detail,
+                     "fix": fix, "auto": bool(cmd), "cmd": cmd, "root": root})
 
-# ---------------------------------------------------------------------------
-sec "Praxis tools"
-_pcount=$(compgen -c praxis- 2>/dev/null | sort -u | wc -l)
-row "praxis-*" "$_pcount commands on PATH  (run 'praxis' for the index)"
 
-# ---------------------------------------------------------------------------
-sec "Summary"
-if [ "$RC" -eq 0 ]; then
-    log "\n\033[1;32mAll checks passed.\033[0m"
-else
-    log "\n\033[1;33mSome checks failed. Report saved to $OUT.\033[0m"
-fi
-exit "$RC"
+def gib(n_bytes):
+    return f"{n_bytes / 1024 ** 3:.1f} GB"
+
+
+# ── system ───────────────────────────────────────────────────────────────────
+def check_units():
+    _, out, _ = sh(["systemctl", "--failed", "--no-legend", "--plain"])
+    sysf = [l.split()[0] for l in out.splitlines() if l.strip()]
+    _, out, _ = sh(["systemctl", "--user", "--failed", "--no-legend", "--plain"])
+    usrf = [l.split()[0] for l in out.splitlines() if l.strip()]
+    # systemd's TPM measurement services (NvPCRs) fail on some firmware; harmless
+    # unless disks are unlocked with the TPM — explain instead of alarming
+    tpm = [u for u in sysf if re.match(r"systemd-(pcr|tpm2-setup)", u)]
+    sysf = [u for u in sysf if u not in tpm]
+    if tpm:
+        meas = sorted({re.sub(r"@.*\.service$", "@.service", u) for u in tpm if u.startswith("systemd-pcr")})
+        add("tpm", "System", "info", "TPM measurement services can't set up this TPM: " + ", ".join(tpm[:4]),
+            "systemd's measured-boot extras (NvPCRs) fail on some laptop firmware. Nothing else depends on them "
+            "unless you unlock disks with the TPM. Silencing them makes the system report 'running' instead of 'degraded'.",
+            "Silence the measurement services" if meas else "", 
+            ("systemctl mask " + " ".join(meas) + " && systemctl reset-failed") if meas else None, root=True)
+    if not sysf and not usrf:
+        add("units", "System", "ok", "No failed services")
+        return
+    names = sysf + [u + " (user)" for u in usrf]
+    add("units", "System", "fail" if sysf else "warn", f"{len(names)} service(s) failed: " + ", ".join(names[:6]),
+        "See why with: systemctl status " + (sysf or usrf)[0] + ("" if sysf else " --user"),
+        "Fix what the status shows, then clear the failure",
+        "systemctl reset-failed; systemctl --user reset-failed", root=bool(sysf))
+
+
+def check_disk():
+    st = os.statvfs("/")
+    total, free = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+    used = 1 - free / total if total else 0
+    cache = 0
+    for f in glob.glob("/var/cache/pacman/pkg/*.pkg.tar.*"):
+        try:
+            cache += os.path.getsize(f)
+        except OSError:
+            pass
+    _, jout, _ = sh(["journalctl", "--disk-usage"])
+    m = re.search(r"take up ([\d.]+)([KMGT])", jout)
+    journal = float(m.group(1)) * {"K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12}[m.group(2)] if m else 0
+    cleanup = []
+    if cache > 3e9:
+        cleanup.append("paccache -rk2 2>/dev/null || pacman -Sc --noconfirm")
+    if journal > 5e8:
+        cleanup.append("journalctl --vacuum-size=300M")
+    detail = f"{gib(free)} free of {gib(total)} · package cache {gib(cache)} · logs {gib(journal)}"
+    if used > 0.9:
+        add("disk", "System", "fail", f"The system disk is {used:.0%} full", detail,
+            "Clear old package versions and logs" if cleanup else "Delete or move large files (Downloads, models in ~/aios/models)",
+            " ; ".join(cleanup) or None, root=True)
+    elif used > 0.8 or cleanup:
+        add("disk", "System", "warn", f"The system disk is {used:.0%} full" + (" — caches can be cleared" if cleanup else ""), detail,
+            "Clear old package versions and logs", " ; ".join(cleanup) or None, root=True)
+    else:
+        add("disk", "System", "ok", f"Disk space fine ({gib(free)} free)", detail)
+
+
+def check_updates():
+    log = read("/var/log/pacman.log")
+    last = None
+    for line in reversed(log.splitlines()):
+        if "starting full system upgrade" in line:
+            m = re.match(r"\[(\d{4}-\d\d-\d\d)", line)
+            if m:
+                last = m.group(1)
+            break
+    running = os.uname().release
+    if not os.path.isdir(f"/usr/lib/modules/{running}"):
+        add("reboot", "System", "warn", "Restart to finish an update",
+            f"The running kernel ({running}) was replaced by an update — USB devices and new drivers may not work until you restart.",
+            "Restart the computer")
+    if last:
+        days = int((time.time() - time.mktime(time.strptime(last, "%Y-%m-%d"))) / 86400)
+        if days > 21:
+            add("updates", "System", "warn", f"Last full update {days} days ago",
+                "Arch-based systems are meant to be updated often; long gaps make updates bigger and riskier.",
+                "Run: praxis-update")
+        else:
+            add("updates", "System", "ok", f"Updated {days} day(s) ago")
+
+
+# ── memory ───────────────────────────────────────────────────────────────────
+def check_memory():
+    swaps = read("/proc/swaps")
+    zram = "zram" in swaps
+    oom = sh(["systemctl", "is-active", "earlyoom"])[1] == "active" or sh(["systemctl", "is-active", "systemd-oomd"])[1] == "active"
+    swappiness = read("/proc/sys/vm/swappiness")
+    missing = []
+    if not zram:
+        missing.append("compressed swap (zram)")
+    if not oom:
+        missing.append("an early out-of-memory guard (earlyoom)")
+    if zram and swappiness and int(swappiness) < 100:
+        missing.append(f"zram tuning (swappiness is {swappiness})")
+    if missing:
+        cmds = []
+        if not oom and have("earlyoom"):
+            cmds.append("systemctl enable --now earlyoom")
+        if os.path.exists("/etc/sysctl.d/80-praxis-memory.conf"):
+            cmds.append("sysctl --system >/dev/null")
+        add("memprotect", "Memory", "warn", "Freeze protection is incomplete",
+            "Missing: " + ", ".join(missing) + ". Without it, running out of memory freezes the desktop for minutes instead of stopping one program.",
+            "Turn on the missing pieces", " ; ".join(cmds) or None, root=True)
+    else:
+        add("memprotect", "Memory", "ok", "Freeze protection on (zram + earlyoom)")
+    psi = read("/proc/pressure/memory")
+    m = re.search(r"some avg60=([\d.]+)", psi)
+    if m and float(m.group(1)) > 10:
+        add("mempressure", "Memory", "warn", f"Memory is under pressure ({m.group(1)}% stall)",
+            "Programs are waiting for memory: " + top_memory(), "Close a big program, or turn the AI off while you don't need it (Control Center)")
+    _, out, _ = sh(["free", "-b"])
+    m = re.search(r"Mem:\s+(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)", out)
+    if m:
+        total, avail = int(m.group(1)), int(m.group(2))
+        add("memnow", "Memory", "info" if avail / total > 0.15 else "warn",
+            f"{gib(avail)} of {gib(total)} memory available", "Largest: " + top_memory())
+
+
+def top_memory(n=4):
+    procs = []
+    for p in glob.glob("/proc/[0-9]*"):
+        try:
+            rss = int(re.search(r"VmRSS:\s+(\d+)", read(p + "/status")).group(1)) * 1024
+            procs.append((rss, read(p + "/comm")))
+        except (AttributeError, ValueError):
+            continue
+    agg = {}
+    for rss, name in procs:
+        agg[name] = agg.get(name, 0) + rss
+    top = sorted(agg.items(), key=lambda x: -x[1])[:n]
+    return ", ".join(f"{name} {gib(r)}" for name, r in top)
+
+
+# ── GPU & power ──────────────────────────────────────────────────────────────
+def nvidia_holders():
+    """Processes of this user with the NVIDIA device open (root ones need --fix to see)."""
+    users = {}
+    for p in glob.glob("/proc/[0-9]*"):
+        try:
+            fds = os.listdir(p + "/fd")
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                t = os.readlink(f"{p}/fd/{fd}")
+            except OSError:
+                continue
+            if t.startswith("/dev/nvidia"):
+                users[read(p + "/comm")] = users.get(read(p + "/comm"), 0) + 1
+                break
+    return sorted(users)
+
+
+def check_gpu():
+    dev = next((d for d in glob.glob("/sys/bus/pci/devices/*") if read(d + "/vendor") == "0x10de" and read(d + "/class").startswith("0x03")), None)
+    if not dev:
+        return
+    state = read(dev + "/power/runtime_status")
+    on_batt = on_battery()
+    # a monitor wired to the NVIDIA GPU keeps it on, legitimately
+    nv_card = next((c for c in glob.glob("/sys/class/drm/card[0-9]") if os.path.realpath(c + "/device") == os.path.realpath(dev)), None)
+    nv_monitor = bool(nv_card) and any(read(s) == "connected" for s in glob.glob(nv_card + "-*/status"))
+    holders = nvidia_holders()
+    avoidable = [h for h in holders if h not in ("Hyprland", "Xorg", "nvidia-powerd", "llama-server", "nvtop")]
+    if "mpvpaper" in holders:
+        add("gpu-wallpaper", "GPU", "warn", "The live wallpaper is decoding on the NVIDIA GPU",
+            "That keeps it awake drawing a few watts all the time; the Intel/AMD graphics can do it nearly for free.",
+            "Restart the wallpaper on the integrated GPU", "praxis-wallpaper restore --force")
+    if state == "active" and on_batt and not nv_monitor:
+        add("gpu-awake", "GPU", "warn", "The NVIDIA GPU is awake on battery",
+            ("Kept awake by: " + ", ".join(holders) + ".") if holders else "Nothing of yours holds it — a system service might (check: sudo fuser -v /dev/nvidia*).",
+            "Close what uses it, or turn on Battery saver" + (" — or Game mode off / AI off" if "llama-server" in holders else ""),
+            "praxis-mode saver on" if not avoidable else None)
+    elif avoidable:
+        add("gpu-users", "GPU", "info", "Using the NVIDIA GPU: " + ", ".join(holders),
+            "Fine while plugged in" + (" — it also drives your external monitor" if nv_monitor else "") + ". Programs use the integrated GPU unless started with prime-run.")
+    else:
+        add("gpu", "GPU", "ok", "NVIDIA GPU " + ("asleep" if state == "suspended" else "on" + (" (driving an external monitor)" if nv_monitor else "")))
+
+
+def on_battery():
+    for s in glob.glob("/sys/class/power_supply/*"):
+        if read(s + "/type") == "Mains" and read(s + "/online") == "1":
+            return False
+    return any(read(b + "/status") == "Discharging" for b in glob.glob("/sys/class/power_supply/BAT*"))
+
+
+def check_power():
+    bats = glob.glob("/sys/class/power_supply/BAT*")
+    if not bats:
+        return
+    b = bats[0]
+    full = read(b + "/energy_full") or read(b + "/charge_full")
+    design = read(b + "/energy_full_design") or read(b + "/charge_full_design")
+    if full and design and int(design) > 0:
+        health = int(full) / int(design)
+        add("battery", "Power", "warn" if health < 0.7 else "ok", f"Battery health {health:.0%}",
+            "Below 70 % the battery holds noticeably less charge; a charge limit (Settings › Power) slows wear." if health < 0.7 else "")
+    if on_battery() and have("powerprofilesctl"):
+        prof = sh(["powerprofilesctl", "get"])[1]
+        if prof == "performance":
+            add("profile", "Power", "warn", "Performance profile on battery",
+                "It drains the battery much faster.", "Turn on Battery saver", "praxis-mode saver on")
+
+
+def check_temps():
+    hot = []
+    for z in glob.glob("/sys/class/thermal/thermal_zone*"):
+        t = read(z + "/temp")
+        if t.lstrip("-").isdigit() and int(t) > 90000:
+            hot.append(f"{read(z + '/type')} {int(t) // 1000}°C")
+    if hot:
+        add("temps", "Power", "warn", "Running hot: " + ", ".join(hot[:3]),
+            "Check the vents aren't blocked; Task Manager (Ctrl+Shift+Esc) shows what's using the CPU/GPU.")
+
+
+# ── AI ───────────────────────────────────────────────────────────────────────
+def check_ai():
+    if not os.path.isdir(os.path.join(HOME, "aios")):
+        add("ai", "AI", "info", "The AI backend is not set up yet", "", "Run: aios-setup")
+        return
+    if os.path.exists(os.path.join(HOME, ".config/praxis/ai-off")):
+        add("ai", "AI", "info", "The AI is switched off", "The GPU and the model's memory are free.", "Turn it on in Control Center when you want it")
+        return
+    state = sh(["systemctl", "--user", "is-active", "aios.service"])[1]
+    if state == "failed":
+        _, log, _ = sh(["journalctl", "--user", "-u", "aios.service", "-n", "5", "--no-pager", "-o", "cat"])
+        add("ai", "AI", "fail", "The AI backend has crashed", log[-400:], "Restart it", "systemctl --user restart aios.service")
+        return
+    rc, out, _ = sh(["curl", "-sf", "-m", "3", "http://127.0.0.1:8778/api/status"])
+    if rc != 0:
+        add("ai", "AI", "warn", f"The AI backend is not answering (service: {state})", "", "Start it", "systemctl --user restart aios.service")
+        return
+    models = [d for d in glob.glob(os.path.join(HOME, "aios/models/*")) if glob.glob(d + "/*.gguf") and "piper" not in d and "embed" not in d]
+    if not models:
+        add("ai-models", "AI", "warn", "No AI model downloaded yet", "", "Run: praxis-models recommend")
+    log = read(os.path.join(HOME, "aios/logs/llama-server.log"))
+    if re.search(r"out of memory|failed to allocate|CUDA error", log, re.I):
+        add("ai-oom", "AI", "warn", "The last model load ran out of GPU memory",
+            "llama-server: " + next((l for l in log.splitlines() if re.search(r"out of memory|failed to allocate|CUDA error", l, re.I)), "")[:200],
+            "Pick a smaller model in Settings › AI, or close GPU-heavy programs first")
+    add("ai-ok", "AI", "ok", f"AI backend running ({len(models)} model(s))")
+
+
+# ── network ──────────────────────────────────────────────────────────────────
+def check_network():
+    if sh(["systemctl", "is-active", "NetworkManager"])[1] != "active":
+        add("nm", "Network", "fail", "NetworkManager is not running", "Wi-Fi and the network panel need it.", "Start it", "systemctl enable --now NetworkManager", root=True)
+        return
+    rc, _, _ = sh(["curl", "-sI", "-m", "5", "https://archlinux.org"])
+    if rc == 0:
+        add("net", "Network", "ok", "Internet reachable")
+        return
+    rc2, _, _ = sh(["curl", "-sI", "-m", "5", "https://1.1.1.1"])
+    add("net", "Network", "warn", "No internet" if rc2 != 0 else "Internet works but names don't resolve (DNS)",
+        "", "Connect in the top bar's Wi-Fi menu" if rc2 != 0 else "Reconnect, or set a DNS server in the connection's settings")
+
+
+# ── desktop ──────────────────────────────────────────────────────────────────
+def check_desktop():
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return
+    rc, out, _ = sh(["hyprctl", "configerrors"])
+    errs = [l for l in out.splitlines() if l.strip()]
+    if errs:
+        add("hyprconf", "Desktop", "fail", "Hyprland config has errors", "\n".join(errs[:5]), "Fix ~/.config/hypr/hyprland.lua (or praxis-local.lua)")
+    qs = sh(["pgrep", "-x", "quickshell"])[1].split()
+    if qs:
+        rss = int(re.search(r"VmRSS:\s+(\d+)", read(f"/proc/{qs[0]}/status") or "VmRSS: 0").group(1)) * 1024
+        if rss > 900 * 1024 ** 2:
+            add("shellmem", "Desktop", "warn", f"The shell uses {gib(rss)} of memory",
+                "It grows during very long sessions; restarting it takes a second and keeps your windows.",
+                "Restart the shell", "praxis-restart-shell")
+    else:
+        add("shell", "Desktop", "fail", "The Praxis shell is not running", "", "Start it", "praxis-restart-shell")
+    rc, out, _ = sh(["coredumpctl", "list", "--since=-7d", "--no-legend", "--no-pager"], timeout=10)
+    crashed = {}
+    for l in out.splitlines():
+        parts = l.split()
+        if len(parts) >= 10:
+            name = os.path.basename(parts[-2] if parts[-1].endswith(("M", "K", "G", "B")) or parts[-1] == "-" else parts[-1])
+            crashed[name] = crashed.get(name, 0) + 1
+    if crashed:
+        add("crashes", "Desktop", "info", "Crashed in the last 7 days: " + ", ".join(f"{k} ×{v}" for k, v in sorted(crashed.items(), key=lambda x: -x[1])[:5]),
+            "Details: coredumpctl info <name>")
+
+
+# ── security ─────────────────────────────────────────────────────────────────
+def check_security():
+    if not LIVE and os.path.exists("/etc/sudoers.d/praxis-live"):
+        add("live-sudo", "Security", "fail", "The live USB's password-free sudo rule is on this installed system",
+            "/etc/sudoers.d/praxis-live lets any process become root without a password.",
+            "Remove it", "rm -f /etc/sudoers.d/praxis-live", root=True)
+    if sh(["systemctl", "is-active", "sshd"])[1] == "active":
+        conf = read("/etc/ssh/sshd_config") + "".join(read(f) for f in glob.glob("/etc/ssh/sshd_config.d/*.conf"))
+        if not re.search(r"^\s*PasswordAuthentication\s+no", conf, re.M):
+            add("ssh", "Security", "warn", "SSH accepts passwords from the network",
+                "Anyone on your network can try to guess them.", "Use keys only, or turn SSH off if you don't use it",
+                "systemctl disable --now sshd", root=True)
+
+
+CHECKS = [check_units, check_disk, check_updates, check_memory, check_gpu, check_power, check_temps,
+          check_ai, check_network, check_desktop, check_security]
+
+
+def run_fixes(ids):
+    todo = [f for f in findings if f["auto"] and f["status"] in ("warn", "fail") and (not ids or f["id"] in ids)]
+    if not todo:
+        print("Nothing to fix automatically.")
+        return 0
+    rc = 0
+    for f in todo:
+        print(f"→ {f['title']}\n   {f['cmd']}")
+        if f["root"] and os.geteuid() != 0:
+            # from a terminal: sudo; from Settings (no terminal): the desktop's password dialog
+            cmd = (["sudo", "bash", "-c", f["cmd"]] if sys.stdin.isatty() or not have("pkexec")
+                   else ["pkexec", "bash", "-c", f["cmd"]])
+        else:
+            cmd = ["bash", "-c", f["cmd"]]
+        r = subprocess.run(cmd)
+        print("   done" if r.returncode == 0 else f"   failed (exit {r.returncode})")
+        rc |= r.returncode != 0
+    return rc
+
+
+def main(argv):
+    for c in CHECKS:
+        try:
+            c()
+        except Exception as e:               # one broken check must not hide the others
+            add(c.__name__, "Doctor", "info", f"{c.__name__} could not run", str(e))
+    order = {"fail": 0, "warn": 1, "info": 2, "ok": 3}
+    findings.sort(key=lambda f: order[f["status"]])
+    if "--json" in argv:
+        json.dump(findings, sys.stdout, indent=1)
+        print()
+        return 0
+    if "--fix" in argv:
+        ids = [a for a in argv[argv.index("--fix") + 1:] if not a.startswith("-")]
+        return run_fixes(ids)
+    tty = sys.stdout.isatty()
+    col = {"fail": "\033[31m", "warn": "\033[33m", "info": "\033[36m", "ok": "\033[32m"} if tty else dict.fromkeys(order, "")
+    reset, dim, bold = ("\033[0m", "\033[2m", "\033[1m") if tty else ("", "", "")
+    icon = {"fail": "✗", "warn": "!", "info": "·", "ok": "✓"}
+    show_all = "--all" in argv or "--report" in argv
+    out = [f"{bold}Praxis doctor{reset} {dim}{time.strftime('%Y-%m-%d %H:%M')} · {os.uname().nodename} · kernel {os.uname().release}{reset}", ""]
+    shown = [f for f in findings if show_all or f["status"] != "ok"]
+    for f in shown:
+        out.append(f"{col[f['status']]}{icon[f['status']]}{reset} {bold if f['status'] in ('fail', 'warn') else ''}{f['title']}{reset}  {dim}[{f['area']} · {f['id']}]{reset}")
+        for line in f["detail"].splitlines():
+            out.append(f"    {dim}{line}{reset}")
+        if f["fix"] and f["status"] != "ok":
+            out.append(f"    → {f['fix']}" + (f"  {dim}(praxis-doctor --fix {f['id']}){reset}" if f["auto"] else ""))
+    n_ok = sum(1 for f in findings if f["status"] == "ok")
+    n_bad = sum(1 for f in findings if f["status"] in ("warn", "fail"))
+    out.append("")
+    out.append(f"{n_bad} to look at · {n_ok} fine" + ("" if show_all else f" {dim}(--all lists them){reset}")
+               + (f" · {sum(1 for f in findings if f['auto'] and f['status'] in ('warn', 'fail'))} fixable with: praxis-doctor --fix" if any(f["auto"] and f["status"] in ("warn", "fail") for f in findings) else ""))
+    print("\n".join(out))
+    if "--report" in argv:
+        path = os.path.join(HOME, f"praxis-doctor-{time.strftime('%Y%m%d-%H%M')}.txt")
+        with open(path, "w") as fh:
+            fh.write(re.sub(r"\033\[[0-9;]*m", "", "\n".join(out)) + "\n")
+        print(f"\nReport saved: {path}")
+    return 1 if any(f["status"] == "fail" for f in findings) else 0
+
+
+if __name__ == "__main__":
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(__doc__.strip())
+        sys.exit(0)
+    sys.exit(main(sys.argv[1:]))

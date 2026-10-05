@@ -29,6 +29,7 @@ OverlayWindow {
         { id: "Wallpaper",   icon: "image" },
         { id: "Profiles",    icon: "user" },
         { id: "AI",          icon: "sparkle" },
+        { id: "Health",      icon: "pulse" },
     ]
 
     // ── hardware snapshot (Power) ──
@@ -140,7 +141,7 @@ OverlayWindow {
                             case "Display": return display; case "Windows": return windowsSec; case "Keyboard": return keyboard
                             case "Network": return network; case "Bluetooth": return bluetooth; case "Audio": return audio
                             case "Power": return powerSec; case "Wallpaper": return wallpaper; case "Profiles": return profiles
-                            case "AI": return ai; default: return general
+                            case "AI": return ai; case "Health": return health; default: return general
                         }
                     }
                 }
@@ -185,11 +186,21 @@ OverlayWindow {
             H { text: "CLOCK" }
             SettingRow { label: "24-hour clock"; Toggle { checked: Settings.clock24h; onToggled: v => Settings.clock24h = v } }
             SettingRow { label: "Show seconds"; Toggle { checked: Settings.showSeconds; onToggled: v => Settings.showSeconds = v } }
+            H { text: "START-UP" }
+            SettingRow {
+                id: lockRow
+                property bool on: false
+                readonly property string flag: Quickshell.env("HOME") + "/.config/praxis/lock-at-login"
+                label: "Ask for my password when the computer starts"
+                description: "On a Praxis install that logs in automatically, the desktop starts behind the lock screen. (Systems with a login screen already ask.)"
+                Toggle { checked: lockRow.on; onToggled: v => { lockRow.on = v; Quickshell.execDetached(["bash", "-c", v ? 'mkdir -p "${1%/*}" && touch "$1"' : 'rm -f "$1"', "lock", lockRow.flag]) } }
+                Process { running: true; command: ["test", "-e", lockRow.flag]; onExited: code => lockRow.on = code === 0 }
+            }
             H { text: "AI BACKEND" }
             SettingRow { label: "AIOS service"; description: Aios.online ? "Running · " + Aios.memoryObjects + " memory objects · " + Aios.runs + " runs logged" : "Not reachable on 127.0.0.1:8778"
                 Row { spacing: 6
                     Btn { icon: "refresh"; label: "Restart"; onClicked: { Shell.run("systemctl --user restart aios.service"); Aios.refresh() } }
-                    Btn { icon: "arrow"; label: "Open in browser"; onClicked: Shell.run("google-chrome-stable --app=http://127.0.0.1:8778 --class=aios") }
+                    Btn { icon: "arrow"; label: "Open in browser"; onClicked: Quickshell.execDetached(["xdg-open", Aios.base + "/"]) }
                 }
             }
         }
@@ -293,6 +304,29 @@ OverlayWindow {
             spacing: 10
             Component.onCompleted: Display.refresh()
 
+            // ── a display change waiting to be kept ──
+            Card {
+                visible: !!Display.pending.pending
+                height: 64
+                color: Theme.alpha(Theme.accent, 0.12); border.color: Theme.alpha(Theme.accent, 0.5)
+                Row {
+                    anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                    spacing: 10
+                    Icon { name: "monitor"; size: 18; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        Text { text: "Keep these display settings?"; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.DemiBold }
+                        Text { text: (Display.pending.output || "") + " · " + (Display.pending.mode || "") + " — going back in " + (Display.pending.left || 0) + " s"; color: Theme.text2; font.family: Theme.font; font.pixelSize: Theme.fontXs }
+                    }
+                }
+                Row {
+                    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                    spacing: 6
+                    Btn { icon: "check"; label: "Keep"; active: true; iconColor: Theme.onAccent; onClicked: Display.keep() }
+                    Btn { icon: "refresh"; label: "Go back"; onClicked: Display.revert() }
+                }
+            }
+
             // ── OLED / panel care ──
             Card {
                 visible: !!Display.internal
@@ -353,19 +387,26 @@ OverlayWindow {
                         }
                     }
                     SettingRow {
+                        visible: Display.ratesOf(Display.internal).length > 1
                         label: "Refresh rate"
-                        description: "120 Hz is smooth; 60 Hz saves battery. Applies to the internal display."
+                        description: "Higher is smoother; lower saves battery (Battery saver switches to 60 Hz by itself)."
                         Segmented {
-                            options: [{ value: 60, label: "60 Hz" }, { value: 120, label: "120 Hz" }]
-                            value: Display.internal ? Display.internal.refresh : 120
+                            options: Display.ratesOf(Display.internal).map(r => ({ value: r, label: r + " Hz" }))
+                            value: Display.internal ? Display.internal.refresh : 60
                             onSelected: v => Display.setRefresh(Display.internal.name, v)
                         }
                     }
                     SettingRow {
                         visible: Display.hasOled
                         label: "OLED care  ★ recommended"
-                        description: "Runs hypridle: dims after 4 min (wakes instantly), locks after 12, suspends on battery after 25. No screen-blanking — safe for this OLED. Off by default."
-                        Toggle { checked: Display.hypridleOn; onToggled: v => Display.setOledCare(v) }
+                        description: "Dims after 4 min (wakes instantly), locks after 12, suspends on battery after 25. Never blanks the panel — safe for this OLED. Stays on after a restart."
+                        Toggle { checked: Display.hypridleOn; onToggled: v => Display.setIdle(v ? "oled" : "off") }
+                    }
+                    SettingRow {
+                        visible: !Display.hasOled
+                        label: "Screen off when idle"
+                        description: "Dims after 5 min, locks after 10, turns the screen off after 11, and on battery suspends after 25. Stays on after a restart."
+                        Toggle { checked: Display.hypridleOn; onToggled: v => Display.setIdle(v ? "screenoff" : "off") }
                     }
                 }
             }
@@ -375,7 +416,15 @@ OverlayWindow {
                 Card {
                     required property var modelData
                     readonly property var ipc: modelData.lastIpcObject || ({})
-                    readonly property var modes: (ipc.availableModes || []).slice(0, 14)
+                    // each resolution once per (rounded) refresh rate, the monitor's best modes first
+                    readonly property var modes: {
+                        const seen = {}, out = []
+                        for (const m of (ipc.availableModes || [])) {
+                            const k = m.split("@")[0] + "@" + Math.round(parseFloat(m.split("@")[1]))
+                            if (!seen[k]) { seen[k] = true; out.push(m) }
+                        }
+                        return out.slice(0, 16)
+                    }
                     height: mcol.implicitHeight + 24
                     Column {
                         id: mcol
@@ -396,9 +445,10 @@ OverlayWindow {
                                 model: modes
                                 Btn {
                                     required property var modelData
-                                    readonly property bool cur: modelData.startsWith(`${mcol.parent.modelData.width}x${mcol.parent.modelData.height}@${Math.round(ipc.refreshRate || 0)}`)
+                                    readonly property bool cur: modelData.split("@")[0] === `${mcol.parent.modelData.width}x${mcol.parent.modelData.height}`
+                                                                && Math.abs(parseFloat(modelData.split("@")[1]) - (ipc.refreshRate || 0)) < 0.6
                                     label: modelData.replace(".00Hz", "Hz").replace(/\.\d+Hz/, "Hz"); active: cur
-                                    onClicked: HyprOpts.monitor(mcol.parent.modelData.name, modelData.split('Hz')[0].replace('.00', ''), `${mcol.parent.modelData.x}x${mcol.parent.modelData.y}`, mcol.parent.modelData.scale)
+                                    onClicked: Display.setMode(mcol.parent.modelData.name, modelData.replace("Hz", ""))
                                 }
                             }
                         }
@@ -407,7 +457,7 @@ OverlayWindow {
                             options: [{ value: 1, label: "1×" }, { value: 1.25, label: "1.25×" }, { value: 1.5, label: "1.5×" }, { value: 2, label: "2×" }]
                             value: modelData.scale
                             // mode = PHYSICAL resolution (never × scale); scale is a separate arg
-                            onSelected: v => HyprOpts.monitor(modelData.name, `${modelData.width}x${modelData.height}@${Math.round(ipc.refreshRate || 60)}`, `${modelData.x}x${modelData.y}`, v)
+                            onSelected: v => Display.setMode(modelData.name, `${modelData.width}x${modelData.height}@${Math.round((ipc.refreshRate || 60) * 100) / 100}`, v)
                         }
                         Text { text: "POSITION"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 10; font.weight: Font.DemiBold; topPadding: 4 }
                         Segmented {
@@ -440,7 +490,7 @@ OverlayWindow {
                     onMoved: v => EyeComfort.intensity = v
                 }
             }
-            Text { text: "Applies immediately (hl.monitor via hyprctl eval). To make it permanent, put the same hl.monitor{} block in hyprland.lua."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap }
+            Text { text: "A new mode or scale shows at once and goes back by itself after 15 seconds unless you press Keep — so a mode a monitor can't show never leaves it dark. Kept settings are saved for this computer (~/.config/hypr/praxis-local.lua) and come back after a restart."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap }
         }
     }
 
@@ -584,6 +634,14 @@ OverlayWindow {
         Column {
             spacing: 0
             readonly property var bat: UPower.displayDevice
+            H { text: "MODES" }
+            SettingRow { label: "Battery saver"; description: "Power-saver profile, the built-in screen at 60 Hz, still wallpaper, idle AI model unloaded."
+                Toggle { checked: Modes.saver; onToggled: v => { if (v !== Modes.saver) Modes.toggleSaver() } } }
+            SettingRow { label: "Battery saver on battery"; description: "Turns on by itself when the charger is pulled, and off again when it's plugged back in."
+                Toggle { checked: Settings.autoSaver; onToggled: v => { Settings.autoSaver = v; if (v) Modes.autoSaver() } } }
+            SettingRow { label: "Game mode"; description: "Hands the whole GPU to your game: AI off, performance profile, no notifications, no blur or animations. Everything comes back when you turn it off."
+                Toggle { checked: Modes.game; onToggled: v => { if (v !== Modes.game) Modes.toggleGame() } } }
+            H { text: "PERFORMANCE" }
             SettingRow { label: "Thermal & power mode"; description: "The Linux power profile — plus the firmware's cooling mode on laptops that have one."
                 Segmented { options: [{ value: "power-saver", label: "Quiet" }, { value: "balanced", label: "Balanced" }, { value: "performance", label: "Performance" }]; value: Power.profile; onSelected: v => { Power.profile = v; win.hwSet("profile", v) } } }
             H { text: "BATTERY" }
@@ -745,11 +803,63 @@ OverlayWindow {
         }
     }
 
+    // ═══════════════ HEALTH ═══════════════
+    // praxis-doctor's findings, problems first, each with its fix
+    Component {
+        id: health
+        Column {
+            id: hc
+            spacing: 0
+            property var items: []
+            property bool busy: false
+            property string fixing: ""
+            function run() { if (!probe.running) { busy = true; probe.running = true } }
+            Component.onCompleted: run()
+            Process {
+                id: probe
+                command: ["praxis-doctor", "--json"]
+                stdout: StdioCollector { onStreamFinished: { try { hc.items = JSON.parse(this.text) } catch (e) {} hc.busy = false } }
+            }
+            Process {
+                id: fixer
+                onExited: { hc.fixing = ""; hc.run() }
+            }
+            readonly property int problems: items.filter(i => i.status === "fail" || i.status === "warn").length
+            SettingRow {
+                label: hc.busy ? "Checking…" : hc.problems === 0 ? "Everything looks fine" : hc.problems + (hc.problems === 1 ? " thing to look at" : " things to look at")
+                description: "Services, disk, memory protection, GPU, power, temperatures, the AI, network, desktop and security. Same as `praxis-doctor` in a terminal."
+                Btn { icon: "refresh"; label: "Check again"; onClicked: hc.run() }
+            }
+            Repeater {
+                model: hc.items.filter(i => i.status !== "ok")
+                SettingRow {
+                    required property var modelData
+                    label: (modelData.status === "fail" ? "✗  " : modelData.status === "warn" ? "!  " : "·  ") + modelData.title
+                    description: [modelData.detail, modelData.fix && modelData.status !== "info" ? "→ " + modelData.fix : ""].filter(t => t).join("\n")
+                    Btn {
+                        visible: modelData.auto && (modelData.status === "fail" || modelData.status === "warn" || modelData.id === "tpm")
+                        icon: hc.fixing === modelData.id ? "refresh" : "check"
+                        label: hc.fixing === modelData.id ? "Fixing…" : "Fix"
+                        onClicked: { if (fixer.running) return; hc.fixing = modelData.id; fixer.command = ["praxis-doctor", "--fix", modelData.id]; fixer.running = true }
+                    }
+                }
+            }
+            H { visible: hc.items.some(i => i.status === "ok"); text: "FINE" }
+            Text {
+                width: parent.width; wrapMode: Text.WordWrap
+                text: hc.items.filter(i => i.status === "ok").map(i => "✓ " + i.title).join("     ")
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; lineHeight: 1.4
+            }
+        }
+    }
+
     // ═══════════════ AI ═══════════════
     Component {
         id: ai
         Column {
             spacing: 0
+            SettingRow { label: "AI assistant"; description: Modes.aiOn ? "On — models load when you ask something and unload when idle." : "Off — the GPU and the model's memory are free. Stays off after a restart until you turn it on."
+                Toggle { checked: Modes.aiOn; onToggled: v => { if (v !== Modes.aiOn) Modes.toggleAi() } } }
             H { text: "WHICH BRAIN ANSWERS  —  applies to the shell, browser UI, CLI and voice" }
             SettingRow {
                 label: "Auto routing   ★ recommended"; description: "Classifies each request (code / debug / system / reasoning / chat / image) and picks the best available model. Keeps the loaded model when it is close enough, to avoid a 10–20 s swap."
@@ -795,7 +905,7 @@ OverlayWindow {
             SettingRow { label: "Memory & usage"; description: Aios.memoryObjects + " objects in the context store · " + Aios.runs + " model runs in the ledger · `ai usage` for per-model tokens, latency and failure rate"
                 Row { spacing: 6
                     Btn { icon: "eye"; label: "Activity"; onClicked: Shell.open("activity") }
-                    Btn { icon: "arrow"; label: "Open full UI"; onClicked: Shell.run("google-chrome-stable --app=http://127.0.0.1:8778 --class=aios") } } }
+                    Btn { icon: "arrow"; label: "Open full UI"; onClicked: { Quickshell.execDetached(["xdg-open", Aios.base + "/"]); Shell.closeAll() } } } }
             H { text: "CLOUD PROVIDERS" }
             Text { text: "Add ANTHROPIC_API_KEY to ~/aios/config/aios.env and restart the service to enable Claude. Nothing is sent to a provider unless the budget mode allows it and you selected that model."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap; topPadding: 4 }
         }

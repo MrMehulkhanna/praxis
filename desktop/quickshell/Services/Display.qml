@@ -63,35 +63,76 @@ done`]
     }
     readonly property bool hasOled: panels.some(p => p.oled)
 
-    // ── refresh rate ────────────────────────────────────────────────────
+    // ── modes, refresh rate, scale: through praxis-display ──────────────
+    // A change applies at once and goes back by itself after 15 s unless kept
+    // (Settings shows "Keep these display settings?") — a mode the monitor
+    // can't show never leaves it dark. Kept changes survive a restart.
+    function setMode(name, mode, scale) {
+        Quickshell.execDetached(["praxis-display", "set", name, mode].concat(scale !== undefined ? [String(scale)] : []))
+        pendingPoll.restart(); refreshLater.start()
+    }
     function setRefresh(name, hz) {
         const p = panels.find(x => x.name === name)
         if (!p) return
-        // mode is the panel's PHYSICAL resolution (Hyprland's w/h are already
-        // physical pixels); scale is a SEPARATE arg. Never multiply them.
-        Quickshell.execDetached(["hyprctl", "eval",
-            `hl.monitor({ output = "${name}", mode = "${p.w}x${p.h}@${hz}", position = "${p.x}x${p.y}", scale = ${p.scale} })`])
-        refreshLater.start()
+        const m = (p.modes || []).find(md => md.startsWith(`${p.w}x${p.h}@`) && Math.abs(parseFloat(md.split("@")[1]) - hz) < 0.6)
+        setMode(name, m ? m.replace("Hz", "") : `${p.w}x${p.h}@${hz}`)
     }
     function setScale(name, scale) {
         const p = panels.find(x => x.name === name)
         if (!p) return
-        Quickshell.execDetached(["hyprctl", "eval",
-            `hl.monitor({ output = "${name}", mode = "${p.w}x${p.h}@${p.refresh}", position = "${p.x}x${p.y}", scale = ${scale} })`])
-        refreshLater.start()
+        setMode(name, `${p.w}x${p.h}@${p.refresh}`, scale)
+    }
+    // refresh rates this panel offers at its current resolution, e.g. [60, 120] or [60, 144, 165]
+    function ratesOf(p) {
+        if (!p) return []
+        const rates = (p.modes || []).filter(m => m.startsWith(`${p.w}x${p.h}@`)).map(m => Math.round(parseFloat(m.split("@")[1])))
+        return [...new Set(rates)].sort((a, b) => a - b)
+    }
+    property var pending: ({ pending: false })
+    function keep()   { Quickshell.execDetached(["praxis-display", "keep"]); pending = { pending: false }; refreshLater.start() }
+    function revert() { Quickshell.execDetached(["praxis-display", "revert"]); pending = { pending: false }; refreshLater.start() }
+    property bool _sawPending: false
+    property int _polls: 0
+    Process {
+        id: pendingProc
+        command: ["praxis-display", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.pending = JSON.parse(this.text) } catch (e) { return }
+                if (root.pending.pending) root._sawPending = true
+                else if (root._sawPending || root._polls <= 0) { pendingPoll.stop(); root._sawPending = false }
+            }
+        }
+    }
+    // polls only while a change waits to be kept (or for 20 s after one was made)
+    Timer {
+        id: pendingPoll; interval: 1000; repeat: true
+        onRunningChanged: if (running) { root._polls = 20; root._sawPending = false }
+        onTriggered: { root._polls--; if (!pendingProc.running) pendingProc.running = true }
     }
     Timer { id: refreshLater; interval: 700; onTriggered: root.refresh() }
 
-    // ── hypridle (OLED burn-in protection) ──────────────────────────────
+    // ── idle: dim, lock, (screen off), suspend on battery — via hypridle ──
+    // oled: never blanks the panel (hypridle.conf); screenoff: turns screens
+    // off too (hypridle-screenoff.conf). Kept in Settings, restored at login.
+    readonly property string idleConf: Quickshell.env("HOME") + "/.config/hypr/" + (Settings.idleMode === "screenoff" ? "hypridle-screenoff.conf" : "hypridle.conf")
     function hypridleCheck() { if (!idleCheck.running) idleCheck.running = true }
     Process { id: idleCheck; command: ["bash", "-c", "pgrep -x hypridle >/dev/null && echo on || echo off"]
         stdout: StdioCollector { onStreamFinished: root.hypridleOn = this.text.trim() === "on" } }
-    function setOledCare(on) {
-        if (on) Quickshell.execDetached(["bash", "-lc", "pgrep -x hypridle >/dev/null || setsid hypridle >/dev/null 2>&1 &"])
-        else    Quickshell.execDetached(["pkill", "-x", "hypridle"])
-        root.hypridleOn = on
+    function setIdle(mode) {                  // off | oled | screenoff
+        Settings.idleMode = mode
+        applyIdle()
+    }
+    function applyIdle() {
+        const m = Settings.idleMode
+        if (m === "") return                 // never chosen: leave whatever runs alone
+        if (m === "off") Quickshell.execDetached(["pkill", "-x", "hypridle"])
+        else Quickshell.execDetached(["bash", "-c", 'pkill -x hypridle; sleep 0.3; setsid hypridle -c "$1" >/dev/null 2>&1 &', "idle", root.idleConf])
+        root.hypridleOn = m !== "off"
         careLater.start()
     }
+    function setOledCare(on) { setIdle(on ? "oled" : "off") }
+    Connections { target: Settings; function onReadyChanged() { if (Settings.ready) root.applyIdle() } }
     Timer { id: careLater; interval: 900; onTriggered: root.hypridleCheck() }
 
     // ── Projection (Super+P) ────────────────────────────────────────────
