@@ -23,6 +23,11 @@ PORT     = int(os.environ.get("LLAMA_PORT", "8779"))
 IDLE_SEC = int(os.environ.get("AIOS_IDLE_UNLOAD", "120"))
 # generation threads: about half the CPU, leaving the rest for the desktop
 THREADS  = int(os.environ.get("AIOS_THREADS", max(2, min(8, (os.cpu_count() or 4) // 2 - 2))))
+# on battery: half of that, and no busy-polling between work items — a laptop
+# in power-saver mode otherwise spends its whole CPU budget on the model and
+# the desktop stops responding while an answer is generated
+THREADS_BATTERY = int(os.environ.get("AIOS_THREADS_BATTERY", max(2, THREADS // 2)))
+LOG = HOME / "logs" / "llama-server.log"
 # On battery an idle model gives the GPU back sooner, so a hybrid laptop's
 # NVIDIA GPU can power down between questions.
 IDLE_SEC_BATTERY = int(os.environ.get("AIOS_IDLE_UNLOAD_BATTERY", "30"))
@@ -35,6 +40,14 @@ def _on_battery() -> bool:
         except OSError:
             pass
     return False
+
+def _log_tail(n: int = 6) -> str:
+    """Last lines llama-server wrote — the real reason a load failed."""
+    try:
+        lines = [l for l in LOG.read_text(errors="replace").splitlines() if l.strip()]
+    except OSError:
+        return ""
+    return " | ".join(lines[-n:])[-600:]
 
 # ── model registry ───────────────────────────────────────────────────────
 # ngl = layers on GPU (99 = everything). These are only fallbacks for an older
@@ -150,6 +163,7 @@ class LlamaAdapter:
         self._proc:      asyncio.subprocess.Process | None = None
         self._loaded:    str | None = None
         self._last_used: float = 0.0
+        self._active = 0                  # requests streaming right now
         self._lock = asyncio.Lock()
 
     def capabilities(self) -> Capability:
@@ -159,12 +173,21 @@ class LlamaAdapter:
         return BIN.exists()
 
     async def _reaper(self):
-        """Background task that unloads the model after IDLE_SEC silence."""
+        """Background task that unloads the model after IDLE_SEC silence.
+
+        Never while a model is loading or a request is in flight: a long prompt
+        on a laptop on battery can take more than the 30 s battery limit before
+        the first token, and unloading then killed the answer half-way."""
         while True:
             await asyncio.sleep(15)
-            limit = IDLE_SEC_BATTERY if _on_battery() else IDLE_SEC
-            if self._proc and time.time() - self._last_used > limit:
+            if self._idle_expired(time.time()):
                 await self._unload()
+
+    def _idle_expired(self, now: float) -> bool:
+        if not self._proc or self._active or self._lock.locked():
+            return False
+        limit = IDLE_SEC_BATTERY if _on_battery() else IDLE_SEC
+        return now - self._last_used > limit
 
     async def _unload(self):
         if self._proc:
@@ -186,6 +209,7 @@ class LlamaAdapter:
                 return  # already running, nothing to do
 
             await self._unload()
+            self._last_used = time.time()
             p = PROFILES[model]
             gguf = _find_gguf(p["dir"])
 
@@ -198,10 +222,13 @@ class LlamaAdapter:
                 "--cache-type-k", "q8_0",
                 "--cache-type-v", "q8_0",
                 "--flash-attn", "on",
-                "-t", str(THREADS),
                 "--parallel", "1",
                 "--no-warmup",
             ]
+            if _on_battery():
+                args += ["-t", str(THREADS_BATTERY), "--poll", "0"]
+            else:
+                args += ["-t", str(THREADS)]
             if _supports_fit() and not os.environ.get(p.get("ngl_env", "")):
                 args += ["-fit", "on"]                   # as many layers as this GPU's free VRAM allows
             else:
@@ -210,20 +237,36 @@ class LlamaAdapter:
                 mm = sorted(glob.glob(str(HOME / "models" / p["dir"] / "mmproj*.gguf")), key=os.path.getsize)
                 if mm:
                     args += ["--mmproj", mm[0]]
-            self._proc = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
+            # keep what the server says (fresh file per load), so a failure can be explained
+            try:
+                LOG.parent.mkdir(parents=True, exist_ok=True)
+                log = open(LOG, "wb")
+            except OSError:
+                log = None
+            try:
+                self._proc = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=log or asyncio.subprocess.DEVNULL,
+                )
+            finally:
+                if log:
+                    log.close()                   # the child has its own copy of the fd
 
             # wait up to 120 s for server to be ready (8B partial offload is slower)
             async with httpx.AsyncClient() as c:
                 for _ in range(240):
+                    if self._proc is None:
+                        raise RuntimeError(f"loading {model} was cancelled (the model was unloaded meanwhile)")
                     if self._proc.returncode is not None:
+                        tail = _log_tail()
+                        hint = (f"Out of GPU memory — force fewer GPU layers with {p.get('ngl_env') or 'AIOS_8B_NGL'} "
+                                f"in ~/aios/config/aios.env, or pick a smaller model."
+                                if "out of memory" in tail.lower() or "alloc" in tail.lower()
+                                else f"Details: {LOG}")
                         raise RuntimeError(
-                            f"llama-server exited with code {self._proc.returncode} "
-                            f"while loading {model} — likely out of GPU memory. "
-                            f"Force fewer GPU layers with {p.get('ngl_env') or 'AIOS_8B_NGL'} in ~/aios/config/aios.env."
+                            f"llama-server exited with code {self._proc.returncode} while loading {model}. "
+                            f"{hint}" + (f" Last output: {tail}" if tail else "")
                         )
                     try:
                         r = await c.get(f"http://127.0.0.1:{PORT}/health")
@@ -241,6 +284,15 @@ class LlamaAdapter:
 
     async def run(self, req: Request):
         model = req.model if req.model in PROFILES else DEFAULT_MODEL
+        self._active += 1
+        try:
+            async for tok in self._run(model, req):
+                yield tok
+        finally:
+            self._active -= 1
+            self._last_used = time.time()
+
+    async def _run(self, model: str, req: Request):
         await self._ensure(model)
         self._last_used = time.time()
 
