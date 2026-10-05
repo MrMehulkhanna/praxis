@@ -20,35 +20,45 @@ PanelWindow {
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
     readonly property bool fullscreenHere: hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen
-    // Asymmetric debounce: the dock REVEALS instantly but only HIDES after the
-    // hide condition has held for 350 ms. The old instant toggle flapped
-    // (visible as "vibration") whenever the pointer skimmed the hover zone or
-    // a workspace transition briefly reported fullscreen.
+    readonly property bool hideForFullscreen: fullscreenHere && Settings.dockHideOnFullscreen
+
+    // Is the pointer on the dock? HoverHandlers are passive, so they stay
+    // "hovered" while the pointer is over an icon. The MouseAreas used before
+    // lost the hover to the icon's own MouseArea, so the dock slid away under
+    // the cursor 350 ms after you pointed at an icon — mid-click.
+    readonly property bool pointerOn: dockHover.hovered || edgeHover.hovered
     readonly property bool wantHidden:
-        (Settings.dockAutoHide && !hoverZone.containsMouse && !dockMa.containsMouse)
-        || (fullscreenHere && Settings.dockHideOnFullscreen)
+        (Settings.dockAutoHide && !pointerOn && Shell.overlay !== "launcher") || hideForFullscreen
     property bool hidden: false
     onWantHiddenChanged: {
         if (wantHidden) {
+            revealDwell.stop()
             hideDebounce.restart()
         } else {
             hideDebounce.stop()
-            hidden = false
+            // brushing the screen edge on the way to something else doesn't pop it up
+            if (hidden && edgeHover.hovered) revealDwell.restart()
+            else hidden = false
         }
     }
     Component.onCompleted: hidden = wantHidden
-    Timer {
-        id: hideDebounce
-        interval: 350
-        onTriggered: dock.hidden = dock.wantHidden
-    }
+    Timer { id: hideDebounce; interval: 600; onTriggered: dock.hidden = dock.wantHidden }
+    Timer { id: revealDwell;  interval: 120; onTriggered: if (!dock.wantHidden) dock.hidden = false }
+
     readonly property int  iconSize: Theme.dockIcon
     readonly property int  padding: 8
 
     implicitWidth: glass.width + 40
     implicitHeight: iconSize + padding * 2 + Theme.dockMargin + 28   // room for magnified icons + labels
-    exclusiveZone: hidden ? 0 : iconSize + padding * 2 + Theme.dockMargin
-    Behavior on exclusiveZone { NumberAnimation { duration: Theme.normal } }
+    // An auto-hiding dock floats over windows. Reserving space only while it is
+    // shown made every window shrink when the dock came up and grow back when it
+    // left — the button you were aiming at jumped away from the cursor.
+    exclusiveZone: Settings.dockAutoHide || hideForFullscreen ? 0 : iconSize + padding * 2 + Theme.dockMargin
+
+    // Only the dock itself (and, while hidden, a 3 px strip at the screen edge)
+    // takes the mouse; the rest of this window lets clicks through to the apps
+    // underneath. Before, a ~100 px tall invisible area swallowed them.
+    mask: Region { item: glass; Region { item: edge } }
 
     // ── model: favourites first, then running apps not already pinned ──
     // byId/heuristicLookup are exact and can miss (case, .desktop suffix, StartupWMClass),
@@ -95,8 +105,13 @@ PanelWindow {
         return out
     }
 
-    // invisible hover zone at the very bottom edge for auto-hide reveal
-    MouseArea { id: hoverZone; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+    // reveal strip: the bottom 3 px of the screen under the dock
+    Item {
+        id: edge
+        anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: glass.width; height: 3
+        HoverHandler { id: edgeHover }
+    }
 
     Glass {
         id: glass
@@ -109,7 +124,7 @@ PanelWindow {
         radius: Theme.radiusXl
         color: Theme.glassStrong
 
-        MouseArea { id: dockMa; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+        HoverHandler { id: dockHover }
 
         Row {
             id: row
