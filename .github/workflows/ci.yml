@@ -19,7 +19,7 @@ jobs:
           python-version: "3.12"
       - name: Unit tests
         run: |
-          pip install pytest
+          pip install pytest httpx
           python -m pytest tests/ -q
       - name: Dependencies resolve
         run: pip install --dry-run -r requirements.txt
