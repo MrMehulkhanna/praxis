@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# praxis-emoji — emoji picker (Super+.): search by name, Enter types it where you are.
+set -uo pipefail
+LIST=${XDG_CACHE_HOME:-$HOME/.cache}/praxis/emoji.txt
+if [ ! -s "$LIST" ]; then
+    mkdir -p "${LIST%/*}"
+    python3 - "$LIST" <<'PY'
+import sys, unicodedata
+ranges = [(0x1F300, 0x1F5FF), (0x1F600, 0x1F64F), (0x1F680, 0x1F6FF), (0x1F900, 0x1F9FF), (0x1FA70, 0x1FAFF),
+          (0x2600, 0x26FF), (0x2700, 0x27BF), (0x1F1E6, 0x1F1FF), (0x2B50, 0x2B55)]
+out = []
+for a, b in ranges:
+    for cp in range(a, b + 1):
+        try:
+            name = unicodedata.name(chr(cp))
+        except ValueError:
+            continue
+        out.append(f"{chr(cp)}  {name.lower()}")
+open(sys.argv[1], "w").write("\n".join(out) + "\n")
+PY
+fi
+sel=$(rofi -dmenu -i -p "Emoji" <"$LIST") || exit 0
+e=${sel%% *}
+[ -n "$e" ] || exit 0
+printf '%s' "$e" | wl-copy
+sleep 0.1
+wtype -- "$e"

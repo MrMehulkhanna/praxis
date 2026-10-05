@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# praxis-clipboard — clipboard history (Super+Shift+V), like Windows' Win+V.
+#   praxis-clipboard          pick an earlier copy; it is copied again and pasted
+#   praxis-clipboard watch    remember what you copy, text and images (the session runs this)
+#   praxis-clipboard clear    forget the whole history
+set -uo pipefail
+TERMS='^(kitty|foot|Alacritty|org.wezfurlong.wezterm|com.mitchellh.ghostty|konsole|org.gnome.Console|xterm)$'
+case "${1:-pick}" in
+    watch)
+        pkill -f '^wl-paste --type (text|image) --watch cliphist' 2>/dev/null
+        wl-paste --type text --watch cliphist -max-items 300 store &
+        exec wl-paste --type image --watch cliphist -max-items 300 store
+        ;;
+    clear)
+        cliphist wipe && notify-send -a Praxis -i edit-clear "Clipboard history cleared" ""
+        ;;
+    pick)
+        command -v cliphist >/dev/null || { notify-send -a Praxis "Clipboard history" "cliphist is not installed"; exit 1; }
+        sel=$(cliphist list | rofi -dmenu -i -p "Clipboard" -display-columns 2 -mesg "Enter: paste · it's also on the clipboard") || exit 0
+        [ -n "$sel" ] || exit 0
+        printf '%s' "$sel" | cliphist decode | wl-copy
+        # paste into the window that had the focus (terminals paste with Ctrl+Shift+V)
+        sleep 0.15
+        cls=$(hyprctl -j activewindow 2>/dev/null | jq -r '.class // ""')
+        if [[ "$cls" =~ $TERMS ]]; then wtype -M ctrl -M shift -k v -m shift -m ctrl; else wtype -M ctrl -k v -m ctrl; fi
+        ;;
+    *) sed -n '2,5p' "$0" | sed 's/^# \?//'; exit 2 ;;
+esac

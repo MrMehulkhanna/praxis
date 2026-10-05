@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# praxis-record — screen recording (Super+Shift+R starts, again stops).
+#   praxis-record [screen|region] [--audio]     default: the screen under the mouse
+# Saves to ~/Videos. Encodes on the integrated GPU (VA-API) when there is one,
+# so recording doesn't load the CPU or wake the NVIDIA GPU.
+set -uo pipefail
+RUN=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis
+PIDF=$RUN/record.pid FILEF=$RUN/record.file
+mkdir -p "$RUN"
+if [ -s "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
+    kill -INT "$(cat "$PIDF")"
+    for _ in $(seq 30); do kill -0 "$(cat "$PIDF")" 2>/dev/null || break; sleep 0.1; done
+    rm -f "$PIDF"
+    f=$(cat "$FILEF" 2>/dev/null)
+    notify-send -a Praxis -i media-record "Recording saved" "${f/#$HOME/\~}"
+    exit 0
+fi
+command -v wf-recorder >/dev/null || { notify-send -a Praxis "Screen recording" "wf-recorder is not installed"; exit 1; }
+mkdir -p "$HOME/Videos"
+f="$HOME/Videos/Recording-$(date +%Y-%m-%d_%H-%M-%S).mp4"
+args=(-f "$f")
+case "${1:-screen}" in
+    region) g=$(slurp) || exit 0; args+=(-g "$g") ;;
+    *) mon=$(hyprctl -j monitors | jq -r '.[] | select(.focused) | .name'); [ -n "$mon" ] && args+=(-o "$mon") ;;
+esac
+[[ " $* " == *" --audio "* ]] && args+=(--audio)
+igpu=""
+for r in /sys/class/drm/renderD*; do
+    case "$(cat "$r/device/vendor" 2>/dev/null)" in 0x8086|0x1002) igpu=/dev/dri/${r##*/}; break ;; esac
+done
+if [ -n "$igpu" ]; then args+=(-c h264_vaapi -d "$igpu"); else args+=(-c libx264 -p preset=veryfast); fi
+setsid wf-recorder "${args[@]}" >"$RUN/record.log" 2>&1 &
+echo $! >"$PIDF"; echo "$f" >"$FILEF"
+sleep 0.6
+if kill -0 "$(cat "$PIDF")" 2>/dev/null; then
+    notify-send -a Praxis -i media-record "Recording" "Press Super+Shift+R again to stop"
+else
+    notify-send -a Praxis -i dialog-error "Recording didn't start" "$(tail -n 2 "$RUN/record.log")"
+    rm -f "$PIDF"; exit 1
+fi
