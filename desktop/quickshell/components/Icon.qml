@@ -155,6 +155,12 @@ Canvas {
         case "user":
             arc(ctx, 12, 8.5, 4, 0, 2 * P); arc(ctx, 12, 22, 8, P * 1.15, P * 1.85); break
         case "bolt": poly(ctx, [[13.5, 2.5], [6, 13.5], [12, 13.5], [10.5, 21.5], [18, 10.5], [12, 10.5]], true); break
+        case "gamepad":
+            ctx.beginPath(); ctx.moveTo(7, 7); ctx.lineTo(17, 7); ctx.quadraticCurveTo(21.5, 7, 21.5, 13.5)
+            ctx.quadraticCurveTo(21.5, 18.5, 18.5, 18.5); ctx.quadraticCurveTo(16.5, 18.5, 15, 15.5); ctx.lineTo(9, 15.5)
+            ctx.quadraticCurveTo(7.5, 18.5, 5.5, 18.5); ctx.quadraticCurveTo(2.5, 18.5, 2.5, 13.5); ctx.quadraticCurveTo(2.5, 7, 7, 7)
+            ctx.closePath(); ctx.stroke()
+            line(ctx, 7.5, 9.75, 7.5, 13.25); line(ctx, 5.75, 11.5, 9.25, 11.5); dot(ctx, 15.5, 10.5, 1.1); dot(ctx, 17.8, 12.7, 1.1); break
         case "leaf":
             ctx.beginPath(); ctx.moveTo(5, 19); ctx.quadraticCurveTo(5, 6, 19, 5); ctx.quadraticCurveTo(19, 18, 8, 19); ctx.closePath(); ctx.stroke(); line(ctx, 5, 19, 14, 10); break
         case "gauge":

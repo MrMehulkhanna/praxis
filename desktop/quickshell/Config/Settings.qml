@@ -26,6 +26,8 @@ Singleton {
     property alias barStats:       s.barStats
     property alias wallpaper:      s.wallpaper
     property alias liveOnBattery:  s.liveOnBattery
+    property alias autoSaver:      s.autoSaver
+    property alias idleMode:       s.idleMode
     property alias clock24h:       s.clock24h
     property alias showSeconds:    s.showSeconds
 
@@ -63,6 +65,8 @@ Singleton {
             property string barStats: "auto"           // auto | on | off
             property string wallpaper: ""
             property bool   liveOnBattery: false       // keep a live (video) wallpaper playing on battery
+            property bool   autoSaver: true            // Battery saver on battery, off on the charger
+            property string idleMode: ""               // "" (untouched) | off | oled | screenoff — hypridle profile
             property bool   clock24h: false
             property bool   showSeconds: false
         }

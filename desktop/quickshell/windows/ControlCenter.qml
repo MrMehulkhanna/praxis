@@ -12,7 +12,7 @@ OverlayWindow {
     name: "cc"
     scrim: false
     grabKeyboard: false
-    onOpened: { Power.refreshProfile(); Power.refreshBrightness(); Aios.refresh() }
+    onOpened: { Power.refreshProfile(); Power.refreshBrightness(); Aios.refresh(); Modes.refresh() }
 
     readonly property var player: Mpris.players.values.length ? (Mpris.players.values.find(p => p.isPlaying) || Mpris.players.values[0]) : null
     readonly property var bat: UPower.displayDevice
@@ -134,6 +134,9 @@ OverlayWindow {
                     onClicked: { const p = ["Normal", "Development", "Cyber Lab", "Presentation"]; Settings.profile = p[(p.indexOf(Settings.profile) + 1) % p.length] }
                 }
                 Pill { icon: EyeComfort.enabled ? "eye-off" : "eye"; label: "Eye Comfort"; on: EyeComfort.enabled; onClicked: EyeComfort.toggle() }
+                Pill { icon: "sparkle"; label: Modes.aiOn ? "AI on" : "AI off"; on: Modes.aiOn; onClicked: Modes.toggleAi() }
+                Pill { icon: "gamepad"; label: "Game mode"; on: Modes.game; onColor: Theme.purple; onClicked: Modes.toggleGame() }
+                Pill { icon: "leaf"; label: "Battery saver"; on: Modes.saver; onColor: Theme.green; onClicked: Modes.toggleSaver() }
                 Pill { icon: "lock"; label: "Lock"; onClicked: { Power.lock(); Shell.closeAll() } }
             }
 

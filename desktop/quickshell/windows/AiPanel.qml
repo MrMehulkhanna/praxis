@@ -47,7 +47,7 @@ OverlayWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     Text { text: "Praxis"; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontLg; font.weight: Font.Bold }
                     Text {
-                        text: !Aios.online ? "backend offline" : Aios.streaming ? "thinking…" : Aios.loadedModel ? "ready · model loaded" : "ready · loads on first message"
+                        text: !Aios.online ? (Modes.aiOn ? "backend offline" : Modes.game ? "off for Game mode" : "AI is off") : Aios.streaming ? "thinking…" : Aios.loadedModel ? "ready · model loaded" : "ready · loads on first message"
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
                     }
                 }
@@ -115,6 +115,7 @@ OverlayWindow {
                 MouseArea { id: cma; anchors.fill: parent; hoverEnabled: true; enabled: parent.clickable; onClicked: parent.clicked() }
             }
             Chip { visible: !!Aios.lastRoute.model; icon: (Aios.lastRoute.mode === "CLOUD") ? "cloud" : "chip"; text: (Aios.lastRoute.mode || "LOCAL") + " · " + ((Aios.models.find(m => m.id === Aios.lastRoute.model) || {}).label || Aios.lastRoute.model || "") + (Aios.lastRoute.task ? " · " + Aios.lastRoute.task : ""); on: true }
+            Chip { visible: !Modes.aiOn; icon: "power"; text: Modes.game ? "Game mode is on · end it" : "AI is off · turn on"; on: true; clickable: true; onClicked: Modes.game ? Modes.toggleGame() : Modes.toggleAi() }
             Chip { icon: "layers"; text: Aios.memoryObjects + " memories" }
             Chip { visible: !Aios.netOnline; icon: "wifi-off"; text: "offline · local only" }
             Chip { icon: Aios.budgetMode === "UNRESTRICTED" ? "cloud" : "lock"; text: Aios.budgetMode === "ZERO_COST" ? "₹0 · local only" : Aios.budgetMode; on: Aios.budgetMode !== "ZERO_COST" }
