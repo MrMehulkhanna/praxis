@@ -199,7 +199,7 @@ sfdisk --dump "$DISK" >"$BACKUP" 2>/dev/null && echo "partition table saved to $
 
 # ── partitioning ────────────────────────────────────────────────────────────
 ESP="" ROOT="" NEW_ESP=0
-largest_free() { praxis_largest_free "$(parted -sm "$DISK" unit MiB print free 2>/dev/null)" "${1:-$MIN_MIB}"; }
+largest_free() { praxis_largest_free "$(parted -sm "$DISK" unit MiB print free 2>/dev/null)" "$MIN_MIB"; }
 existing_esp() {
     lsblk -lnpo NAME,PARTTYPE "$DISK" | awk 'tolower($2) == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1; exit }'
 }
