@@ -50,10 +50,14 @@ local menu        = "rofi -show drun"
 -- Or execute your favorite apps at launch like this:
 --
 hl.on("hyprland.start", function () 
+  -- "Ask for my password when the computer starts" (installer / Settings): the
+  -- desktop starts behind the lock screen
+  hl.exec_cmd("[ -e ~/.config/praxis/lock-at-login ] && exec hyprlock")
   hl.exec_cmd("quickshell -d -p ~/.config/quickshell/shell.qml")
-  hl.exec_cmd("swaync &")
+  hl.exec_cmd("systemctl --user start swaync.service")  -- notifications (drawn in software: never wakes the NVIDIA GPU)
   hl.exec_cmd("hyprpaper &")                          -- wallpaper (config: ~/.config/hypr/hyprpaper.conf)
   hl.exec_cmd("systemctl --user start aios.service")  -- local AI backend
+  hl.exec_cmd("praxis-clipboard watch")               -- clipboard history (Super+Shift+V)
   hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1")  -- GUI auth prompts for root-only hardware toggles
 end)
 
@@ -333,6 +337,18 @@ hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"))
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("praxis-quicknote"))
 -- Super+Shift+O → OCR a screen region into the clipboard
 hl.bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd("praxis-ocr"))
+-- Super+H → voice typing: talk, press Super+H again and it is typed where the cursor is
+--           (terminal, browser, chat — anywhere). Say "new line", end with "press enter".
+hl.bind(mainMod .. " + H", hl.dsp.exec_cmd("praxis-dictate"))
+-- Super+Shift+H → say what you want done; the matching shell command is typed (never run)
+hl.bind(mainMod .. " + SHIFT + H", hl.dsp.exec_cmd("praxis-dictate --command"))
+-- Super+G → Game mode (AI off so the GPU is yours, performance, no notifications/blur)
+hl.bind(mainMod .. " + G", hl.dsp.exec_cmd("praxis-mode game toggle"))
+-- Small tools, as on Windows / macOS
+hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("praxis-clipboard"))    -- clipboard history (pick → pasted)
+hl.bind(mainMod .. " + period",    hl.dsp.exec_cmd("praxis-emoji"))        -- emoji picker
+hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd("praxis-colorpick"))    -- colour picker → hex on the clipboard
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("praxis-record"))       -- record the screen (again: stop)
 
 
 -- Move focus with mainMod + arrow keys
@@ -351,7 +367,9 @@ end
 
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + S",         hl.dsp.workspace.toggle_special("magic"))
-hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:magic" }))
+-- (Super+Shift+S is the region screenshot, so sending a window here is Super+Alt+S;
+--  both used to fire on Super+Shift+S: a screenshot AND the window vanished)
+hl.bind(mainMod .. " + ALT + S",   hl.dsp.window.move({ workspace = "special:magic" }))
 
 -- Scroll through existing workspaces with mainMod + scroll
 hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
@@ -427,6 +445,14 @@ hl.window_rule({
 -- })
 -- overlayLayerRule:set_enabled(false)
 
+-- The Praxis installer (live USB) opens as a centred window, not a tile
+hl.window_rule({
+    name   = "praxis-installer",
+    match  = { title = "^Install Praxis Linux" },
+    float  = true,
+    center = true,
+})
+
 -- Hyprland-run windowrule
 hl.window_rule({
     name  = "move-hyprland-run",
@@ -443,3 +469,13 @@ hl.layer_rule({
     blur         = true,
     ignore_alpha = 0.1,
 })
+
+
+-------------------------------
+---- THIS COMPUTER ONLY -------
+-------------------------------
+
+-- Keyboard layout, monitors and anything else specific to one machine live in
+-- ~/.config/hypr/praxis-local.lua (written by the installer and by Settings),
+-- so replacing this file with a newer Praxis version never loses them.
+pcall(require, "praxis-local")

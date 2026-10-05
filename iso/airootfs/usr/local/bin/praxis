@@ -12,10 +12,18 @@ fi
 
 # ── one-line descriptions (kept here so this file is the source of truth) ──
 declare -A DESC=(
-    [install]="Smart installer — dual-boot into free space, or full-disk wipe"
-    [install-partition]="Install into a specific existing partition"
+    [install]="Text installer — next to Windows, free space, a partition, or a whole disk"
+    [installer]="Graphical installer (Install Praxis Linux in the live dock)"
+    [install-engine]="The install engine both installers drive (--probe shows the disks)"
+    [install-partition]="(now part of praxis install)"
     [welcome]="First-login TUI wizard (Wi-Fi, timezone, GPU, model)"
-    [doctor]="Health report — services, backend, hardware, venv"
+    [doctor]="Health check — what needs fixing and how (--fix applies the safe fixes)"
+    [mode]="AI on/off, Game mode, Battery saver (also in Control Center)"
+    [dictate]="Voice typing anywhere (Super+H) · say a command, get it typed (Super+Shift+H)"
+    [clipboard]="Clipboard history (Super+Shift+V)"
+    [emoji]="Emoji picker (Super+.)"
+    [colorpick]="Pick a colour on screen, hex to the clipboard (Super+Shift+C)"
+    [record]="Record the screen to ~/Videos (Super+Shift+R starts and stops)"
     [update]="Update pacman + AIOS + venv, then restart the backend"
     [net-bond]="Combine multiple network interfaces via NetworkManager"
     [palette]="Rofi omnibox — apps, files, AI (?), calc (=), shell (>)"

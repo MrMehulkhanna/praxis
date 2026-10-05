@@ -2,11 +2,9 @@
 [[ -f ~/.bashrc ]] && . ~/.bashrc
 
 if [[ -z "${WAYLAND_DISPLAY:-}" && "$(tty)" == "/dev/tty1" ]]; then
-    # The setup wizard is for installed systems. On live media the desktop
-    # starts immediately and the dock offers "Install Praxis Linux" instead.
-    if [[ ! -d /run/archiso && -x /usr/local/bin/praxis-welcome ]]; then
-        /usr/local/bin/praxis-welcome
-    fi
+    # The desktop starts straight away; its welcome notification offers to set
+    # up the AI (the installer already asked for everything else). The old
+    # text wizard is still there as `praxis welcome`.
     if command -v uwsm >/dev/null && uwsm check may-start >/dev/null 2>&1; then
         exec uwsm start hyprland.desktop
     else

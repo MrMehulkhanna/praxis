@@ -15,11 +15,22 @@ if [ -d /run/archiso ]; then
     action=$(notify-send -a "Praxis" -u normal -t 0 --wait \
         --action=install="Install Praxis Linux" \
         "Welcome to Praxis Linux — live session" \
-        "Everything is running from the USB drive. Install Praxis to this computer from here or from the dock. If the disk has free space, Windows is kept.")
-    [ "$action" = "install" ] && exec gtk-launch praxis-install
+        "Everything is running from the USB drive. Install Praxis on this computer from here or from the dock — next to Windows, in free space, or on a whole disk.")
+    [ "$action" = "install" ] && exec /usr/local/bin/praxis-installer
     exit 0
 fi
 
-notify-send -a "Praxis" -t 12000 "Welcome to Praxis Linux" \
-    "SUPER+SPACE opens the palette, SUPER+B the widget board. Type 'praxis' in a terminal to see every command."
 touch "$HOME/.praxis-first-boot-done"
+if [ -f "$HOME/.aios-setup-done" ]; then
+    notify-send -a "Praxis" -t 12000 "Welcome to Praxis Linux" \
+        "Super+Space opens the palette, Super+H types what you say, Super+O is Control Center. Type 'praxis' in a terminal to see every command."
+    exit 0
+fi
+action=$(notify-send -a "Praxis" -u normal -t 0 --wait \
+    --action=ai="Set up the AI" --action=keys="Keyboard shortcuts" \
+    "Welcome to Praxis Linux" \
+    "Set up the local AI assistant now (a few minutes, needs internet) — or later from Settings › AI. Super+Space opens the palette.")
+case "$action" in
+    ai)   exec kitty --class praxis-setup --title "Set up the AI" -e bash -c 'aios-setup; echo; read -rp "Press Enter to close… " _' ;;
+    keys) exec quickshell ipc -p "$HOME/.config/quickshell/shell.qml" call shell settings Keyboard ;;
+esac
