@@ -135,8 +135,9 @@ EXTRA_PKGS=qemu-guest-agent
 EXTRA_CMDLINE=console=ttyS0,115200"
     guest "echo $(printf '%s\n' "$plan" | base64 -w0) | base64 -d > /run/plan && chmod 600 /run/plan"
     t0=$SECONDS
-    guest 'praxis-install-engine /run/plan > /run/engine.out 2>&1; echo $? > /run/engine.rc' >/dev/null 2>&1 &
-    # the agent call above blocks for the whole install; poll progress meanwhile
+    # started detached: the guest agent serves one connection at a time, so a
+    # call that waited for the whole install would block the progress polling
+    guest 'setsid -f bash -c "praxis-install-engine /run/plan > /run/engine.out 2>&1; echo \$? > /run/engine.rc"' >/dev/null
     while sleep 20; do
         last=$(guest 'grep "^@@" /run/engine.out | tail -n1' 2>/dev/null)
         printf '\r    %-70s' "${last:0:70}"

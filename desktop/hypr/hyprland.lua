@@ -52,7 +52,8 @@ local menu        = "rofi -show drun"
 hl.on("hyprland.start", function () 
   -- "Ask for my password when the computer starts" (installer / Settings): the
   -- desktop starts behind the lock screen
-  hl.exec_cmd("[ -e ~/.config/praxis/lock-at-login ] && exec hyprlock")
+  -- (not "[ -e … ]": Hyprland reads a leading "[…]" as exec rules)
+  hl.exec_cmd("test -e ~/.config/praxis/lock-at-login && exec hyprlock")
   hl.exec_cmd("quickshell -d -p ~/.config/quickshell/shell.qml")
   hl.exec_cmd("systemctl --user start swaync.service")  -- notifications (drawn in software: never wakes the NVIDIA GPU)
   hl.exec_cmd("hyprpaper &")                          -- wallpaper (config: ~/.config/hypr/hyprpaper.conf)

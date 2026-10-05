@@ -142,6 +142,7 @@ while IFS= read -r c; do
         praxis-*)                    check "tool $c"   test -x "$AIRO/usr/local/bin/$c" ;;
     esac
 done < <(grep -o 'exec_cmd("[^" ]*' "$LUA" | sed 's/exec_cmd("//' | sort -u)
+check "no exec starts with '[' (Hyprland reads it as rules)" bash -c "! grep -qE 'exec_cmd\\(\"\\[' '$LUA'"
 check "no binds into ~/aios (absent until AI setup)" bash -c "! grep -q 'exec_cmd(\"~/aios' '$LUA'"
 check "no binds through /tmp pipes"            bash -c "! grep -q '/tmp/qs-ipc-pipe' '$LUA'"
 check "autostarted polkit agent is installed"  bash -c "! grep -q polkit-kde-authentication-agent '$LUA' || grep -qx polkit-kde-agent '$DESK'"
