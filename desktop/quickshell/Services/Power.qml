@@ -36,7 +36,7 @@ Singleton {
         v = Math.max(root.minBrightness, Math.min(1, v))
         root.brightness = v
         if (!brtSet.running) {
-            brtSet.command = ["brightnessctl", "-q", "set", Math.round(v * 100) + "%"]
+            brtSet.command = ["env", "PRAXIS_QUIET=1", "praxis-brightness", "set", Math.round(v * 100)]
             brtSet.running = true
         } else _pendingBrt = v
     }
@@ -47,7 +47,7 @@ Singleton {
     }
     Process {
         id: brtProc
-        command: ["bash", "-c", "echo $(brightnessctl -m | cut -d, -f4 | tr -d %)"]
+        command: ["bash", "-c", "praxis-brightness get | tr -d %"]
         stdout: StdioCollector { onStreamFinished: { const v = parseInt(this.text.trim()); if (!isNaN(v)) root.brightness = v / 100 } }
     }
     Component.onDestruction: {}
