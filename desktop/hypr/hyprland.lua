@@ -331,151 +331,151 @@ hl.device({
 local mainMod = "SUPER" -- Sets "Windows" key as main modifier
 
 -- Example binds, see https://wiki.hypr.land/Configuring/Basics/Binds/ for more
-hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd(terminal))
-local closeWindowBind = hl.bind(mainMod .. " + C", hl.dsp.window.close())
+hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd(terminal), { description = "Apps: Terminal" })
+local closeWindowBind = hl.bind(mainMod .. " + C", hl.dsp.window.close(), { description = "Windows: Close window" })
 -- closeWindowBind:set_enabled(false)
-hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"))
-hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager))
-hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
-hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"))  -- lock screen (|| guard: never stack lockers)
+hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"), { description = "System: Log out" })
+hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager), { description = "Apps: Files" })
+hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }), { description = "Windows: Float / tile window" })
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu), { description = "Apps: App menu" })
+hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"), { description = "System: Lock screen" })  -- lock screen (|| guard: never stack lockers)
 -- Super+Tab → workspace overview (grid of all 12); rofi window switcher moved to Super+Shift+Tab
-hl.bind(mainMod .. " + TAB",         hl.dsp.exec_cmd("quickshell ipc call shell toggle ws"))
-hl.bind(mainMod .. " + SHIFT + TAB", hl.dsp.exec_cmd("rofi -show window"))
+hl.bind(mainMod .. " + TAB",         hl.dsp.exec_cmd("quickshell ipc call shell toggle ws"), { description = "Workspaces: Overview of all workspaces" })
+hl.bind(mainMod .. " + SHIFT + TAB", hl.dsp.exec_cmd("rofi -show window"), { description = "Windows: Switch between windows" })
 -- Super+P is bound to Project/Display settings below
 -- hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
-hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
-hl.bind("ALT + RETURN", hl.dsp.window.fullscreen())
+hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"), { description = "Windows: Turn split direction" })    -- dwindle only
+hl.bind("ALT + RETURN", hl.dsp.window.fullscreen(), { description = "Windows: Full screen" })
 -- Screenshots (interactive menu on PRINT)
-hl.bind("PRINT",                hl.dsp.exec_cmd("~/.config/hypr/scripts/screenshot.sh"))
-hl.bind("SHIFT + PRINT",        hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"))
-hl.bind("CTRL + PRINT",         hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"))
-hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"))
+hl.bind("PRINT",                hl.dsp.exec_cmd("~/.config/hypr/scripts/screenshot.sh"), { description = "Screenshots: Screenshot" })
+hl.bind("SHIFT + PRINT",        hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"), { description = "Screenshots: Screenshot of an area" })
+hl.bind("CTRL + PRINT",         hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"), { description = "Screenshots: Screenshot of the whole screen" })
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("mkdir -p ~/Pictures && grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy && notify-send 'Screenshot saved & copied'"), { description = "Screenshots: Screenshot of an area" })
 
 -- Window: minimize (move to special:minimized workspace)
-hl.bind(mainMod .. " + Z", hl.dsp.window.move({ workspace = "special:minimized" }))
-hl.bind(mainMod .. " + SHIFT + Z", hl.dsp.workspace.toggle_special("minimized"))
+hl.bind(mainMod .. " + Z", hl.dsp.window.move({ workspace = "special:minimized" }), { description = "Windows: Minimise window" })
+hl.bind(mainMod .. " + SHIFT + Z", hl.dsp.workspace.toggle_special("minimized"), { description = "Windows: Show minimised windows" })
 
 -- ── Quickshell panel shortcuts (Alphabet keys) ─────────────────────────
 -- Super+Escape → Force close or Force open Quickshell
-hl.bind(mainMod .. " + ESCAPE", hl.dsp.exec_cmd("praxis-restart-shell"))
+hl.bind(mainMod .. " + ESCAPE", hl.dsp.exec_cmd("praxis-restart-shell"), { description = "System: Restart the desktop" })
 -- Ctrl+Shift+Escape → task manager (what's using CPU/GPU, stop it)
-hl.bind("CTRL + SHIFT + ESCAPE", hl.dsp.exec_cmd("quickshell ipc call tasks open cpu"))
+hl.bind("CTRL + SHIFT + ESCAPE", hl.dsp.exec_cmd("quickshell ipc call tasks open cpu"), { description = "System: Task manager" })
 -- Super+A  → AI Spotlight (search/command bar)
-hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
+hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { description = "Praxis: Search and launch" })
 -- Super+I  → AI Chat panel
-hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc call shell toggle ai"))
+hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc call shell toggle ai"), { description = "Praxis: AI assistant" })
 -- Super+O  → Control Center (Overview)
-hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc call shell toggle cc"))
+hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc call shell toggle cc"), { description = "Praxis: Control Center" })
 -- Super+W  → Launchpad (Windows/Apps)
-hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
+hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { description = "Praxis: Search and launch" })
 -- Tap Super (Windows key) to open search apps
-hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true })
-hl.bind("SUPER + SUPER_R", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true })
-hl.bind("SUPER_L",         hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true })
-hl.bind("SUPER_R",         hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true })
+hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
+hl.bind("SUPER + SUPER_R", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
+hl.bind("SUPER_L",         hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
+hl.bind("SUPER_R",         hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
 -- Super+P  → Display / Projection settings
-hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("quickshell ipc call shell settings Display"))
+hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("quickshell ipc call shell settings Display"), { description = "Praxis: Display settings" })
 -- Super+Space → App Search & Omnibox
-hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
+hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { description = "Praxis: Search and launch" })
 -- Super+B → widget board (StandBy-style tiles: clock, calendar, battery, sys, media, weather)
-hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle widgets"))
+hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle widgets"), { description = "Praxis: Widgets" })
 -- Super+Shift+Q → power menu (lock/suspend/logout/reboot/off)
-hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"))
+hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"), { description = "System: Power menu" })
 -- Super+N → quicknote (rofi prompt → today's ~/aios/notes/YYYY-MM-DD.md)
-hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("praxis-quicknote"))
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("praxis-quicknote"), { description = "Tools: Quick note" })
 -- Super+Shift+O → OCR a screen region into the clipboard
-hl.bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd("praxis-ocr"))
+hl.bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd("praxis-ocr"), { description = "Tools: Copy text from the screen" })
 -- Super+H → voice typing: talk, press Super+H again and it is typed where the cursor is
 --           (terminal, browser, chat — anywhere). Say "new line", end with "press enter".
-hl.bind(mainMod .. " + H", hl.dsp.exec_cmd("praxis-dictate"))
+hl.bind(mainMod .. " + H", hl.dsp.exec_cmd("praxis-dictate"), { description = "Tools: Voice typing" })
 -- Super+Shift+H → say what you want done; the matching shell command is typed (never run)
-hl.bind(mainMod .. " + SHIFT + H", hl.dsp.exec_cmd("praxis-dictate --command"))
+hl.bind(mainMod .. " + SHIFT + H", hl.dsp.exec_cmd("praxis-dictate --command"), { description = "Tools: Voice to terminal command" })
 -- Super+G → Game mode (AI off so the GPU is yours, performance, no notifications/blur)
-hl.bind(mainMod .. " + G", hl.dsp.exec_cmd("praxis-mode game toggle"))
+hl.bind(mainMod .. " + G", hl.dsp.exec_cmd("praxis-mode game toggle"), { description = "Praxis: Game mode" })
 -- Small tools, as on Windows / macOS
-hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("praxis-clipboard"))    -- clipboard history (pick → pasted)
-hl.bind(mainMod .. " + period",    hl.dsp.exec_cmd("praxis-emoji"))        -- emoji picker
-hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd("praxis-colorpick"))    -- colour picker → hex on the clipboard
-hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("praxis-record"))       -- record the screen (again: stop)
+hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("praxis-clipboard"), { description = "Tools: Clipboard history" })    -- clipboard history (pick → pasted)
+hl.bind(mainMod .. " + period",    hl.dsp.exec_cmd("praxis-emoji"), { description = "Tools: Emoji picker" })        -- emoji picker
+hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd("praxis-colorpick"), { description = "Tools: Colour picker" })    -- colour picker → hex on the clipboard
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("praxis-record"), { description = "Tools: Record the screen" })       -- record the screen (again: stop)
 
 
 -- Snap with mainMod + arrow keys: left / right half, maximise, back into the tiles
-hl.bind(mainMod .. " + left",  hl.dsp.exec_cmd("praxis-win snap left"))
-hl.bind(mainMod .. " + right", hl.dsp.exec_cmd("praxis-win snap right"))
-hl.bind(mainMod .. " + up",    hl.dsp.exec_cmd("praxis-win snap max"))
-hl.bind(mainMod .. " + down",  hl.dsp.exec_cmd("praxis-win snap restore"))
+hl.bind(mainMod .. " + left",  hl.dsp.exec_cmd("praxis-win snap left"), { description = "Windows: Snap to the left half" })
+hl.bind(mainMod .. " + right", hl.dsp.exec_cmd("praxis-win snap right"), { description = "Windows: Snap to the right half" })
+hl.bind(mainMod .. " + up",    hl.dsp.exec_cmd("praxis-win snap max"), { description = "Windows: Maximise" })
+hl.bind(mainMod .. " + down",  hl.dsp.exec_cmd("praxis-win snap restore"), { description = "Windows: Back into the tiles" })
 -- Thirds: mainMod + ALT + 1 / 2 / 3 → left / centre / right column
-hl.bind(mainMod .. " + ALT + 1", hl.dsp.exec_cmd("praxis-win snap left3"))
-hl.bind(mainMod .. " + ALT + 2", hl.dsp.exec_cmd("praxis-win snap mid3"))
-hl.bind(mainMod .. " + ALT + 3", hl.dsp.exec_cmd("praxis-win snap right3"))
+hl.bind(mainMod .. " + ALT + 1", hl.dsp.exec_cmd("praxis-win snap left3"), { description = "Windows: Snap to the left third" })
+hl.bind(mainMod .. " + ALT + 2", hl.dsp.exec_cmd("praxis-win snap mid3"), { description = "Windows: Snap to the middle third" })
+hl.bind(mainMod .. " + ALT + 3", hl.dsp.exec_cmd("praxis-win snap right3"), { description = "Windows: Snap to the right third" })
 -- Layout: tiles → master + stack → 3 columns (master in the middle)
-hl.bind(mainMod .. " + ALT + M", hl.dsp.exec_cmd("praxis-win layout"))
+hl.bind(mainMod .. " + ALT + M", hl.dsp.exec_cmd("praxis-win layout"), { description = "Windows: Next layout (tiles, master, 3 columns)" })
 
 -- Move focus with mainMod + ALT + arrow keys
-hl.bind(mainMod .. " + ALT + left",  hl.dsp.focus({ direction = "left" }))
-hl.bind(mainMod .. " + ALT + right", hl.dsp.focus({ direction = "right" }))
-hl.bind(mainMod .. " + ALT + up",    hl.dsp.focus({ direction = "up" }))
-hl.bind(mainMod .. " + ALT + down",  hl.dsp.focus({ direction = "down" }))
+hl.bind(mainMod .. " + ALT + left",  hl.dsp.focus({ direction = "left" }), { description = "Windows: Focus the window on the left" })
+hl.bind(mainMod .. " + ALT + right", hl.dsp.focus({ direction = "right" }), { description = "Windows: Focus the window on the right" })
+hl.bind(mainMod .. " + ALT + up",    hl.dsp.focus({ direction = "up" }), { description = "Windows: Focus the window above" })
+hl.bind(mainMod .. " + ALT + down",  hl.dsp.focus({ direction = "down" }), { description = "Windows: Focus the window below" })
 
 -- Switch workspaces with mainMod + [0-9]
 -- Send the active window to a workspace: mainMod + SHIFT + [0-9] (you stay here),
 -- mainMod + CTRL + [0-9] (you go with it)
 for i = 1, 10 do
     local key = i % 10 -- 10 maps to key 0
-    hl.bind(mainMod .. " + " .. key,             hl.dsp.focus({ workspace = i}))
-    hl.bind(mainMod .. " + SHIFT + " .. key,     hl.dsp.window.move({ workspace = i, follow = false }))
-    hl.bind(mainMod .. " + CTRL + " .. key,      hl.dsp.window.move({ workspace = i, follow = true }))
+    hl.bind(mainMod .. " + " .. key,             hl.dsp.focus({ workspace = i}), { description = "Workspaces: Go to workspace " .. i })
+    hl.bind(mainMod .. " + SHIFT + " .. key,     hl.dsp.window.move({ workspace = i, follow = false }), { description = "Workspaces: Send window to workspace " .. i })
+    hl.bind(mainMod .. " + CTRL + " .. key,      hl.dsp.window.move({ workspace = i, follow = true }), { description = "Workspaces: Move window to workspace " .. i .. " and follow" })
 end
 
 -- Example special workspace (scratchpad)
-hl.bind(mainMod .. " + S",         hl.dsp.workspace.toggle_special("magic"))
+hl.bind(mainMod .. " + S",         hl.dsp.workspace.toggle_special("magic"), { description = "Workspaces: Scratchpad" })
 -- (Super+Shift+S is the region screenshot, so sending a window here is Super+Alt+S;
 --  both used to fire on Super+Shift+S: a screenshot AND the window vanished)
-hl.bind(mainMod .. " + ALT + S",   hl.dsp.window.move({ workspace = "special:magic" }))
+hl.bind(mainMod .. " + ALT + S",   hl.dsp.window.move({ workspace = "special:magic" }), { description = "Workspaces: Send window to the scratchpad" })
 
 -- Scroll through existing workspaces with mainMod + scroll
-hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
-hl.bind(mainMod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }))
+hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }), { description = "Workspaces: Next workspace" })
+hl.bind(mainMod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }), { description = "Workspaces: Previous workspace" })
 
 -- Monitors (Super+O is the Control Center and Super+Shift+O the text grabber —
 -- monitor binds there used to fire together with them)
 -- Super+] / Super+[: focus next / previous monitor
 -- Super+Shift+Right / Left (or Super+Shift+] / [): move the window to the next / previous monitor
-hl.bind(mainMod .. " + bracketright", hl.dsp.focus({ monitor = "+1" }))
-hl.bind(mainMod .. " + bracketleft",  hl.dsp.focus({ monitor = "-1" }))
-hl.bind(mainMod .. " + SHIFT + right",        hl.dsp.window.move({ monitor = "+1" }))
-hl.bind(mainMod .. " + SHIFT + left",         hl.dsp.window.move({ monitor = "-1" }))
-hl.bind(mainMod .. " + SHIFT + bracketright", hl.dsp.window.move({ monitor = "+1" }))
-hl.bind(mainMod .. " + SHIFT + bracketleft",  hl.dsp.window.move({ monitor = "-1" }))
+hl.bind(mainMod .. " + bracketright", hl.dsp.focus({ monitor = "+1" }), { description = "Monitors: Focus the next monitor" })
+hl.bind(mainMod .. " + bracketleft",  hl.dsp.focus({ monitor = "-1" }), { description = "Monitors: Focus the previous monitor" })
+hl.bind(mainMod .. " + SHIFT + right",        hl.dsp.window.move({ monitor = "+1" }), { description = "Monitors: Move window to the next monitor" })
+hl.bind(mainMod .. " + SHIFT + left",         hl.dsp.window.move({ monitor = "-1" }), { description = "Monitors: Move window to the previous monitor" })
+hl.bind(mainMod .. " + SHIFT + bracketright", hl.dsp.window.move({ monitor = "+1" }), { description = "Monitors: Move window to the next monitor" })
+hl.bind(mainMod .. " + SHIFT + bracketleft",  hl.dsp.window.move({ monitor = "-1" }), { description = "Monitors: Move window to the previous monitor" })
 
 -- Move/resize windows with mainMod + LMB/RMB and dragging
-hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })
-hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
+hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true, description = "Windows: Drag a window" })
+hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true, description = "Windows: Resize a window with the mouse" })
 
 -- Resize the focused window with the keyboard: SUPER + CTRL + arrow keys (hold to repeat)
 local resizeStep = 40
-hl.bind(mainMod .. " + CTRL + right", hl.dsp.window.resize({ x =  resizeStep, y = 0, relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + left",  hl.dsp.window.resize({ x = -resizeStep, y = 0, relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + down",  hl.dsp.window.resize({ x = 0, y =  resizeStep, relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + up",    hl.dsp.window.resize({ x = 0, y = -resizeStep, relative = true }), { repeating = true })
+hl.bind(mainMod .. " + CTRL + right", hl.dsp.window.resize({ x =  resizeStep, y = 0, relative = true }), { repeating = true, description = "Windows: Make wider" })
+hl.bind(mainMod .. " + CTRL + left",  hl.dsp.window.resize({ x = -resizeStep, y = 0, relative = true }), { repeating = true, description = "Windows: Make narrower" })
+hl.bind(mainMod .. " + CTRL + down",  hl.dsp.window.resize({ x = 0, y =  resizeStep, relative = true }), { repeating = true, description = "Windows: Make taller" })
+hl.bind(mainMod .. " + CTRL + up",    hl.dsp.window.resize({ x = 0, y = -resizeStep, relative = true }), { repeating = true, description = "Windows: Make shorter" })
 
 -- Toggle border-drag resizing (the hover resize arrow) on/off live
-hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("~/.config/hypr/scripts/toggle-border-resize.sh"))
+hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("~/.config/hypr/scripts/toggle-border-resize.sh"), { description = "Windows: Resize from the border on/off" })
 
 -- Laptop multimedia keys for volume and LCD brightness
-hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
-hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true })
-hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true, repeating = true })
-hl.bind("XF86AudioMicMute",     hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),   { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessUp",  hl.dsp.exec_cmd("praxis-brightness up"),                            { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown",hl.dsp.exec_cmd("praxis-brightness down"),                          { locked = true, repeating = true })
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true, description = "Media: Volume up" })
+hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true, description = "Media: Volume down" })
+hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true, repeating = true, description = "Media: Mute" })
+hl.bind("XF86AudioMicMute",     hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),   { locked = true, repeating = true, description = "Media: Mute microphone" })
+hl.bind("XF86MonBrightnessUp",  hl.dsp.exec_cmd("praxis-brightness up"),                            { locked = true, repeating = true, description = "Media: Brightness up" })
+hl.bind("XF86MonBrightnessDown",hl.dsp.exec_cmd("praxis-brightness down"),                          { locked = true, repeating = true, description = "Media: Brightness down" })
 
 -- Requires playerctl
-hl.bind("XF86AudioNext",  hl.dsp.exec_cmd("playerctl next"),       { locked = true })
-hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPlay",  hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPrev",  hl.dsp.exec_cmd("playerctl previous"),   { locked = true })
+hl.bind("XF86AudioNext",  hl.dsp.exec_cmd("playerctl next"),       { locked = true, description = "Media: Next track" })
+hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true, description = "Media: Play / pause" })
+hl.bind("XF86AudioPlay",  hl.dsp.exec_cmd("playerctl play-pause"), { locked = true, description = "Media: Play / pause" })
+hl.bind("XF86AudioPrev",  hl.dsp.exec_cmd("playerctl previous"),   { locked = true, description = "Media: Previous track" })
 
 
 --------------------------------
