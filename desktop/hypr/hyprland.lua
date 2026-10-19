@@ -371,18 +371,32 @@ hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd("praxis-colorpick"))    -- co
 hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("praxis-record"))       -- record the screen (again: stop)
 
 
--- Move focus with mainMod + arrow keys
-hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
-hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
-hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
-hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
+-- Snap with mainMod + arrow keys: left / right half, maximise, back into the tiles
+hl.bind(mainMod .. " + left",  hl.dsp.exec_cmd("praxis-win snap left"))
+hl.bind(mainMod .. " + right", hl.dsp.exec_cmd("praxis-win snap right"))
+hl.bind(mainMod .. " + up",    hl.dsp.exec_cmd("praxis-win snap max"))
+hl.bind(mainMod .. " + down",  hl.dsp.exec_cmd("praxis-win snap restore"))
+-- Thirds: mainMod + ALT + 1 / 2 / 3 → left / centre / right column
+hl.bind(mainMod .. " + ALT + 1", hl.dsp.exec_cmd("praxis-win snap left3"))
+hl.bind(mainMod .. " + ALT + 2", hl.dsp.exec_cmd("praxis-win snap mid3"))
+hl.bind(mainMod .. " + ALT + 3", hl.dsp.exec_cmd("praxis-win snap right3"))
+-- Layout: tiles → master + stack → 3 columns (master in the middle)
+hl.bind(mainMod .. " + ALT + M", hl.dsp.exec_cmd("praxis-win layout"))
+
+-- Move focus with mainMod + ALT + arrow keys
+hl.bind(mainMod .. " + ALT + left",  hl.dsp.focus({ direction = "left" }))
+hl.bind(mainMod .. " + ALT + right", hl.dsp.focus({ direction = "right" }))
+hl.bind(mainMod .. " + ALT + up",    hl.dsp.focus({ direction = "up" }))
+hl.bind(mainMod .. " + ALT + down",  hl.dsp.focus({ direction = "down" }))
 
 -- Switch workspaces with mainMod + [0-9]
--- Move active window to a workspace with mainMod + SHIFT + [0-9]
+-- Send the active window to a workspace: mainMod + SHIFT + [0-9] (you stay here),
+-- mainMod + CTRL + [0-9] (you go with it)
 for i = 1, 10 do
     local key = i % 10 -- 10 maps to key 0
     hl.bind(mainMod .. " + " .. key,             hl.dsp.focus({ workspace = i}))
-    hl.bind(mainMod .. " + SHIFT + " .. key,     hl.dsp.window.move({ workspace = i }))
+    hl.bind(mainMod .. " + SHIFT + " .. key,     hl.dsp.window.move({ workspace = i, follow = false }))
+    hl.bind(mainMod .. " + CTRL + " .. key,      hl.dsp.window.move({ workspace = i, follow = true }))
 end
 
 -- Example special workspace (scratchpad)
