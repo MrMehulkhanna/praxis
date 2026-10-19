@@ -95,84 +95,139 @@ if command -v yay >/dev/null 2>&1 && [ "$EUID" -ne 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. GitHub repository sync (~/aios)
+# ---------------------------------------------------------------------------
+# 3. GitHub repository sync
 # ---------------------------------------------------------------------------
 log "Pulling latest features & fixes from GitHub"
 REPO_URL="https://github.com/MrMehulkhanna/praxis.git"
 
-if [ ! -d "$HOME/aios/.git" ]; then
-    if [ -d "$HOME/aios" ]; then
-        info "Configuring git tracking in $HOME/aios..."
-        ( cd "$HOME/aios" && git init -b main 2>/dev/null && git remote add origin "$REPO_URL" 2>/dev/null || true )
+SRC_REPO=""
+if [ -d "$HOME/aios/.git" ]; then
+    SRC_REPO="$HOME/aios"
+elif [ -n "${SUDO_USER:-}" ] && [ -d "/home/$SUDO_USER/aios/.git" ]; then
+    SRC_REPO="/home/$SUDO_USER/aios"
+elif [ -d "/opt/aios/.git" ]; then
+    SRC_REPO="/opt/aios"
+else
+    for candidate in /home/*/aios; do
+        if [ -d "$candidate/.git" ]; then
+            SRC_REPO="$candidate"
+            break
+        fi
+    done
+fi
+
+[ -z "$SRC_REPO" ] && SRC_REPO="$HOME/aios"
+info "Synchronizing repository in $SRC_REPO..."
+mkdir -p "$(dirname "$SRC_REPO")"
+
+if [ ! -d "$SRC_REPO/.git" ]; then
+    if [ -d "$SRC_REPO" ] && [ "$(ls -A "$SRC_REPO" 2>/dev/null)" ]; then
+        ( cd "$SRC_REPO" && git init -b main 2>/dev/null && git remote add origin "$REPO_URL" 2>/dev/null || true )
     else
-        info "Cloning latest Praxis repository into $HOME/aios..."
-        git clone "$REPO_URL" "$HOME/aios"
+        git clone --depth 1 "$REPO_URL" "$SRC_REPO" || true
     fi
 fi
 
-if [ -d "$HOME/aios/.git" ]; then
-    ( cd "$HOME/aios"
+if [ -d "$SRC_REPO/.git" ]; then
+    ( cd "$SRC_REPO"
       git remote set-url origin "$REPO_URL" 2>/dev/null || true
       info "Fetching latest commits from $REPO_URL..."
-      git fetch origin main --quiet || true
-      PREV_REV=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-      git reset --hard origin/main
-      NEW_REV=$(git rev-parse --short HEAD)
-      if [ "$PREV_REV" != "$NEW_REV" ]; then
-          success "Updated to commit $NEW_REV (was $PREV_REV)"
-          echo "  Latest change: $(git log -1 --pretty=format:'%s (%cr)')"
+      if git fetch origin main --depth 1; then
+          PREV_REV=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          git reset --hard origin/main
+          NEW_REV=$(git rev-parse --short HEAD)
+          if [ "$PREV_REV" != "$NEW_REV" ]; then
+              success "Updated to commit $NEW_REV (was $PREV_REV)"
+              echo "  Latest change: $(git log -1 --pretty=format:'%s (%cr)')"
+          else
+              success "Repository already at latest commit $NEW_REV"
+              echo "  Current commit: $(git log -1 --pretty=format:'%s (%cr)')"
+          fi
       else
-          success "Repository already at latest commit $NEW_REV"
-          echo "  Current commit: $(git log -1 --pretty=format:'%s (%cr)')"
+          warn "Git fetch failed; downloading latest release archive directly..."
+          curl -sL https://github.com/MrMehulkhanna/praxis/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C "$SRC_REPO" || true
       fi
     )
+fi
+
+if [ ! -d "$SRC_REPO/desktop/quickshell" ]; then
+    info "Fetching desktop assets archive..."
+    mkdir -p "$SRC_REPO"
+    curl -sL https://github.com/MrMehulkhanna/praxis/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C "$SRC_REPO" || true
 fi
 
 # ---------------------------------------------------------------------------
 # 4. Synchronize Desktop & Shell Configurations
 # ---------------------------------------------------------------------------
 log "Updating desktop configurations (~/.config/quickshell, hypr, swaync)"
-if [ -d "$HOME/aios/desktop/quickshell" ]; then
-    mkdir -p "$HOME/.config/quickshell"
-    if command -v rsync >/dev/null 2>&1; then
-        rsync -a --exclude 'settings.json' --exclude 'eyecomfort.json' "$HOME/aios/desktop/quickshell/" "$HOME/.config/quickshell/"
-    else
-        # copy files preserving custom settings.json
-        for f in "$HOME/aios/desktop/quickshell/"*; do
-            base=$(basename "$f")
-            [ "$base" = "settings.json" ] || [ "$base" = "eyecomfort.json" ] && continue
-            cp -a "$f" "$HOME/.config/quickshell/"
-        done
-    fi
-    success "Quickshell settings & Date/Time panel synchronized"
-fi
 
-for d in hypr swaync rofi; do
-    if [ -d "$HOME/aios/desktop/$d" ]; then
-        copy_tree "$HOME/aios/desktop/$d" "$HOME/.config/$d"
-        success "$d configuration synchronized"
+sync_user_desktop() {
+    local target_home="$1"
+    local target_owner="$2"
+    [ -d "$target_home" ] || return 0
+
+    local qs_dir="$target_home/.config/quickshell"
+    mkdir -p "$qs_dir"
+    if [ -d "$SRC_REPO/desktop/quickshell" ]; then
+        if command -v rsync >/dev/null 2>&1; then
+            rsync -a --exclude 'settings.json' --exclude 'eyecomfort.json' "$SRC_REPO/desktop/quickshell/" "$qs_dir/"
+        else
+            for f in "$SRC_REPO/desktop/quickshell/"*; do
+                base=$(basename "$f")
+                [ "$base" = "settings.json" ] || [ "$base" = "eyecomfort.json" ] && continue
+                cp -a "$f" "$qs_dir/"
+            done
+        fi
+    fi
+
+    for d in hypr swaync rofi; do
+        if [ -d "$SRC_REPO/desktop/$d" ]; then
+            copy_tree "$SRC_REPO/desktop/$d" "$target_home/.config/$d"
+        fi
+    done
+
+    if [ -d "$SRC_REPO/desktop/wallpapers" ]; then
+        copy_tree "$SRC_REPO/desktop/wallpapers" "$target_home/.local/share/wallpapers"
+    fi
+
+    if [ -n "$target_owner" ] && [ "$EUID" -eq 0 ]; then
+        chown -R "$target_owner" "$qs_dir" "$target_home/.config/hypr" "$target_home/.config/swaync" "$target_home/.config/rofi" "$target_home/.local/share/wallpapers" 2>/dev/null || true
+    fi
+}
+
+# Update current user home
+sync_user_desktop "$HOME" ""
+
+# Update all human users in /home/*
+for udir in /home/*; do
+    if [ -d "$udir" ] && [ "$udir" != "$HOME" ]; then
+        uname=$(basename "$udir")
+        sync_user_desktop "$udir" "$uname"
     fi
 done
 
-if [ -d "$HOME/aios/desktop/wallpapers" ]; then
-    copy_tree "$HOME/aios/desktop/wallpapers" "$HOME/.local/share/wallpapers"
-    success "Wallpapers synchronized"
+# Update /etc/skel so future users get newest settings
+if [ "$EUID" -eq 0 ]; then
+    sync_user_desktop "/etc/skel" ""
 fi
+
+success "Quickshell settings & Date/Time panel synchronized across all profiles"
 
 # ---------------------------------------------------------------------------
 # 5. Synchronize System Tools, Branding & Bootloader
 # ---------------------------------------------------------------------------
 log "Updating system tools, branding & bootloader"
-if [ -d "$HOME/aios/iso/airootfs/usr/local/bin" ]; then
-    copy_tree_sudo "$HOME/aios/iso/airootfs/usr/local/bin" /usr/local/bin
-    if [ -d "$HOME/aios/iso/airootfs/usr/local/lib/praxis" ]; then
-        copy_tree_sudo "$HOME/aios/iso/airootfs/usr/local/lib/praxis" /usr/local/lib/praxis
+if [ -d "$SRC_REPO/iso/airootfs/usr/local/bin" ]; then
+    copy_tree_sudo "$SRC_REPO/iso/airootfs/usr/local/bin" /usr/local/bin
+    if [ -d "$SRC_REPO/iso/airootfs/usr/local/lib/praxis" ]; then
+        copy_tree_sudo "$SRC_REPO/iso/airootfs/usr/local/lib/praxis" /usr/local/lib/praxis
     fi
-    if [ -d "$HOME/aios/iso/airootfs/usr/share/pixmaps" ]; then
-        copy_tree_sudo "$HOME/aios/iso/airootfs/usr/share/pixmaps" /usr/share/pixmaps
+    if [ -d "$SRC_REPO/iso/airootfs/usr/share/pixmaps" ]; then
+        copy_tree_sudo "$SRC_REPO/iso/airootfs/usr/share/pixmaps" /usr/share/pixmaps
     fi
-    if [ -d "$HOME/aios/iso/airootfs/usr/share/icons" ]; then
-        copy_tree_sudo "$HOME/aios/iso/airootfs/usr/share/icons" /usr/share/icons
+    if [ -d "$SRC_REPO/iso/airootfs/usr/share/icons" ]; then
+        copy_tree_sudo "$SRC_REPO/iso/airootfs/usr/share/icons" /usr/share/icons
     fi
     if [ "$EUID" -eq 0 ]; then
         chmod 755 /usr/local/bin/praxis-* /usr/local/bin/aios-* 2>/dev/null || true

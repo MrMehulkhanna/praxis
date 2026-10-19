@@ -6,19 +6,26 @@ set -uo pipefail
 
 pkill -x quickshell 2>/dev/null || true
 sleep 0.5
+pkill -9 -x quickshell 2>/dev/null || true
+sleep 0.3
 
 # If run as root (or from sudo praxis-update), detect the desktop user and environment
 if [ "$EUID" -eq 0 ]; then
     DESKTOP_USER=$(who | awk '{print $1}' | head -1)
-    [ -n "$DESKTOP_USER" ] || DESKTOP_USER=$(ps -eo user,comm | awk '$2 ~ /Hyprland/ {print $1}' | head -1)
+    [ -n "$DESKTOP_USER" ] || DESKTOP_USER=$(ps -eo user,comm | awk '$2 ~ /Hyprland/ && $1 != "root" {print $1}' | head -1)
     if [ -n "$DESKTOP_USER" ] && [ "$DESKTOP_USER" != "root" ]; then
         USER_UID=$(id -u "$DESKTOP_USER")
         RUNTIME="/run/user/$USER_UID"
         HYPR_PID=$(pgrep -u "$DESKTOP_USER" -x Hyprland | head -1)
-        HYPR_SIG=$(grep -z "HYPRLAND_INSTANCE_SIGNATURE" "/proc/$HYPR_PID/environ" 2>/dev/null | tr '\0' '\n' | cut -d= -f2- || true)
-        WAY_DISP=$(grep -z "WAYLAND_DISPLAY" "/proc/$HYPR_PID/environ" 2>/dev/null | tr '\0' '\n' | cut -d= -f2- || echo "wayland-1")
-        exec sudo -u "$DESKTOP_USER" env XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY="$WAY_DISP" HYPRLAND_INSTANCE_SIGNATURE="$HYPR_SIG" nohup quickshell -d -p "/home/$DESKTOP_USER/.config/quickshell/shell.qml" >/dev/null 2>&1 &
+        HYPR_SIG=""
+        WAY_DISP="wayland-1"
+        if [ -n "$HYPR_PID" ]; then
+            HYPR_SIG=$(grep -z "HYPRLAND_INSTANCE_SIGNATURE" "/proc/$HYPR_PID/environ" 2>/dev/null | tr '\0' '\n' | cut -d= -f2- || true)
+            WAY_DISP=$(grep -z "WAYLAND_DISPLAY" "/proc/$HYPR_PID/environ" 2>/dev/null | tr '\0' '\n' | cut -d= -f2- || echo "wayland-1")
+        fi
+        sudo -u "$DESKTOP_USER" env XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY="$WAY_DISP" HYPRLAND_INSTANCE_SIGNATURE="$HYPR_SIG" nohup quickshell -d -p "/home/$DESKTOP_USER/.config/quickshell/shell.qml" >/dev/null 2>&1 &
+        exit 0
     fi
 fi
 
-exec nohup quickshell -d -p "$HOME/.config/quickshell/shell.qml" >/dev/null 2>&1 &
+nohup quickshell -d -p "$HOME/.config/quickshell/shell.qml" >/dev/null 2>&1 &
