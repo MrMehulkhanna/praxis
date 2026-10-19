@@ -86,7 +86,9 @@ Singleton {
     readonly property int   fast:    Math.round(120 * motion)
     readonly property int   normal:  Math.round(200 * motion)
     readonly property int   slow:    Math.round(320 * motion)
-    readonly property int   easeMove: Easing.OutCubic
+    // OutQuint: most of the move happens in the first frames, then a long
+    // soft landing — reads as fast and fluid at 60 and 120 Hz alike
+    readonly property int   easeMove: Easing.OutQuint
     readonly property int   easePop:  Easing.OutBack
-    readonly property real  popOvershoot: 1.15
+    readonly property real  popOvershoot: 0.9      // a hint of overshoot, not a bounce
 }
