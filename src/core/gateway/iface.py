@@ -27,21 +27,47 @@ def attach_images(messages: list, images: list) -> list:
     import base64, mimetypes, pathlib
     parts = []
     for p in images:
-        path = pathlib.Path(p).expanduser()
-        if not path.exists():
+        if isinstance(p, dict):
+            if "type" in p and p["type"] == "image_url":
+                parts.append(p)
+            elif "image_url" in p:
+                parts.append({"type": "image_url", "image_url": p["image_url"] if isinstance(p["image_url"], dict) else {"url": p["image_url"]}})
+            elif "url" in p:
+                parts.append({"type": "image_url", "image_url": {"url": p["url"]}})
+            continue
+        if not isinstance(p, str) or not p.strip():
+            continue
+        p = p.strip()
+        # Direct data URI or web URL
+        if p.startswith("data:image/") or p.startswith("http://") or p.startswith("https://"):
+            parts.append({"type": "image_url", "image_url": {"url": p}})
+            continue
+        # Local file path or file:// URL
+        clean_path = p[7:] if p.startswith("file://") else p
+        path = pathlib.Path(clean_path).expanduser()
+        if not path.is_file():
             continue
         mime = mimetypes.guess_type(str(path))[0] or "image/png"
-        data = base64.b64encode(path.read_bytes()).decode()
-        parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
+        try:
+            data = base64.b64encode(path.read_bytes()).decode()
+            parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
+        except Exception:
+            continue
     if not parts:
         return messages
     out = list(messages)
     for i in range(len(out) - 1, -1, -1):
         if out[i]["role"] == "user":
-            text = out[i]["content"] if isinstance(out[i]["content"], str) else ""
-            out[i] = {"role": "user", "content": [{"type": "text", "text": text}, *parts]}
+            c = out[i]["content"]
+            if isinstance(c, str):
+                out[i] = {"role": "user", "content": [{"type": "text", "text": c}, *parts]}
+            elif isinstance(c, list):
+                out[i] = {"role": "user", "content": [*c, *parts]}
             break
+    else:
+        out.append({"role": "user", "content": [{"type": "text", "text": "Describe or analyze the attached image."}, *parts]})
     return out
+
 
 @runtime_checkable
 class Adapter(Protocol):

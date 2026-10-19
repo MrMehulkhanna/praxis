@@ -313,7 +313,10 @@ async def _err_stream(msg: str):
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     t0 = time.time()
-    r, adapter = _pick(req.model, req.message, req.images)
+    msg_text = req.message.strip() if req.message else ""
+    if not msg_text and req.images:
+        msg_text = "Describe or analyze this image."
+    r, adapter = _pick(req.model, msg_text, req.images)
     if not adapter or not r["model"]:
         return StreamingResponse(_err_stream(f"No usable model ({r.get('reason', 'none')})."), media_type="text/event-stream")
     model, cloud = r["model"], r["mode"] == "CLOUD"
@@ -321,21 +324,21 @@ async def chat(req: ChatRequest):
     if cloud and not minfo.get("available", False):
         return StreamingResponse(_err_stream(f"'{model}' is not available: {minfo.get('note', 'provider not configured')}"), media_type="text/event-stream")
 
-    jid = activity.new_job("chat", req.message, model=model, mode=r["mode"])
+    jid = activity.new_job("chat", msg_text, model=model, mode=r["mode"])
     activity.emit(jid, "classified", r["task"] + " task")
     activity.emit(jid, "routed", f"{model} · {r['mode']} · {r['reason']}")
-    uid = db.add_object("message", req.message, conversation_id=req.conversation_id, project_id=req.project_id, role="user")
+    uid = db.add_object("message", msg_text, conversation_id=req.conversation_id, project_id=req.project_id, role="user")
 
     ctx_window = minfo.get("ctx", 8192)
-    pkg = engine.build(req.message, req.conversation_id, ctx_window=min(ctx_window, 32768), project_id=req.project_id)
-    est_cost = providers.estimate_cost(model, pkg["tokens"] + db.est_tokens(req.message), req.max_tokens)
+    pkg = engine.build(msg_text, req.conversation_id, ctx_window=min(ctx_window, 32768), project_id=req.project_id)
+    est_cost = providers.estimate_cost(model, pkg["tokens"] + db.est_tokens(msg_text), req.max_tokens)
     try:
         gate.check(adapter, uid, est_cost, cloud=cloud, free=bool(minfo.get("free")))
     except gate.BudgetDenied as e:
         activity.end_job(jid, ok=False, msg="blocked by budget gate")
         return StreamingResponse(_err_stream(str(e)), media_type="text/event-stream")
 
-    greq = GReq(system=engine.render_system(pkg, model), messages=pkg["turns"] + [{"role": "user", "content": req.message}],
+    greq = GReq(system=engine.render_system(pkg, model), messages=pkg["turns"] + [{"role": "user", "content": msg_text}],
                 model=model, max_tokens=req.max_tokens, temperature=req.temperature, think=bool(db.kv_get("thinking", False)),
                 images=req.images)
 

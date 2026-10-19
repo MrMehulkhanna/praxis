@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# praxis-chat-image — image helper for AIOS chat: capture, select, or paste images.
+# Outputs the saved or chosen image path to stdout.
+set -euo pipefail
+
+IMG_DIR="${XDG_RUNTIME_DIR:-/tmp}/aios-images"
+mkdir -p "$IMG_DIR"
+
+cmd="${1:-pick}"
+
+case "$cmd" in
+    shot)
+        out="$IMG_DIR/shot-$(date +%s%N).png"
+        if ! command -v grim >/dev/null 2>&1 || ! command -v slurp >/dev/null 2>&1; then
+            echo "Error: grim and slurp are required for screenshots" >&2
+            exit 1
+        fi
+        geom=$(slurp 2>/dev/null) || exit 0
+        [ -n "$geom" ] || exit 0
+        grim -g "$geom" "$out" || exit 1
+        [ -s "$out" ] || exit 1
+        echo "$out"
+        ;;
+    paste)
+        out="$IMG_DIR/clip-$(date +%s%N).png"
+        if ! command -v wl-paste >/dev/null 2>&1; then
+            echo "Error: wl-paste is required to paste images" >&2
+            exit 1
+        fi
+        if wl-paste --type image/png > "$out" 2>/dev/null && [ -s "$out" ]; then
+            echo "$out"
+        elif wl-paste --type image/jpeg > "$out" 2>/dev/null && [ -s "$out" ]; then
+            echo "$out"
+        else
+            rm -f "$out"
+            exit 1
+        fi
+        ;;
+    pick)
+        if command -v zenity >/dev/null 2>&1; then
+            f=$(zenity --file-selection --title="Select image for AIOS" \
+                --file-filter="Images | *.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg" 2>/dev/null || true)
+            if [ -n "$f" ] && [ -f "$f" ]; then
+                echo "$f"
+            fi
+        elif command -v kdialog >/dev/null 2>&1; then
+            f=$(kdialog --getopenfilename "$HOME" "*.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg" 2>/dev/null || true)
+            if [ -n "$f" ] && [ -f "$f" ]; then
+                echo "$f"
+            fi
+        fi
+        ;;
+    status)
+        echo "image helper: ready"
+        echo "grim: $(command -v grim || echo 'missing')"
+        echo "slurp: $(command -v slurp || echo 'missing')"
+        echo "wl-paste: $(command -v wl-paste || echo 'missing')"
+        echo "zenity: $(command -v zenity || echo 'missing')"
+        ;;
+    *)
+        echo "Usage: praxis-chat-image [shot|paste|pick|status]" >&2
+        exit 1
+        ;;
+esac

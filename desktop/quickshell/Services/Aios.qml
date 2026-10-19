@@ -130,20 +130,22 @@ Singleton {
         else chatProc.running = false           // no id yet: dropping the connection stops it too
     }
 
-    function send(text) {
-        const msg = text.trim()
-        if (!msg || streaming) return
+    function send(text, images) {
+        const msg = text ? text.trim() : ""
+        const imgs = (images && Array.isArray(images)) ? images : []
+        if ((!msg && imgs.length === 0) || streaming) return
         currentJob = ""
-        messages.append({ role: "user", text: msg, meta: "" })
-        messages.append({ role: "ai", text: "", meta: "" })
+        messages.append({ role: "user", text: msg, images: imgs, meta: "" })
+        messages.append({ role: "ai", text: "", images: [], meta: "" })
         _aiIndex = messages.count - 1
         streaming = true
         chatProc.command = ["curl", "-sN", "-X", "POST", root.base + "/api/ask",
                             "-H", "Content-Type: application/json",
-                            "-d", JSON.stringify({ message: msg, conversation_id: conversationId, model: "auto" })]
+                            "-d", JSON.stringify({ message: msg, conversation_id: conversationId, model: "auto", images: imgs })]
         chatProc.running = true
     }
     function clearChat() {
+
         messages.clear()
         conversationId = "shell-" + Math.floor(Date.now() / 1000)
     }

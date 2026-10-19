@@ -119,7 +119,41 @@ button:hover { border-color: var(--acc); }
 }
 #inp:focus { outline: none; border-color: var(--acc); }
 #send-btn { padding: 10px 18px; }
+#attach-btn {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg3); color: var(--dim);
+  border: 1px solid #2b2f3a; border-radius: 9px;
+  padding: 0 12px; cursor: pointer; font-size: 16px; user-select: none;
+}
+#attach-btn:hover { border-color: var(--acc); color: var(--fg); }
+#img-preview-bar {
+  display: none; gap: 8px; padding: 8px 12px;
+  background: var(--bg3); border-top: 1px solid #222530;
+  overflow-x: auto;
+}
+#img-preview-bar.active { display: flex; }
+.preview-thumb {
+  position: relative; width: 50px; height: 50px;
+  border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--acc); flex-shrink: 0;
+}
+.preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.preview-thumb .remove-img {
+  position: absolute; top: 1px; right: 1px;
+  width: 16px; height: 16px; background: rgba(0,0,0,0.75);
+  color: #fff; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 11px; cursor: pointer; line-height: 1;
+}
+.chat-img-thumb {
+  max-width: 280px; max-height: 200px; border-radius: 8px;
+  margin: 6px 0; display: block; cursor: pointer;
+  border: 1px solid #2b2f3a; object-fit: contain;
+}
+.chat-img-thumb:hover { border-color: var(--acc); }
+.drag-over { outline: 2px dashed var(--acc) !important; outline-offset: -4px; }
 </style>
+
 
 <div id="bar">
   <select id="model-sel" title="Active model"></select>
@@ -140,8 +174,13 @@ button:hover { border-color: var(--acc); }
   <div id="chat-wrap">
     <div id="log"></div>
     <div id="runs-wrap"></div>
+    <div id="img-preview-bar"></div>
     <div id="input-row">
-      <textarea id="inp" rows="1" placeholder="Ask anything — stays on your machine"></textarea>
+      <label id="attach-btn" title="Attach image (or paste / drop anywhere)">
+        📷
+        <input type="file" id="file-inp" accept="image/*" multiple style="display:none">
+      </label>
+      <textarea id="inp" rows="1" placeholder="Ask anything, or drop / paste images here"></textarea>
       <button id="send-btn">Send</button>
     </div>
   </div>
@@ -152,14 +191,77 @@ button:hover { border-color: var(--acc); }
 const CONV_ID = 'c' + Date.now();
 let SELECTED_MODEL = '';
 let streaming = false;
+let STAGED_IMAGES = [];
 
 /* ── DOM refs ── */
-const log       = document.getElementById('log');
-const inp       = document.getElementById('inp');
-const dot       = document.getElementById('dot');
-const statusTxt = document.getElementById('status-txt');
-const modelSel  = document.getElementById('model-sel');
-const runsWrap  = document.getElementById('runs-wrap');
+const log           = document.getElementById('log');
+const inp           = document.getElementById('inp');
+const dot           = document.getElementById('dot');
+const statusTxt     = document.getElementById('status-txt');
+const modelSel      = document.getElementById('model-sel');
+const runsWrap      = document.getElementById('runs-wrap');
+const imgPreviewBar = document.getElementById('img-preview-bar');
+const fileInp       = document.getElementById('file-inp');
+const chatWrap      = document.getElementById('chat-wrap');
+
+/* ── image staging ── */
+function renderPreviews() {
+  if (STAGED_IMAGES.length === 0) {
+    imgPreviewBar.className = '';
+    imgPreviewBar.innerHTML = '';
+    return;
+  }
+  imgPreviewBar.className = 'active';
+  imgPreviewBar.innerHTML = STAGED_IMAGES.map((src, i) => `
+    <div class="preview-thumb">
+      <img src="${src}">
+      <div class="remove-img" onclick="removeImage(${i})">×</div>
+    </div>
+  `).join('');
+}
+
+window.removeImage = function(i) {
+  STAGED_IMAGES.splice(i, 1);
+  renderPreviews();
+};
+
+function handleFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    const reader = new FileReader();
+    reader.onload = e => {
+      STAGED_IMAGES.push(e.target.result);
+      renderPreviews();
+    };
+    reader.readAsDataURL(f);
+  }
+}
+
+fileInp.addEventListener('change', e => {
+  if (e.target.files) handleFiles(e.target.files);
+  fileInp.value = '';
+});
+
+// Drag & drop images onto the chat area
+chatWrap.addEventListener('dragover', e => { e.preventDefault(); chatWrap.classList.add('drag-over'); });
+chatWrap.addEventListener('dragleave', e => { e.preventDefault(); chatWrap.classList.remove('drag-over'); });
+chatWrap.addEventListener('drop', e => {
+  e.preventDefault(); chatWrap.classList.remove('drag-over');
+  if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+});
+
+// Paste images directly from clipboard (e.g. screenshots)
+window.addEventListener('paste', e => {
+  if (!e.clipboardData) return;
+  const items = e.clipboardData.items;
+  const imgs = [];
+  for (const item of items) {
+    if (item.type.indexOf('image') !== -1) {
+      imgs.push(item.getAsFile());
+    }
+  }
+  if (imgs.length) handleFiles(imgs);
+});
 
 /* ── status polling ── */
 async function refreshStatus() {
@@ -194,16 +296,57 @@ modelSel.addEventListener('change', async () => {
 });
 
 /* ── message helpers ── */
-function addMsg(role, text) {
+function renderMarkdownImages(text, container) {
+  // Parses markdown images ![alt](src) and renders <img> tags alongside text
+  const imgRe = /!\[(.*?)\]\((.*?)\)/g;
+  let last = 0, m;
+  container.innerHTML = '';
+  while ((m = imgRe.exec(text)) !== null) {
+    if (m.index > last) {
+      const span = document.createElement('span');
+      span.textContent = text.slice(last, m.index);
+      container.appendChild(span);
+    }
+    const img = document.createElement('img');
+    img.src = m[2];
+    img.alt = m[1] || 'image';
+    img.className = 'chat-img-thumb';
+    img.onclick = () => window.open(img.src, '_blank');
+    container.appendChild(img);
+    last = imgRe.lastIndex;
+  }
+  if (last < text.length) {
+    const span = document.createElement('span');
+    span.textContent = text.slice(last);
+    container.appendChild(span);
+  }
+}
+
+function addMsg(role, text, images = []) {
   const wrap   = document.createElement('div');
   wrap.className = `msg ${role}`;
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.textContent = text;
+
+  if (images && images.length) {
+    for (const src of images) {
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'chat-img-thumb';
+      img.onclick = () => window.open(src, '_blank');
+      bubble.appendChild(img);
+    }
+  }
+
+  const textNode = document.createElement('div');
+  textNode.className = 'msg-body';
+  textNode.textContent = text;
+  bubble.appendChild(textNode);
+
   wrap.appendChild(bubble);
   log.appendChild(wrap);
   log.scrollTop = log.scrollHeight;
-  return { wrap, bubble };
+  return { wrap, bubble, textNode };
 }
 
 function addMeta(wrap, meta) {
@@ -226,13 +369,16 @@ function addMeta(wrap, meta) {
 /* ── send ── */
 async function send() {
   const q = inp.value.trim();
-  if (!q || streaming) return;
+  if ((!q && STAGED_IMAGES.length === 0) || streaming) return;
+  const sentImgs = [...STAGED_IMAGES];
+  STAGED_IMAGES = [];
+  renderPreviews();
   inp.value = ''; inp.style.height = '';
   streaming = true;
 
-  addMsg('user', q);
-  const { wrap, bubble } = addMsg('assistant', '▋');
-  bubble.textContent = '▋';
+  addMsg('user', q, sentImgs);
+  const { wrap, bubble, textNode } = addMsg('assistant', '▋');
+  textNode.textContent = '▋';
 
   try {
     const resp = await fetch('/api/chat', {
@@ -242,12 +388,14 @@ async function send() {
         message: q,
         conversation_id: CONV_ID,
         model: SELECTED_MODEL,
+        images: sentImgs,
       }),
     });
     const reader = resp.body.getReader();
     const dec    = new TextDecoder();
     let   buf    = '';
     let   first  = true;
+    let   fullAssistantText = '';
 
     while (true) {
       const { value, done } = await reader.read();
@@ -266,23 +414,29 @@ async function send() {
         if (ev === 'meta') {
           addMeta(wrap, data);
         } else if (ev === 'error') {
-          bubble.textContent = '⚠ ' + data;
-          bubble.style.color = 'var(--red)';
+          textNode.textContent = '⚠ ' + data;
+          textNode.style.color = 'var(--red)';
         } else if (ev !== 'done') {
-          if (first) { bubble.textContent = ''; first = false; }
-          bubble.textContent += data;
+          if (first) { textNode.textContent = ''; first = false; }
+          fullAssistantText += data;
+          if (fullAssistantText.includes('![')) {
+            renderMarkdownImages(fullAssistantText, textNode);
+          } else {
+            textNode.textContent = fullAssistantText;
+          }
           log.scrollTop = log.scrollHeight;
         }
       }
     }
   } catch (e) {
-    bubble.textContent = '⚠ Network error: ' + e.message;
+    textNode.textContent = '⚠ Network error: ' + e.message;
   }
 
-  if (bubble.textContent === '▋') bubble.textContent = '(no output)';
+  if (textNode.textContent === '▋') textNode.textContent = '(no output)';
   streaming = false;
   refreshStatus();
 }
+
 
 /* ── run ledger ── */
 async function toggleRuns() {

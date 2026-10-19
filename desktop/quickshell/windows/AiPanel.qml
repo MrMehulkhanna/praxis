@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import "root:/Config"
 import "root:/Services"
 import "root:/components"
@@ -24,6 +25,64 @@ OverlayWindow {
         radius: Theme.radiusXl
         color: Theme.glassStrong
         MouseArea { anchors.fill: parent; onClicked: picker.shown = false }
+
+        property var stagedImages: []
+        function addImage(path) {
+            if (!path) return
+            const p = path.trim()
+            if (p && stagedImages.indexOf(p) === -1) {
+                stagedImages = stagedImages.concat([p])
+            }
+        }
+
+        Process {
+            id: imgPickProc
+            command: ["praxis-chat-image", "pick"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const p = this.text.trim()
+                    if (p) card.addImage(p)
+                }
+            }
+        }
+        Process {
+            id: imgShotProc
+            command: ["praxis-chat-image", "shot"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const p = this.text.trim()
+                    if (p) card.addImage(p)
+                }
+            }
+        }
+        Process {
+            id: imgPasteProc
+            command: ["praxis-chat-image", "paste"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const p = this.text.trim()
+                    if (p) card.addImage(p)
+                }
+            }
+        }
+
+        DropArea {
+            anchors.fill: parent
+            onEntered: drag => {
+                if (drag.hasUrls) drag.acceptProposedAction()
+            }
+            onDropped: drop => {
+                if (drop.hasUrls) {
+                    for (let i = 0; i < drop.urls.length; i++) {
+                        let u = drop.urls[i].toString()
+                        if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(u)) {
+                            card.addImage(u.replace(/^file:\/\//, ""))
+                        }
+                    }
+                }
+            }
+        }
+
 
         // ── header ──
         Item {
@@ -127,7 +186,7 @@ OverlayWindow {
         // ── messages ──
         ListView {
             id: list
-            anchors { top: chips.bottom; left: parent.left; right: parent.right; bottom: pendingCard.visible ? pendingCard.top : inputBar.top; margins: 14; topMargin: 10; bottomMargin: 10 }
+            anchors { top: chips.bottom; left: parent.left; right: parent.right; bottom: stagedTray.visible ? stagedTray.top : (pendingCard.visible ? pendingCard.top : inputBar.top); margins: 14; topMargin: 10; bottomMargin: 10 }
             model: Aios.messages
             spacing: 8
             clip: true
@@ -141,7 +200,7 @@ OverlayWindow {
                     Icon { name: "sparkle"; size: 28; color: Theme.alpha(Theme.accent, 0.5); anchors.horizontalCenter: parent.horizontalCenter }
                     Text { text: "Ask anything, or control the PC"; color: Theme.text2; font.family: Theme.font; font.pixelSize: Theme.fontMd; anchors.horizontalCenter: parent.horizontalCenter }
                     Text { text: "Start with  !  to run a command  —  e.g.  ! open firefox"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
-                    Text { text: "System questions get real diagnostics first (\"why is my GPU not detected?\")"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
+                    Text { text: "Attach images with 📷 or paste / drop screenshots directly"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
                     Text { text: "Nothing leaves this machine in ₹0 mode."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
                 }
             }
@@ -156,18 +215,54 @@ OverlayWindow {
                     id: bubble
                     anchors.right: isUser ? parent.right : undefined
                     anchors.left: isUser ? undefined : parent.left
-                    width: Math.min(list.width * 0.88, body.implicitWidth + 24)
-                    height: body.implicitHeight + 18
+                    width: Math.min(list.width * 0.88, Math.max(body.implicitWidth, msgImgFlow.implicitWidth) + 24)
+                    height: bCol.implicitHeight + 18
                     radius: Theme.radiusLg
                     color: isUser ? Theme.alpha(Theme.accent, 0.22) : isSys ? Theme.alpha(Theme.green, 0.08) : Theme.alpha(Theme.text, 0.06)
                     border.width: 1; border.color: isUser ? Theme.alpha(Theme.accent, 0.35) : Theme.border
-                    MessageBody {
-                        id: body
+                    Column {
+                        id: bCol
                         anchors { left: parent.left; top: parent.top; margins: 12; topMargin: 9 }
-                        text: model.text.length ? model.text : "…"
-                        maxWidth: list.width * 0.88 - 24
-                        mono: isSys
-                        opacity: model.text.length ? 1 : 0.5
+                        spacing: 6
+                        Flow {
+                            id: msgImgFlow
+                            visible: !!(model.images && (model.images.count || model.images.length))
+                            width: Math.min(list.width * 0.88 - 24, 320)
+                            spacing: 6
+                            Repeater {
+                                model: model.images
+                                Rectangle {
+                                    required property var modelData
+                                    width: Math.min(msgImgFlow.width, 220)
+                                    height: 130
+                                    radius: Theme.radiusSm
+                                    color: Theme.surface2
+                                    clip: true
+                                    Image {
+                                        anchors.fill: parent
+                                        source: (typeof modelData === "string") ? (modelData.startsWith("data:") ? modelData : ("file://" + modelData.replace(/^file:\/\//, ""))) : ""
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (typeof modelData === "string" && !modelData.startsWith("data:")) {
+                                                Quickshell.execDetached(["xdg-open", modelData.replace(/^file:\/\//, "")])
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        MessageBody {
+                            id: body
+                            text: model.text.length ? model.text : (msgImgFlow.visible ? "" : "…")
+                            maxWidth: list.width * 0.88 - 24
+                            mono: isSys
+                            opacity: model.text.length || msgImgFlow.visible ? 1 : 0.5
+                        }
                     }
                 }
                 Text {
@@ -187,7 +282,7 @@ OverlayWindow {
         Rectangle {
             id: pendingCard
             visible: !!Aios.pending
-            anchors { left: parent.left; right: parent.right; bottom: inputBar.top; margins: 14; bottomMargin: 10 }
+            anchors { left: parent.left; right: parent.right; bottom: stagedTray.visible ? stagedTray.top : inputBar.top; margins: 14; bottomMargin: 10 }
             height: pcol.implicitHeight + 24
             radius: Theme.radiusLg
             color: Theme.alpha(Theme.yellow, 0.10); border.width: 1; border.color: Theme.alpha(Theme.yellow, 0.45)
@@ -218,6 +313,45 @@ OverlayWindow {
             }
         }
 
+        // ── staged images tray ──
+        Flow {
+            id: stagedTray
+            visible: card.stagedImages.length > 0
+            anchors { left: parent.left; right: parent.right; bottom: inputBar.top; margins: 14; bottomMargin: 6 }
+            spacing: 8
+            Repeater {
+                model: card.stagedImages
+                Rectangle {
+                    required property var modelData
+                    required property int index
+                    width: 52; height: 52; radius: Theme.radiusSm
+                    color: Theme.surface2; border.width: 1; border.color: Theme.accent
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        source: modelData.startsWith("data:") ? modelData : ("file://" + modelData.replace(/^file:\/\//, ""))
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
+                    Rectangle {
+                        anchors { top: parent.top; right: parent.right; margins: 2 }
+                        width: 16; height: 16; radius: 8
+                        color: Qt.rgba(0, 0, 0, 0.75)
+                        Text { anchors.centerIn: parent; text: "×"; color: "#fff"; font.pixelSize: 12; font.weight: Font.Bold }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const arr = [...card.stagedImages]
+                                arr.splice(index, 1)
+                                card.stagedImages = arr
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── input ──
         Rectangle {
             id: inputBar
@@ -229,34 +363,58 @@ OverlayWindow {
             readonly property bool controlMode: input.text.trim().startsWith("!")
             Icon {
                 id: inIcon
-                anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
                 name: inputBar.controlMode ? "terminal" : "sparkle"; size: 15; color: inputBar.controlMode ? Theme.yellow : Theme.accent
+            }
+            IconButton {
+                id: attachBtn
+                anchors { left: inIcon.right; leftMargin: 4; verticalCenter: parent.verticalCenter }
+                icon: "image"; iconSize: 13; implicitWidth: 26; implicitHeight: 26; radius: 13
+                onClicked: imgPickProc.running = true
+            }
+            IconButton {
+                id: shotBtn
+                anchors { left: attachBtn.right; leftMargin: 2; verticalCenter: parent.verticalCenter }
+                icon: "eye"; iconSize: 13; implicitWidth: 26; implicitHeight: 26; radius: 13
+                onClicked: imgShotProc.running = true
             }
             TextInput {
                 id: input
-                anchors { left: inIcon.right; leftMargin: 10; right: sendBtn.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                anchors { left: shotBtn.right; leftMargin: 8; right: sendBtn.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                 color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontMd
                 clip: true
                 selectionColor: Theme.alpha(Theme.accent, 0.4)
-                Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !input.text; text: "Message  ·  ! to control the PC"; color: Theme.muted; font: input.font }
+                Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !input.text; text: card.stagedImages.length > 0 ? "Ask about attached image…" : "Message  ·  ! to control PC"; color: Theme.muted; font: input.font }
                 function submit() {
-                    const t = text.trim(); if (!t) return
-                    if (t.startsWith("!")) Aios.control(t.slice(1)); else Aios.send(t)
+                    const t = text.trim()
+                    if (!t && card.stagedImages.length === 0) return
+                    if (t.startsWith("!")) {
+                        Aios.control(t.slice(1))
+                    } else {
+                        Aios.send(t, card.stagedImages)
+                    }
                     text = ""
+                    card.stagedImages = []
                 }
                 Keys.onReturnPressed: submit()
                 Keys.onEnterPressed: submit()
                 Keys.onEscapePressed: Shell.closeAll()
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
+                        imgPasteProc.running = true
+                    }
+                }
             }
             IconButton {
                 id: sendBtn
                 anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
                 // while an answer streams this is a stop button (frees the GPU right away)
                 icon: Aios.streaming ? "stop" : "send"; iconSize: 15; implicitWidth: 34; implicitHeight: 34; radius: 17
-                active: Aios.streaming || input.text.trim().length > 0
+                active: Aios.streaming || input.text.trim().length > 0 || card.stagedImages.length > 0
                 onClicked: Aios.streaming ? Aios.stopAnswer() : input.submit()
             }
         }
+
 
         // ── model picker popover ──
         Glass {

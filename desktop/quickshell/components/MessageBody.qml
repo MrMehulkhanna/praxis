@@ -12,18 +12,35 @@ Column {
     property bool mono: false          // sys messages: render the whole thing mono
     spacing: 8
 
-    // split into [{code:bool, lang, body}]
+    // split into [{code:bool, isImage:bool, lang, body, alt, src}]
     function segments(t) {
         const out = []
         const re = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g
         let last = 0, m
+        function addProse(chunk) {
+            if (!chunk) return
+            const imgRe = /!\[(.*?)\]\((.*?)\)/g
+            let pLast = 0, pm
+            while ((pm = imgRe.exec(chunk)) !== null) {
+                if (pm.index > pLast) {
+                    const txt = chunk.slice(pLast, pm.index)
+                    if (txt) out.push({ code: false, isImage: false, body: txt })
+                }
+                out.push({ code: false, isImage: true, alt: pm[1], src: pm[2] })
+                pLast = imgRe.lastIndex
+            }
+            if (pLast < chunk.length) {
+                const txt = chunk.slice(pLast)
+                if (txt) out.push({ code: false, isImage: false, body: txt })
+            }
+        }
         while ((m = re.exec(t)) !== null) {
-            if (m.index > last) out.push({ code: false, body: t.slice(last, m.index) })
-            out.push({ code: true, lang: m[1] || "", body: m[2].replace(/\n$/, "") })
+            if (m.index > last) addProse(t.slice(last, m.index))
+            out.push({ code: true, isImage: false, lang: m[1] || "", body: m[2].replace(/\n$/, "") })
             last = re.lastIndex
         }
-        if (last < t.length) out.push({ code: false, body: t.slice(last) })
-        if (!out.length) out.push({ code: false, body: t })
+        if (last < t.length) addProse(t.slice(last))
+        if (!out.length) out.push({ code: false, isImage: false, body: t })
         return out
     }
     function mdInline(s) {
@@ -35,11 +52,39 @@ Column {
     }
 
     Repeater {
-        model: root.mono ? [{ code: false, body: root.text, plainmono: true }] : root.segments(root.text)
+        model: root.mono ? [{ code: false, isImage: false, body: root.text, plainmono: true }] : root.segments(root.text)
         delegate: Loader {
             required property var modelData
-            sourceComponent: modelData.code ? codeBlock : prose
+            sourceComponent: modelData.code ? codeBlock : (modelData.isImage ? imageBlock : prose)
             onLoaded: { item.seg = modelData }
+        }
+    }
+
+    Component {
+        id: imageBlock
+        Rectangle {
+            property var seg
+            width: root.maxWidth
+            height: Math.min(imgItem.implicitHeight, 200)
+            radius: Theme.radiusMd
+            color: Theme.surface2
+            clip: true
+            Image {
+                id: imgItem
+                anchors.fill: parent
+                source: seg && seg.src ? (seg.src.startsWith("http://") || seg.src.startsWith("https://") || seg.src.startsWith("data:") ? seg.src : ("file://" + seg.src.replace(/^file:\/\//, ""))) : ""
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (seg && seg.src && !seg.src.startsWith("data:")) {
+                        Quickshell.execDetached(["xdg-open", seg.src.replace(/^file:\/\//, "")])
+                    }
+                }
+            }
         }
     }
 
@@ -57,6 +102,7 @@ Column {
             wrapMode: Text.Wrap
         }
     }
+
 
     Component {
         id: codeBlock
