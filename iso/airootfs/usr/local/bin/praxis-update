@@ -270,7 +270,19 @@ if [ -d "$SRC_REPO/iso/airootfs/usr/local/bin" ]; then
             sudo /usr/local/bin/praxis-bootfix --install || warn "boot order fix failed"
         fi
     fi
-    success "System tools, icons, and bootloader updated"
+    # Hardware configuration: NVIDIA backlight handlers and udev backlight permissions
+    if [ -d "$SRC_REPO/iso/airootfs/etc/modprobe.d" ]; then
+        copy_tree_sudo "$SRC_REPO/iso/airootfs/etc/modprobe.d" /etc/modprobe.d
+    fi
+    if [ -d "$SRC_REPO/iso/airootfs/etc/udev/rules.d" ]; then
+        copy_tree_sudo "$SRC_REPO/iso/airootfs/etc/udev/rules.d" /etc/udev/rules.d
+        if [ "$EUID" -eq 0 ]; then
+            udevadm control --reload 2>/dev/null && udevadm trigger --subsystem-match=backlight 2>/dev/null || true
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo udevadm control --reload 2>/dev/null && sudo udevadm trigger --subsystem-match=backlight 2>/dev/null || true
+        fi
+    fi
+    success "System tools, icons, backlight rules and bootloader updated"
 fi
 
 # ---------------------------------------------------------------------------
