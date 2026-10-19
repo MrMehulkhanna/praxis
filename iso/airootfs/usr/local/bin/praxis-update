@@ -245,12 +245,13 @@ if [ -d "$SRC_REPO/iso/airootfs/usr/local/bin" ]; then
     elif command -v sudo >/dev/null 2>&1; then
         sudo chmod 755 /usr/local/bin/praxis-* /usr/local/bin/aios-* 2>/dev/null || true
     fi
-    # Update EFI fallback loader if EFI system is mounted
-    if [ -d /boot/efi/EFI/Praxis ] && [ -d /boot/efi/EFI/BOOT ]; then
+    # Boot straight into Praxis (no F9/F12 menu): fix the firmware boot order
+    # and fallback loader now, and re-check at every startup
+    if [ -x /usr/local/bin/praxis-bootfix ]; then
         if [ "$EUID" -eq 0 ]; then
-            cp /boot/efi/EFI/Praxis/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI 2>/dev/null || true
+            /usr/local/bin/praxis-bootfix --install || warn "boot order fix failed"
         elif command -v sudo >/dev/null 2>&1; then
-            sudo cp /boot/efi/EFI/Praxis/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI 2>/dev/null || true
+            sudo /usr/local/bin/praxis-bootfix --install || warn "boot order fix failed"
         fi
     fi
     success "System tools, icons, and bootloader updated"
