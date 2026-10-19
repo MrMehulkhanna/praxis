@@ -22,7 +22,7 @@ OverlayWindow {
         { id: "Dock",        icon: "dock" },
         { id: "Display",     icon: "monitor" },
         { id: "Windows",     icon: "layers" },
-        { id: "Keyboard",    icon: "keyboard" },
+        { id: "Shortcuts",   icon: "keyboard" },
         { id: "Network",     icon: "wifi" },
         { id: "Bluetooth",   icon: "bluetooth" },
         { id: "Audio",       icon: "volume-high" },
@@ -61,8 +61,26 @@ OverlayWindow {
             }
         }
     }
-    // ── keybinds (Keyboard) ──
+    // ── shortcuts: every key binding with its plain-English description ──
+    // descriptions read "Group: What it does"; same action on several keys → one row
     property var bindList: []
+    readonly property var bindGroups: ["Praxis", "Apps", "Windows", "Workspaces", "Monitors", "Tools", "Screenshots", "Media", "System"]
+    readonly property var gestureList: [
+        { group: "Gestures", action: "Switch workspace", keys: "3 fingers left / right" },
+        { group: "Gestures", action: "Overview of all workspaces", keys: "3 fingers up" },
+        { group: "Gestures", action: "Search and launch", keys: "3 fingers down" },
+        { group: "Gestures", action: "Voice typing", keys: "4 fingers down" },
+    ]
+    function keyName(k) {
+        const names = { left: "←", right: "→", up: "↑", down: "↓", period: ".", comma: ",", bracketleft: "[", bracketright: "]",
+            "mouse:272": "Left drag", "mouse:273": "Right drag", mouse_down: "Scroll down", mouse_up: "Scroll up",
+            super_l: "tap", super_r: "tap", return: "Enter", escape: "Esc", tab: "Tab", space: "Space", print: "Print Screen",
+            xf86audioraisevolume: "Volume +", xf86audiolowervolume: "Volume −", xf86audiomute: "Mute key", xf86audiomicmute: "Mic mute key",
+            xf86monbrightnessup: "Brightness +", xf86monbrightnessdown: "Brightness −", xf86audionext: "Next key",
+            xf86audioprev: "Previous key", xf86audioplay: "Play key", xf86audiopause: "Pause key" }
+        const n = names[k.toLowerCase()]
+        return n !== undefined ? n : (k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1).toLowerCase())
+    }
     Process {
         id: binds
         command: ["hyprctl", "-j", "binds"]
@@ -70,7 +88,19 @@ OverlayWindow {
             onStreamFinished: {
                 try {
                     const mods = m => { const n = []; if (m & 64) n.push("Super"); if (m & 1) n.push("Shift"); if (m & 4) n.push("Ctrl"); if (m & 8) n.push("Alt"); return n }
-                    win.bindList = JSON.parse(this.text).filter(b => b.key).map(b => ({ keys: mods(b.modmask).concat([b.key.toUpperCase()]).join(" + "), action: (b.dispatcher + " " + (b.arg || "")).trim() }))
+                    const rows = [], byAction = {}
+                    for (const b of JSON.parse(this.text)) {
+                        if (!b.key || !b.description) continue
+                        const i = b.description.indexOf(": ")
+                        const group = i > 0 ? b.description.slice(0, i) : "Other", action = i > 0 ? b.description.slice(i + 2) : b.description
+                        const m = mods(b.modmask), k = win.keyName(b.key)
+                        const keys = k === "tap" ? "Super (tap)" : m.concat([k]).join(" + ")
+                        const id = group + "|" + action
+                        if (byAction[id]) { if (byAction[id].keys.split("   or   ").indexOf(keys) < 0) byAction[id].keys += "   or   " + keys }
+                        else { byAction[id] = { group: group, action: action, keys: keys }; rows.push(byAction[id]) }
+                    }
+                    const order = g => { const n = win.bindGroups.indexOf(g); return n < 0 ? 99 : n }
+                    win.bindList = rows.sort((a, b) => order(a.group) - order(b.group))
                 } catch (e) { win.bindList = [] }
             }
         }
@@ -139,7 +169,7 @@ OverlayWindow {
                     sourceComponent: {
                         switch (Shell.settingsSection) {
                             case "General": return general; case "Date & Time": return dateTime; case "Appearance": return appearance; case "Dock": return dockSec
-                            case "Display": return display; case "Windows": return windowsSec; case "Keyboard": return keyboard
+                            case "Display": return display; case "Windows": return windowsSec; case "Shortcuts": return keyboard
                             case "Network": return network; case "Bluetooth": return bluetooth; case "Audio": return audio
                             case "Power": return powerSec; case "Wallpaper": return wallpaper; case "Profiles": return profiles
                             case "AI": return ai; case "Health": return health; default: return general
@@ -579,25 +609,37 @@ OverlayWindow {
                     Settings.touchGestures = v
                     Quickshell.execDetached(["hyprctl", "eval", `hl.config({ gestures = { workspace_swipe = ${v ? "true" : "false"} } })`])
                 } } }
-            Text { text: "Live via hl.config — persists until the next Hyprland restart unless copied into hyprland.lua."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap; topPadding: 10 }
+            Text { text: "Changes show at once and last until you sign out."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap; topPadding: 10 }
         }
     }
 
-    // ═══════════════ KEYBOARD ═══════════════
+    // ═══════════════ SHORTCUTS ═══════════════
     Component {
         id: keyboard
         Column {
+            id: sc
             spacing: 0
-            H { text: "SHELL" }
-            Repeater {
-                model: [["Super + A", "Launcher / search"], ["Super + W", "Launcher / search"], ["Super + I", "AI panel"], ["Super + O", "Control Center"], ["Super + Escape", "Restart shell"]]
-                SettingRow { label: modelData[1]; Text { text: modelData[0]; color: Theme.accent; font.family: Theme.fontMono; font.pixelSize: Theme.fontSm } }
+            property string query: ""
+            readonly property var rows: win.bindList.concat(win.gestureList).filter(r => !query
+                || (r.action + " " + r.keys + " " + r.group).toLowerCase().indexOf(query.toLowerCase()) >= 0)
+            Rectangle {
+                width: parent.width; height: 36; radius: 18
+                color: Theme.alpha(Theme.text, 0.06); border.width: 1; border.color: scSearch.activeFocus ? Theme.alpha(Theme.accent, 0.6) : Theme.border
+                TextInput { id: scSearch; anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
+                    verticalAlignment: TextInput.AlignVCenter; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSm; clip: true
+                    onTextChanged: sc.query = text
+                    Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !scSearch.text; text: "Search " + win.bindList.length + " shortcuts…"; color: Theme.muted; font: scSearch.font } }
             }
-            H { text: "HYPRLAND  (" + win.bindList.length + " binds, live from hyprctl)" }
             Repeater {
-                model: win.bindList
-                SettingRow { label: modelData.action; Text { text: modelData.keys; color: Theme.text2; font.family: Theme.fontMono; font.pixelSize: Theme.fontXs } }
+                model: sc.rows
+                Column {
+                    width: sc.width
+                    H { visible: index === 0 || sc.rows[index - 1].group !== modelData.group; height: visible ? implicitHeight : 0; text: modelData.group.toUpperCase() }
+                    SettingRow { label: modelData.action
+                        Text { text: modelData.keys; color: Theme.accent; font.family: Theme.fontMono; font.pixelSize: Theme.fontXs } }
+                }
             }
+            Text { visible: sc.rows.length === 0; text: "No shortcut matches “" + sc.query + "”"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontSm; topPadding: 14 }
         }
     }
 
