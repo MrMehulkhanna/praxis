@@ -82,6 +82,16 @@ if ! command -v rsync >/dev/null 2>&1 && command -v pacman >/dev/null 2>&1; then
     fi
 fi
 
+# Screen brightness needs brightnessctl (older installs may lack it)
+if ! command -v brightnessctl >/dev/null 2>&1 && command -v pacman >/dev/null 2>&1; then
+    info "Installing brightnessctl for the brightness keys and slider..."
+    if [ "$EUID" -eq 0 ]; then
+        pacman -S --needed --noconfirm brightnessctl >/dev/null 2>&1 || true
+    else
+        sudo pacman -S --needed --noconfirm brightnessctl >/dev/null 2>&1 || true
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # 1. System packages (pacman -Syu)
 # ---------------------------------------------------------------------------
@@ -176,6 +186,13 @@ sync_user_desktop() {
     local target_home="$1"
     local target_owner="$2"
     [ -d "$target_home" ] || return 0
+
+    # old per-user copies of Praxis tools (~/.local/bin comes first in PATH)
+    # would hide the system ones and keep the update from taking effect
+    local f
+    for f in "$target_home"/.local/bin/praxis-* "$target_home"/.local/bin/praxis; do
+        [ -f "$f" ] && [ ! -L "$f" ] && [ -e "/usr/local/bin/${f##*/}" ] && rm -f "$f"
+    done
 
     local qs_dir="$target_home/.config/quickshell"
     mkdir -p "$qs_dir"
