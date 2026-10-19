@@ -409,14 +409,16 @@ hl.bind(mainMod .. " + ALT + S",   hl.dsp.window.move({ workspace = "special:mag
 hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
 hl.bind(mainMod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }))
 
--- Switch between monitors / desktops
--- Super+O: focus next monitor / display
--- Super+Shift+O: move active window to next monitor
--- Super+]: focus next monitor, Super+[: focus previous monitor
-hl.bind(mainMod .. " + O",            hl.dsp.focus({ monitor = "+1" }))
-hl.bind(mainMod .. " + SHIFT + O",    hl.dsp.window.move({ monitor = "+1" }))
+-- Monitors (Super+O is the Control Center and Super+Shift+O the text grabber —
+-- monitor binds there used to fire together with them)
+-- Super+] / Super+[: focus next / previous monitor
+-- Super+Shift+Right / Left (or Super+Shift+] / [): move the window to the next / previous monitor
 hl.bind(mainMod .. " + bracketright", hl.dsp.focus({ monitor = "+1" }))
 hl.bind(mainMod .. " + bracketleft",  hl.dsp.focus({ monitor = "-1" }))
+hl.bind(mainMod .. " + SHIFT + right",        hl.dsp.window.move({ monitor = "+1" }))
+hl.bind(mainMod .. " + SHIFT + left",         hl.dsp.window.move({ monitor = "-1" }))
+hl.bind(mainMod .. " + SHIFT + bracketright", hl.dsp.window.move({ monitor = "+1" }))
+hl.bind(mainMod .. " + SHIFT + bracketleft",  hl.dsp.window.move({ monitor = "-1" }))
 
 -- Move/resize windows with mainMod + LMB/RMB and dragging
 hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })
