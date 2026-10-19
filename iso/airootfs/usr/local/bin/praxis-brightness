@@ -4,10 +4,50 @@
 # screen — detected from the panel's EDID, as the shell does), 1 % otherwise.
 # Uses brightnessctl (fast, keeps state).  Steps in 5% by default.
 #
-# Usage:  praxis-brightness up | down | set N | get
+# Picks the backlight that really drives the built-in screen. Laptops often
+# have two (e.g. acpi_video0 next to intel_backlight / amdgpu_bl1 /
+# nvidia_wmi_ec_backlight), and brightnessctl on its own takes the first one
+# it finds — on many HP and hybrid-GPU laptops that one does nothing.
+#
+# Usage:  praxis-brightness up | down | set N | get | save | restore | device
 set -uo pipefail
 
 command -v brightnessctl >/dev/null || { echo "install brightnessctl" >&2; exit 1; }
+
+# best backlight: the GPU's own (raw) one when that GPU has the panel lit,
+# then vendor/platform ones, then ACPI firmware, then anything
+pick_device() {
+    local b name type dev score best="" best_score=-1 c
+    for b in /sys/class/backlight/*; do
+        [ -e "$b/brightness" ] || continue
+        name=${b##*/}; type=$(cat "$b/type" 2>/dev/null); score=1
+        case "$type" in
+            raw)
+                score=2
+                dev=$(readlink -f "$b/device" 2>/dev/null)
+                for c in /sys/class/drm/card*-eDP-* /sys/class/drm/card*-LVDS-* /sys/class/drm/card*-DSI-*; do
+                    [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+                    # the backlight's parent is the connector itself (newer kernels) or its GPU
+                    if [ "$(readlink -f "$c")" = "$dev" ] || [ "$(readlink -f "$c/device/device")" = "$dev" ]; then
+                        score=5
+                    fi
+                done ;;
+            platform) score=4 ;;
+            firmware) score=3 ;;
+        esac
+        [ "$(cat "$b/max_brightness" 2>/dev/null || echo 0)" -gt 0 ] || score=0
+        if [ "$score" -gt "$best_score" ]; then best=$name; best_score=$score; fi
+    done
+    echo "$best"
+}
+
+DEV=${PRAXIS_BACKLIGHT:-$(pick_device)}
+if [ -z "$DEV" ]; then
+    [ "${1:-}" = get ] && { echo "100%"; exit 0; }
+    echo "praxis-brightness: no screen backlight found (external monitor, or the GPU driver is not loaded)" >&2
+    exit 1
+fi
+bc() { brightnessctl -d "$DEV" "$@"; }
 
 step=${STEP:-5}
 floor=1
@@ -15,15 +55,18 @@ for e in /sys/class/drm/card*-eDP-*/edid; do
     [ -r "$e" ] && grep -aq ATNA "$e" && floor=10      # Samsung OLED panels (sysfs sizes read 0)
 done
 case "${1:-up}" in
-    up)   brightnessctl -e -n"$floor%" -q set "${step}%+" ;;
-    down) brightnessctl -e -n"$floor%" -q set "${step}%-" ;;
-    set)  brightnessctl -e -n"$floor%" -q set "${2:?value}%" ;;
-    get)  brightnessctl -m | awk -F, '{print $4}'; exit 0 ;;
-    *)    echo "usage: praxis-brightness up|down|set N|get" >&2; exit 2 ;;
+    up)      bc -e -n"$floor%" -q set "${step}%+" ;;
+    down)    bc -e -n"$floor%" -q set "${step}%-" ;;
+    set)     bc -e -n"$floor%" -q set "${2:?value}%" ;;
+    get)     bc -e -m | awk -F, '{print $4}'; exit 0 ;;
+    save)    bc -q -s set "${2:-15}%" >/dev/null; exit 0 ;;          # dim (idle) and remember the level
+    restore) bc -q -r; exit 0 ;;
+    device)  echo "$DEV"; exit 0 ;;
+    *)       echo "usage: praxis-brightness up|down|set N|get|save [N]|restore|device" >&2; exit 2 ;;
 esac
 
-pct=$(brightnessctl -m | awk -F, '{print $4}' | tr -d '%')
-if command -v notify-send >/dev/null; then
+pct=$(bc -e -m | awk -F, '{print $4}' | tr -d '%')
+if [ -z "${PRAXIS_QUIET:-}" ] && command -v notify-send >/dev/null; then   # quiet: the shell's own slider
     notify-send -a "Praxis" -t 900 -h "int:value:$pct" -h "string:x-canonical-private-synchronous:brightness" \
         "󰃞 Brightness" "${pct}%"
 fi
