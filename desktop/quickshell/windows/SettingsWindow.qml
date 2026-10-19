@@ -52,7 +52,7 @@ OverlayWindow {
     property var sysInfo: ({})
     Process {
         id: sysinfo
-        command: ["bash", "-c", "echo \"host=$(cat /etc/hostname 2>/dev/null || hostnamectl hostname)\"; echo \"kernel=$(uname -r)\"; echo \"cpu=$(lscpu | sed -n 's/^Model name: *//p')\"; g=''; for d in /sys/bus/pci/devices/*; do [ \"$(cat $d/vendor)\" = 0x10de ] && case $(cat $d/class) in 0x03*) g=$d; break;; esac; done; if [ -n \"$g\" ] && [ \"$(cat $g/power/runtime_status)\" = suspended ]; then echo \"gpu=NVIDIA GPU (asleep)\"; else echo \"gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)\"; fi; echo \"ram=$(free -g | awk '/Mem:/{print $2}') GB\"; echo \"uptime=$(uptime -p | sed 's/up //')\"; echo \"qs=$(quickshell --version 2>/dev/null | head -1)\""]
+        command: ["bash", "-c", "echo \"host=$(cat /etc/hostname 2>/dev/null || hostnamectl hostname)\"; echo \"kernel=$(uname -r)\"; echo \"cpu=$(lscpu | sed -n 's/^Model name: *//p')\"; g=''; for d in /sys/bus/pci/devices/*; do [ \"$(cat $d/vendor)\" = 0x10de ] && case $(cat $d/class) in 0x03*) g=$d; break;; esac; done; if [ -n \"$g\" ] && [ \"$(cat $g/power/runtime_status)\" = suspended ]; then echo \"gpu=NVIDIA GPU (asleep)\"; else echo \"gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)\"; fi; echo \"ram=$(free -g | awk '/Mem:/{print $2}') GB\"; echo \"uptime=$(uptime -p | sed 's/up //')\"; echo \"qs=$(quickshell --version 2>/dev/null | grep -oE '[0-9]+[.][0-9]+([.][0-9]+)?' | head -1)\""]
         stdout: StdioCollector {
             onStreamFinished: {
                 const o = {}
@@ -175,7 +175,7 @@ OverlayWindow {
                     spacing: 4
                     Repeater {
                         model: [["Host", win.sysInfo.host], ["Kernel", win.sysInfo.kernel], ["CPU", win.sysInfo.cpu], ["GPU", win.sysInfo.gpu],
-                                ["Memory", win.sysInfo.ram], ["Hyprland", HyprOpts.hyprVersion], ["Quickshell", win.sysInfo.qs], ["Uptime", win.sysInfo.uptime]]
+                                ["Memory", win.sysInfo.ram], ["Window manager", HyprOpts.hyprVersion], ["Desktop shell", win.sysInfo.qs], ["Uptime", win.sysInfo.uptime]]
                         Row {
                             spacing: 10
                             Text { text: modelData[0]; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontSm; width: 90 }
@@ -291,14 +291,14 @@ OverlayWindow {
             H { text: "GLASS" }
             SettingRow { label: "Transparency"; description: Math.round((1 - Settings.transparency) * 100) + "% see-through"
                 Slider { width: 220; icon: "layers"; value: Settings.transparency; valueText: ""; onMoved: v => Settings.transparency = Math.max(0.2, Math.min(1, v)) } }
-            SettingRow { label: "Background blur"; description: "Hyprland decoration:blur"
+            SettingRow { label: "Background blur"; description: "Frosted glass behind see-through windows and panels"
                 Toggle { checked: HyprOpts.blur; onToggled: v => { HyprOpts.set("decoration:blur:enabled", v ? 1 : 0); Settings.blur = v } } }
             SettingRow { label: "Panel corner radius"; description: Settings.radius + " px"
                 Slider { width: 220; icon: "layers"; value: (Settings.radius - 6) / 20; valueText: ""; onMoved: v => Settings.radius = Math.round(6 + v * 20) } }
             H { text: "MOTION" }
             SettingRow { label: "Animation intensity"
                 Segmented { options: [{ value: 0, label: "Off" }, { value: 0.7, label: "Snappy" }, { value: 1, label: "Normal" }, { value: 1.5, label: "Slow" }]; value: Settings.animations; onSelected: v => Settings.animations = v } }
-            SettingRow { label: "Window animations"; description: "Hyprland animations:enabled"
+            SettingRow { label: "Window animations"; description: "Smooth motion when windows open, close and move"
                 Toggle { checked: HyprOpts.animations; onToggled: v => HyprOpts.set("animations:enabled", v ? 1 : 0) } }
             SettingRow { label: "Ambient glow"; description: "Soft light behind windows that follows the time of day. Pauses on battery and under fullscreen apps."
                 Toggle { checked: Settings.ambientEnabled; onToggled: v => Settings.ambientEnabled = v } }
@@ -554,7 +554,7 @@ OverlayWindow {
                     onMoved: v => EyeComfort.intensity = v
                 }
             }
-            Text { text: "A new mode or scale shows at once and goes back by itself after 15 seconds unless you press Keep — so a mode a monitor can't show never leaves it dark. Kept settings are saved for this computer (~/.config/hypr/praxis-local.lua) and come back after a restart."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap }
+            Text { text: "A new mode or scale shows at once and goes back by itself after 15 seconds unless you press Keep — so a mode a monitor can't show never leaves it dark. Kept settings are saved for this computer and come back after a restart."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap }
         }
     }
 

@@ -17,7 +17,7 @@ OverlayWindow {
         { name: "Suspend",      hint: "Sleep now",            icon: "moon",  run: () => Power.suspend(), confirm: true },
         { name: "Reboot",       hint: "Restart the computer", icon: "refresh", run: () => Power.reboot(), confirm: true },
         { name: "Power off",    hint: "Shut down",            icon: "power", run: () => Power.poweroff(), confirm: true },
-        { name: "Log out",      hint: "Exit Hyprland",        icon: "user",  run: () => Power.logout(), confirm: true },
+        { name: "Log out",      hint: "End this session",     icon: "user",  run: () => Power.logout(), confirm: true },
     ]
 
     property int _appRevision: 0
