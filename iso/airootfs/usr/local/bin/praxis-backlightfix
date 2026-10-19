@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# praxis-backlightfix — make screen brightness work on hybrid-GPU laptops.
+#
+# On many laptops with an NVIDIA GPU next to an Intel/AMD one (HP Victus/Omen,
+# Lenovo, ASUS …) the kernel registers nvidia_wmi_ec_backlight (or an ACPI
+# one) and hides the integrated GPU's own backlight. When the built-in screen
+# is actually driven by the integrated GPU, that control does nothing: the
+# keys and the slider move, the screen doesn't. The kernel option
+# acpi_backlight=native brings back the backlight of the GPU that drives the
+# panel. This adds it to the boot menu when — and only when — that is the case.
+#
+#   praxis-backlightfix          check and fix (takes effect after a restart)
+#   praxis-backlightfix --check  report only
+set -uo pipefail
+
+say() { echo "praxis-backlightfix: $*"; }
+[ "$EUID" -eq 0 ] || exec sudo "$0" "$@"
+CHECK=0; [ "${1:-}" = --check ] && CHECK=1
+
+PARAM=acpi_backlight=native
+R=${PRAXIS_SYSROOT:-}     # tests: a fake /sys and /proc
+GRUB=/etc/default/grub
+grep -qw "$PARAM" "$R/proc/cmdline" && { say "already active ($PARAM)"; exit 0; }
+
+# which GPU lights the built-in panel?
+panel_vendor=""
+for c in "$R"/sys/class/drm/card*-eDP-* "$R"/sys/class/drm/card*-LVDS-*; do
+    [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+    panel_vendor=$(cat "$c/device/device/vendor" 2>/dev/null) && break
+done
+[ -n "$panel_vendor" ] || { say "no built-in screen found — nothing to do"; exit 0; }
+
+# PCI vendor of the GPU a backlight belongs to (walk up from its device link)
+gpu_vendor() {
+    local d
+    d=$(readlink -f "$1/device" 2>/dev/null) || return
+    while [ -n "$d" ] && [ "$d" != / ]; do
+        [ -f "$d/vendor" ] && [ -f "$d/class" ] && { cat "$d/vendor"; return; }
+        d=${d%/*}
+    done
+}
+
+# a raw backlight only counts if it belongs to the GPU that lights the panel —
+# nvidia_0 (NVIDIA's backlight handler) is raw too, but can't dim a screen
+# wired to the integrated GPU
+has_raw=0; has_proxy=""
+for b in "$R"/sys/class/backlight/*; do
+    [ -e "$b/type" ] || continue
+    if [ "$(cat "$b/type")" = raw ] && [ "$(gpu_vendor "$b")" = "$panel_vendor" ]; then
+        has_raw=1
+    else
+        has_proxy="${has_proxy:+$has_proxy }${b##*/}"
+    fi
+done
+
+# the bad case: panel on Intel (0x8086) or AMD (0x1002), but only an
+# NVIDIA-EC / ACPI backlight exists — the integrated GPU's own one is hidden
+if [ "$has_raw" = 1 ]; then
+    say "the screen's own backlight is available — nothing to do"; exit 0
+fi
+case "$panel_vendor" in
+    0x8086|0x1002) ;;
+    *) say "the built-in screen is driven by GPU vendor $panel_vendor (${has_proxy:-no backlight}) — not the case this fixes"; exit 0 ;;
+esac
+say "screen on the integrated GPU ($panel_vendor) but only ${has_proxy:-no backlight} is offered — needs $PARAM"
+[ "$CHECK" = 1 ] && exit 0
+
+[ -f "$GRUB" ] || { say "$GRUB not found — add $PARAM to the kernel options by hand"; exit 1; }
+if ! grep -q "^GRUB_CMDLINE_LINUX_DEFAULT=.*$PARAM" "$GRUB"; then
+    cp -n "$GRUB" "$GRUB.praxis-backup"
+    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 $PARAM\"|" "$GRUB"
+    grep -q "^GRUB_CMDLINE_LINUX_DEFAULT=.*$PARAM" "$GRUB" || echo "GRUB_CMDLINE_LINUX_DEFAULT=\"$PARAM\"" >>"$GRUB"
+fi
+grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || { say "grub-mkconfig failed"; exit 1; }
+say "added $PARAM — restart the computer and brightness will work"
