@@ -458,20 +458,9 @@ fi
 # (a test run on a developer's machine must not add boot entries to that machine's firmware)
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --recheck \
     $([ "${PLAN_TEST:-}" = 1 ] && echo --no-nvram) >/dev/null
-# also as the fallback loader when the firmware forgets boot entries (common on
-# some laptops) — but never over another OS's fallback loader
-if [ ! -e /boot/efi/EFI/BOOT/BOOTX64.EFI ]; then
-    install -Dm644 /boot/efi/EFI/Praxis/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
-fi
-# Prioritize Praxis first in UEFI BootOrder so PC boots directly into GRUB
-if [ "${PLAN_TEST:-}" != 1 ] && command -v efibootmgr >/dev/null 2>&1; then
-    PRAXIS_NUM=$(efibootmgr 2>/dev/null | awk '/Praxis/ { sub(/Boot/, "", $1); sub(/\*/, "", $1); print $1; exit }')
-    if [ -n "$PRAXIS_NUM" ]; then
-        CUR_ORDER=$(efibootmgr 2>/dev/null | awk '/BootOrder:/ { print $2 }')
-        NEW_ORDER=$(echo "$CUR_ORDER" | tr ',' '\n' | grep -v "^${PRAXIS_NUM}$" | paste -sd, -)
-        efibootmgr -o "${PRAXIS_NUM}${NEW_ORDER:+,$NEW_ORDER}" >/dev/null 2>&1 || true
-    fi
-fi
+# keep Praxis bootable without the firmware menu: fallback loader, first in
+# BootOrder, and the same check at every startup (HP/Acer firmware reorders)
+PRAXIS_NO_NVRAM=$([ "${PLAN_TEST:-}" = 1 ] && echo 1) /usr/local/bin/praxis-bootfix --install
 grub-mkconfig -o /boot/grub/grub.cfg
 
 # the AI backend starts CPU-only until the user picks a model for their GPU
