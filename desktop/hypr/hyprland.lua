@@ -270,11 +270,37 @@ hl.config({
     },
 })
 
--- 3-finger horizontal swipe → switch workspace
+-- 3-finger horizontal swipe → switch workspace; the workspaces follow the
+-- fingers 1:1 and a short flick is enough to finish the switch
 hl.gesture({
     fingers = 3,
     direction = "horizontal",
     action = "workspace"
+})
+hl.config({
+    gestures = {
+        workspace_swipe_distance          = 700,   -- px of finger travel for one workspace (≈1:1 on a laptop pad)
+        workspace_swipe_cancel_ratio      = 0.2,
+        workspace_swipe_min_speed_to_force = 15,
+        workspace_swipe_create_new        = true,
+        workspace_swipe_direction_lock    = true,
+    },
+})
+
+-- 3-finger swipe up → workspace overview; down → app launcher
+hl.gesture({
+    fingers = 3,
+    direction = "up",
+    action = function()
+        hl.dispatch(hl.dsp.exec_cmd("quickshell ipc call shell toggle ws"))
+    end
+})
+hl.gesture({
+    fingers = 3,
+    direction = "down",
+    action = function()
+        hl.dispatch(hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
+    end
 })
 
 -- 4-finger swipe down → Voice typing (dictate into active window)
