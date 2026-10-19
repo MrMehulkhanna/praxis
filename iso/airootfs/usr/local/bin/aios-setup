@@ -53,6 +53,10 @@ else
         || echo "   voice download failed — voice replies stay text-only until you re-run aios-setup"
 fi
 
+step "4b  Speech recognition (Whisper for voice typing)"
+echo "   pre-caching Whisper speech recognition model..."
+"$DEST/.venv/bin/python" -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')" 2>/dev/null && echo "   Whisper base model cached and ready" || echo "   Whisper model will finish downloading on first dictation"
+
 step "5/6  Background service"
 UNIT="$HOME/.config/systemd/user/aios.service"
 if [ ! -f "$UNIT" ] && [ -f "$DEST/config/systemd/aios.service" ]; then

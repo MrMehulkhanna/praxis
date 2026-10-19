@@ -316,6 +316,21 @@ if [ -f "$HWDETECT" ] && command -v pacman >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+# 5c. Voice typing & speech recognition (faster-whisper)
+# ---------------------------------------------------------------------------
+log "Checking voice typing speech recognition"
+for udir in /home/* "$HOME"; do
+    [ -d "$udir" ] || continue
+    aios_u="$udir/aios"
+    if [ -d "$aios_u" ] && [ -x "$aios_u/.venv/bin/pip" ]; then
+        if ! "$aios_u/.venv/bin/python" -c "import faster_whisper" >/dev/null 2>&1; then
+            info "Pre-installing faster-whisper for $(basename "$udir")..."
+            "$aios_u/.venv/bin/pip" install --quiet faster-whisper 2>/dev/null || true
+        fi
+    fi
+done
+
+# ---------------------------------------------------------------------------
 # 6. Restart Desktop Shell & Reload the window manager
 # ---------------------------------------------------------------------------
 # hyprctl must talk to the user's session: as root it finds no instance
