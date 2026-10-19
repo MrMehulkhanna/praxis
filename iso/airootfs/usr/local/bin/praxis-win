@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""praxis-win — window snapping and layout switching for Hyprland.
+
+  praxis-win snap left|right        half of the screen
+  praxis-win snap left3|mid3|right3 a third (left / centre / right column)
+  praxis-win snap max               maximise (again: back)
+  praxis-win snap restore           back into the tiling layout
+  praxis-win layout                 next layout: tiles → master + stack →
+                                    3 columns (master in the middle) → tiles
+
+A snapped window floats at the exact spot, inside the space the bar and the
+dock leave free, with the same gap as tiled windows.
+"""
+import json
+import subprocess
+import sys
+
+GAP = 8      # logical px around a snapped window; matches general.gaps_out
+
+
+def hypr(*args):
+    return subprocess.run(["hyprctl", *args], capture_output=True, text=True).stdout
+
+
+def query(what):
+    try:
+        return json.loads(hypr(what, "-j"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def dispatch(expr):
+    hypr("dispatch", expr)
+
+
+def notify(text):
+    subprocess.run(["notify-send", "-a", "Praxis", "-t", "1500", "Layout", text],
+                   stderr=subprocess.DEVNULL, check=False)
+
+
+def snap(where):
+    win = query("activewindow")
+    if not win or not win.get("address"):
+        return
+    if where == "max":
+        dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
+        return
+    if where == "restore":
+        if win.get("fullscreen"):
+            dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
+        elif win.get("floating"):
+            dispatch('hl.dsp.window.float({ action = "disable" })')
+        return
+    mon = next((m for m in query("monitors") if m["id"] == win["monitor"]), None)
+    if mon is None:
+        return
+    scale = mon["scale"] or 1
+    w, h = mon["width"] / scale, mon["height"] / scale
+    if mon["transform"] % 2:          # rotated 90/270°
+        w, h = h, w
+    left, top, right, bottom = mon["reserved"]
+    x0, y0 = mon["x"] + left + GAP, mon["y"] + top + GAP
+    aw, ah = w - left - right - 2 * GAP, h - top - bottom - 2 * GAP
+    cols, col = {"left": (2, 0), "right": (2, 1),
+                 "left3": (3, 0), "mid3": (3, 1), "right3": (3, 2)}[where]
+    cw = (aw - (cols - 1) * GAP) / cols
+    if win.get("fullscreen"):
+        dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
+    if not win.get("floating"):
+        dispatch('hl.dsp.window.float({ action = "enable" })')
+    dispatch(f"hl.dsp.window.resize({{ x = {int(cw)}, y = {int(ah)} }})")
+    dispatch(f"hl.dsp.window.move({{ x = {int(x0 + col * (cw + GAP))}, y = {int(y0)} }})")
+
+
+def next_layout():
+    layout = hypr("getoption", "general:layout").split()[1:2] or ["dwindle"]
+    orient = hypr("getoption", "master:orientation").split()[1:2] or ["left"]
+    if layout[0] == "dwindle":
+        hypr("eval", 'hl.config({ general = { layout = "master" }, master = { orientation = "left" } })')
+        notify("Master + stack")
+    elif layout[0] == "master" and orient[0] != "center":
+        hypr("eval", 'hl.config({ master = { orientation = "center", slave_count_for_center_master = 0 } })')
+        notify("3 columns")
+    else:
+        hypr("eval", 'hl.config({ general = { layout = "dwindle" } })')
+        notify("Tiles")
+
+
+def main(argv):
+    if len(argv) >= 2 and argv[0] == "snap" and argv[1] in (
+            "left", "right", "left3", "mid3", "right3", "max", "restore"):
+        snap(argv[1])
+    elif argv[:1] == ["layout"]:
+        next_layout()
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
