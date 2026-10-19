@@ -8,6 +8,11 @@ pkill -x quickshell 2>/dev/null || true
 sleep 0.5
 pkill -9 -x quickshell 2>/dev/null || true
 sleep 0.3
+# a shell started by root (e.g. during an update) can't be stopped by the user —
+# without this, the old and the new shell both run and every bar is drawn twice
+if [ "$EUID" -ne 0 ] && pgrep -x quickshell >/dev/null; then
+    exec sudo -n /usr/local/bin/praxis-restart-shell
+fi
 
 # If run as root (or from sudo praxis-update), detect the desktop user and environment
 if [ "$EUID" -eq 0 ]; then
