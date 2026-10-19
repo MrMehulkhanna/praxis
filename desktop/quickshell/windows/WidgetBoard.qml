@@ -280,7 +280,7 @@ OverlayWindow {
                                 width: parent.width * Math.max(0, Math.min(1, modelData.v / 100))
                                 height: parent.height; radius: parent.radius
                                 color: modelData.col
-                                Behavior on width { NumberAnimation { duration: 400 } }
+                                Behavior on width { NumberAnimation { duration: Theme.slow; easing.type: Theme.easeMove } }
                             }
                         }
                         Text {

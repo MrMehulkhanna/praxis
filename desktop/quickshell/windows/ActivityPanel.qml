@@ -329,7 +329,7 @@ OverlayWindow {
                     icon: row.stopping ? "refresh" : "x"; iconSize: 12; implicitHeight: 24; implicitWidth: 26
                     iconColor: row.armed ? Theme.red : Theme.text2
                     opacity: hover.containsMouse || row.armed || row.stopping ? 1 : 0.35
-                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.fast; easing.type: Theme.easeMove } }
                     onClicked: win.stopTask(row.modelData)
                 }
                 Icon {

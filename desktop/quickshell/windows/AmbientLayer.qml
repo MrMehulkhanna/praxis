@@ -87,7 +87,7 @@ PanelWindow {
             y: root.height * (modelData.by + 0.06 * Math.sin(t * 1.3)) - radius
             opacity: 0.55 + 0.35 * root.memLoad
             Behavior on width { NumberAnimation { duration: 1500; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: 3000 } }
+            Behavior on opacity { NumberAnimation { duration: 3000; easing.type: Easing.InOutSine } }
 
             Shape {
                 anchors.fill: parent
