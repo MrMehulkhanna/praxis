@@ -331,6 +331,13 @@ for udir in /home/* "$HOME"; do
     fi
 done
 
+# hybrid-GPU laptops: brightness keys do nothing until the kernel uses the
+# backlight of the GPU that really drives the screen (needs one restart)
+if [ -x /usr/local/bin/praxis-backlightfix ]; then
+    if [ "$EUID" -eq 0 ]; then /usr/local/bin/praxis-backlightfix || true
+    elif command -v sudo >/dev/null 2>&1; then sudo /usr/local/bin/praxis-backlightfix || true; fi
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Restart Desktop Shell & Reload the window manager
 # ---------------------------------------------------------------------------
