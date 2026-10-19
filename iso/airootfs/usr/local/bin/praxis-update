@@ -91,7 +91,6 @@ if [ "$EUID" -eq 0 ]; then
 else
     sudo pacman -Syu --noconfirm || warn "Pacman update finished with warnings"
 fi
-SYS_RC=$?
 
 # ---------------------------------------------------------------------------
 # 2. AUR (yay) if present
@@ -137,7 +136,7 @@ if [ ! -d "$SRC_REPO/.git" ]; then
 fi
 
 if [ -d "$SRC_REPO/.git" ]; then
-    ( cd "$SRC_REPO"
+    ( cd "$SRC_REPO" || exit
       cur_origin=$(git remote get-url origin 2>/dev/null || true)
       case "$cur_origin" in
           git@*) ;;
