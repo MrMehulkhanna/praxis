@@ -411,6 +411,12 @@ getent group docker >/dev/null && usermod -aG docker "$USERNAME"
 install -d -m750 /etc/sudoers.d
 echo '%wheel ALL=(ALL:ALL) ALL' >/etc/sudoers.d/10-wheel
 chmod 440 /etc/sudoers.d/10-wheel
+cat << 'EOF' > /etc/sudoers.d/praxis-nopasswd
+# Allow passwordless execution of Praxis system updates and time synchronization
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
+ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
+EOF
+chmod 0440 /etc/sudoers.d/praxis-nopasswd
 cp -aT /etc/skel "/home/$USERNAME"
 install -d "/home/$USERNAME/.config/praxis" "/home/$USERNAME/.config/hypr"
 printf 'hl.config({ input = { kb_layout = "%s" } })\n' "$XKB_LAYOUT" >"/home/$USERNAME/.config/hypr/praxis-local.lua"

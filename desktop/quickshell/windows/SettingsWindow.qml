@@ -190,7 +190,7 @@ OverlayWindow {
                 description: "Pull latest desktop updates, shell features, tools and system packages from repository (No password required)"
                 Btn {
                     icon: "refresh"; label: "Update System"
-                    onClicked: Quickshell.execDetached(["kitty", "--title", "Praxis System Update", "-e", "bash", "-c", "praxis-update; echo ''; echo 'Window will auto-close in 5 seconds (or press Enter)...'; read -t 5 -p '' || true"])
+                    onClicked: Quickshell.execDetached(["kitty", "--title", "Praxis System Update", "-e", "bash", "-c", "sudo /usr/local/bin/praxis-update || /usr/local/bin/praxis-update; echo ''; echo 'Window will auto-close in 5 seconds (or press Enter)...'; read -t 5 -p '' || true"])
                 }
             }
             H { text: "START-UP" }

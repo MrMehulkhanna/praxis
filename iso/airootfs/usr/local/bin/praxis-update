@@ -54,13 +54,20 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "-n" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 0. Sudoers passwordless configuration (runs once to eliminate future prompts)
+# 0. Sudoers passwordless configuration (ensures zero password prompts)
 # ---------------------------------------------------------------------------
-if [ ! -f /etc/sudoers.d/praxis-nopasswd ] && command -v sudo >/dev/null 2>&1; then
-    info "Configuring passwordless update permissions in /etc/sudoers.d/..."
+if [ "$EUID" -eq 0 ]; then
+    cat << 'EOF' > /etc/sudoers.d/praxis-nopasswd
+# Allow passwordless execution of Praxis system updates and time synchronization
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
+ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
+EOF
+    chmod 0440 /etc/sudoers.d/praxis-nopasswd
+elif command -v sudo >/dev/null 2>&1; then
     sudo bash -c 'cat << "EOF" > /etc/sudoers.d/praxis-nopasswd
-%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl restart systemd-timesyncd
-ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/local/bin/praxis-time
+# Allow passwordless execution of Praxis system updates and time synchronization
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
+ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
 EOF
 chmod 0440 /etc/sudoers.d/praxis-nopasswd' 2>/dev/null || true
 fi
