@@ -131,7 +131,11 @@ fi
 
 if [ -d "$SRC_REPO/.git" ]; then
     ( cd "$SRC_REPO"
-      git remote set-url origin "$REPO_URL" 2>/dev/null || true
+      cur_origin=$(git remote get-url origin 2>/dev/null || true)
+      case "$cur_origin" in
+          git@*) ;;
+          *) git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL" 2>/dev/null || true ;;
+      esac
       info "Fetching latest commits from $REPO_URL..."
       if git fetch origin main --depth 1; then
           PREV_REV=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
