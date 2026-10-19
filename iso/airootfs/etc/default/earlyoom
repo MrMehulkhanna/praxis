@@ -1,0 +1,5 @@
+# Praxis: act before the kernel's OOM killer (which only moves after minutes of
+# a frozen desktop). At <4 % free RAM and <10 % free swap, stop the process
+# with the highest oom_score; prefer the AI model server and browser tabs,
+# never the compositor, the shell, audio or the session.
+EARLYOOM_ARGS="-m 4 -s 10 -r 3600 --prefer ^(llama-server|ollama|ollama_llama_server)$ --avoid ^(Hyprland|quickshell|Xwayland|systemd|systemd-logind|dbus-broker|pipewire|wireplumber|sddm|greetd|swaync|hyprlock)$"

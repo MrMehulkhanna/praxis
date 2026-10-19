@@ -1,0 +1,9 @@
+# Optional: let your user control ASUS hardware WITHOUT a password prompt.
+# Install:  sudo cp asus-user-control.rules /etc/udev/rules.d/99-asus-user-control.rules
+#           sudo udevadm control --reload && sudo udevadm trigger
+# Without this, the fan / charge-limit buttons still work — they just ask for
+# your password (which is the safe default). This trades that prompt for
+# group-write access to these specific ASUS sysfs files.
+ACTION=="add|change", SUBSYSTEM=="platform", KERNEL=="asus-nb-wmi", RUN+="/bin/sh -c 'chgrp wheel /sys/devices/platform/asus-nb-wmi/throttle_thermal_policy 2>/dev/null; chmod g+w /sys/devices/platform/asus-nb-wmi/throttle_thermal_policy 2>/dev/null'"
+ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="BAT0", RUN+="/bin/sh -c 'chgrp wheel /sys/class/power_supply/BAT0/charge_control_end_threshold 2>/dev/null; chmod g+w /sys/class/power_supply/BAT0/charge_control_end_threshold 2>/dev/null'"
+ACTION=="add|change", SUBSYSTEM=="hwmon", RUN+="/bin/sh -c 'for d in /sys/class/hwmon/hwmon*; do [ \"$(cat $d/name 2>/dev/null)\" = asus ] && chgrp wheel $d/pwm1_enable 2>/dev/null && chmod g+w $d/pwm1_enable 2>/dev/null; done'"

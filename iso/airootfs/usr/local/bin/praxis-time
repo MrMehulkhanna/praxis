@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-time — query, set, or auto-detect timezone and synchronize clock.
+#
+#    praxis-time              show current date, time, and timezone status
+#    praxis-time auto         auto-detect timezone via geo-IP & sync clock
+#    praxis-time set <tz>     set specific timezone (e.g. Asia/Kolkata)
+#    praxis-time sync         force immediate NTP time synchronization
+#    praxis-time dualboot     set local RTC for Windows dual-boot compatibility
+#    praxis-time pick         interactive timezone picker
+# ============================================================================
+set -euo pipefail
+
+cmd="${1:-status}"
+
+case "$cmd" in
+    status)
+        timedatectl status
+        ;;
+    auto)
+        echo "==> Auto-detecting timezone from network location..."
+        tz=$(curl -fsm 4 https://ipapi.co/timezone 2>/dev/null || curl -fsm 4 http://worldtimeapi.org/api/ip 2>/dev/null | sed -n 's/.*"timezone":"\([^"]*\)".*/\1/p' || true)
+        if [ -n "$tz" ] && [ -f "/usr/share/zoneinfo/$tz" ]; then
+            echo "    Detected location: $tz"
+            sudo timedatectl set-timezone "$tz"
+            echo "    ✓ Timezone updated to $tz"
+        else
+            echo "    Notice: could not determine timezone from network (using current: $(timedatectl show -p Timezone --value))"
+        fi
+        echo "==> Synchronizing clock with network time servers (NTP)..."
+        sudo timedatectl set-ntp true
+        sudo systemctl restart systemd-timesyncd 2>/dev/null || true
+        # Also sync hardware clock
+        sudo hwclock --systohc 2>/dev/null || true
+        curr_tz=$(timedatectl show -p Timezone --value)
+        curr_time=$(date '+%I:%M %p (%d %b %Y)')
+        echo "    ✓ Clock synchronized: $curr_time ($curr_tz)"
+        command -v notify-send >/dev/null && notify-send -a "Praxis" -i "preferences-system-time" "Time Synchronized" "Timezone: $curr_tz\nTime: $curr_time" || true
+        ;;
+    set)
+        [ -n "${2:-}" ] || { echo "Usage: praxis-time set <timezone> (e.g. Asia/Kolkata)"; exit 1; }
+        tz="$2"
+        [ -f "/usr/share/zoneinfo/$tz" ] || { echo "Error: Timezone '$tz' not found in /usr/share/zoneinfo/"; exit 1; }
+        sudo timedatectl set-timezone "$tz"
+        sudo timedatectl set-ntp true
+        sudo systemctl restart systemd-timesyncd 2>/dev/null || true
+        sudo hwclock --systohc 2>/dev/null || true
+        echo "✓ Timezone set to $tz. Current time: $(date '+%I:%M %p (%d %b %Y)')"
+        command -v notify-send >/dev/null && notify-send -a "Praxis" -i "preferences-system-time" "Timezone Changed" "Set to $tz\n$(date '+%I:%M %p')" || true
+        ;;
+    sync)
+        echo "==> Synchronizing clock with network time servers (NTP)..."
+        sudo timedatectl set-ntp true
+        sudo systemctl restart systemd-timesyncd 2>/dev/null || true
+        sudo hwclock --systohc 2>/dev/null || true
+        curr_time=$(date '+%I:%M %p (%d %b %Y)')
+        echo "✓ Synchronized: $curr_time"
+        command -v notify-send >/dev/null && notify-send -a "Praxis" -i "preferences-system-time" "Clock Synchronized" "Current time: $curr_time" || true
+        ;;
+    dualboot)
+        echo "==> Configuring RTC to Local Time for Windows dual-boot compatibility..."
+        sudo timedatectl set-local-rtc 1 --adjust-system-clock
+        echo "✓ Windows dual-boot clock adjustment applied."
+        timedatectl status
+        ;;
+    pick)
+        echo "==> Select your timezone:"
+        if command -v tzselect >/dev/null 2>&1; then
+            selected=$(tzselect)
+            if [ -n "$selected" ]; then
+                sudo timedatectl set-timezone "$selected"
+                sudo timedatectl set-ntp true
+                sudo systemctl restart systemd-timesyncd 2>/dev/null || true
+                sudo hwclock --systohc 2>/dev/null || true
+                echo "✓ Timezone set to $selected"
+                command -v notify-send >/dev/null && notify-send -a "Praxis" "Timezone Set" "$selected\n$(date '+%I:%M %p')" || true
+            fi
+        else
+            echo "tzselect not available. Use 'praxis-time set <timezone>' (e.g. praxis-time set Asia/Kolkata)"
+        fi
+        ;;
+    *)
+        echo "Usage: praxis-time [status|auto|set <tz>|sync|dualboot|pick]"
+        exit 1
+        ;;
+esac

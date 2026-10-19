@@ -1,0 +1,20 @@
+{
+    "accent": "auto",
+    "animations": 1,
+    "barStats": "auto",
+    "blur": true,
+    "clock24h": false,
+    "dockAllScreens": false,
+    "dockAutoHide": false,
+    "dockFavorites": [
+        "firefox",
+        "kitty",
+        "thunar"
+    ],
+    "dockIconSize": 44,
+    "profile": "Normal",
+    "radius": 18,
+    "showSeconds": false,
+    "transparency": 0.6,
+    "wallpaper": ""
+}

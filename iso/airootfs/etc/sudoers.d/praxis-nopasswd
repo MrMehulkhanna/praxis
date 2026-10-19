@@ -1,0 +1,3 @@
+# Allow wheel users to run praxis-update, pacman, and praxis-time without a password prompt
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl restart systemd-timesyncd
+ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/local/bin/praxis-time

@@ -1,0 +1,94 @@
+# Praxis — the desktop package set, added on top of archiso's `releng` base
+# (linux, linux-firmware, microcode, parted, gptfdisk, iwd, openssh, …;
+# build.sh drops releng's rescue-only extras).
+#
+# Everything ABOVE the "@live-only" line is the Praxis desktop: the live
+# session runs it, and praxis-install installs exactly this set on the target
+# (plus the base system, build tools and the drivers for the target's own
+# GPU), so an installed system matches what you tried live.
+# One package per line; blank lines and comments are ignored.
+
+# ── desktop ──────────────────────────────────────────────────────────────
+hyprland
+quickshell
+swaync
+hypridle
+hyprlock
+hyprpaper
+uwsm
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+xdg-utils
+qt6-wayland
+polkit-kde-agent
+
+# ── everyday apps ────────────────────────────────────────────────────────
+firefox
+kitty
+thunar
+rofi
+pavucontrol
+network-manager-applet
+blueman
+grim
+slurp
+swappy
+cliphist
+wl-clipboard
+wtype
+hyprpicker
+wf-recorder
+brightnessctl
+playerctl
+
+# ── audio ────────────────────────────────────────────────────────────────
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+wireplumber
+gst-plugin-pipewire
+libpulse
+
+# ── network & bluetooth ──────────────────────────────────────────────────
+networkmanager
+bluez
+bluez-utils
+
+# ── power ────────────────────────────────────────────────────────────────
+power-profiles-daemon
+zram-generator
+earlyoom
+
+# ── installer & dual-boot (os-prober finds Windows, ntfs-3g reads it) ────
+os-prober
+ntfs-3g
+ntfsprogs
+libnewt
+
+# ── Praxis tools (praxis-top and the AIOS scripts need python) ───────────
+python
+jq
+wget
+rsync
+htop
+nvtop
+smartmontools
+
+# ── fonts (the shell is drawn in Adwaita Sans / Adwaita Mono) ────────────
+adwaita-fonts
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono
+ttf-nerd-fonts-symbols-mono
+
+# @live-only ─ hardware coverage for the live session. praxis-install does not
+# copy these: it detects the target's real GPU and installs only its drivers.
+mesa
+vulkan-intel
+vulkan-radeon
+vulkan-nouveau
+intel-media-driver
+libva-intel-driver
+# lets iso/test-live.sh drive the live session in a VM; its udev rule starts it only inside one
+qemu-guest-agent

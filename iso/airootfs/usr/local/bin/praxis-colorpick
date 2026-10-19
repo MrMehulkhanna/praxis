@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# praxis-colorpick — pick a colour anywhere on screen (Super+Shift+C); its hex code is copied.
+set -uo pipefail
+command -v hyprpicker >/dev/null || { notify-send -a Praxis "Colour picker" "hyprpicker is not installed"; exit 1; }
+c=$(hyprpicker -f hex 2>/dev/null) || exit 0
+[ -n "$c" ] || exit 0
+printf '%s' "$c" | wl-copy
+notify-send -a Praxis -i color-select "Colour copied: $c" "Paste it anywhere with Ctrl+V"

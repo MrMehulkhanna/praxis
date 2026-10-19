@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-mode — one switch for each system mode
+#
+#    praxis-mode status                 JSON: {"ai":…, "game":…, "saver":…}
+#    praxis-mode ai on|off|toggle       the AI backend and its model. "off" frees
+#                                       the GPU and the model's RAM at once and
+#                                       stays off (also after a restart) until "on"
+#    praxis-mode game on|off|toggle     Game mode: AI off, performance profile,
+#                                       Do Not Disturb, still wallpaper, no blur /
+#                                       shadows / animations. "off" puts back
+#                                       exactly what was there before
+#    praxis-mode saver on|off|toggle    Battery saver: power-saver profile, the
+#                                       built-in screen at 60 Hz, still wallpaper,
+#                                       idle AI model unloaded now
+#    praxis-mode saver auto             what the shell calls when the charger is
+#                                       plugged in or pulled: saver on battery,
+#                                       off on AC (only undoes what it did itself)
+#
+#  State: ~/.config/praxis/ai-off (persistent), $XDG_RUNTIME_DIR/praxis/*
+#  (game/saver, forgotten at reboot so nothing stays stuck).
+# ============================================================================
+set -uo pipefail
+
+CFG="$HOME/.config/praxis"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis"
+AI_OFF="$CFG/ai-off"                 # user turned the AI off
+AI_GAME="$RUN/ai-off-game"           # Game mode turned it off (runtime only)
+GAME="$RUN/game.state"
+SAVER="$RUN/saver.state"
+mkdir -p "$CFG" "$RUN"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+note() { have notify-send && notify-send -a Praxis -i "${3:-preferences-system}" "$1" "${2:-}" 2>/dev/null; true; }
+kv()   { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -n1; }
+hypr() { have hyprctl && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; }
+hopt() { hyprctl -j getoption "$1" 2>/dev/null | jq -r 'if has("bool") then .bool elif has("int") then .int elif has("float") then .float else empty end' 2>/dev/null; }
+lua_bool() { case "$1" in true|1) echo true ;; *) echo false ;; esac; }
+
+# ── AI ──────────────────────────────────────────────────────────────────────
+ai_running() { systemctl --user is-active --quiet aios.service; }
+ai_state() {
+    if [ -e "$AI_OFF" ] || [ -e "$AI_GAME" ]; then echo off
+    elif ai_running; then echo on
+    else echo stopped; fi                      # allowed, but not running (not set up yet?)
+}
+ai_stop() {
+    systemctl --user stop praxis-genie.service 2>/dev/null
+    systemctl --user stop aios.service 2>/dev/null
+    # a model server started outside the service (e.g. `ai` from a terminal)
+    pkill -u "$(id -u)" -x llama-server 2>/dev/null
+    true
+}
+ai_start() {
+    systemctl --user reset-failed aios.service 2>/dev/null
+    systemctl --user start aios.service 2>/dev/null
+}
+ai() {
+    case "${1:-status}" in
+        on)
+            rm -f "$AI_OFF" "$AI_GAME"
+            ai_start
+            note "AI is on" "The assistant is back. Models load when you ask something." ai ;;
+        off)
+            touch "$AI_OFF"
+            ai_stop
+            note "AI is off" "The GPU and the model's memory are free. Turn it back on in Control Center." ai ;;
+        toggle) if [ "$(ai_state)" = off ]; then ai on; else ai off; fi ;;
+        status) ai_state ;;
+        *) echo "usage: praxis-mode ai on|off|toggle|status" >&2; return 2 ;;
+    esac
+}
+
+# ── Game mode ───────────────────────────────────────────────────────────────
+game_on() {
+    [ -f "$GAME" ] && { echo "game mode is already on"; return 0; }
+    {
+        echo "ai_was=$(ai_state)"
+        have powerprofilesctl && echo "profile=$(powerprofilesctl get 2>/dev/null)"
+        have swaync-client && echo "dnd=$(swaync-client -D 2>/dev/null)"
+        echo "wallpaper=$(sed -n 's/^mode=//p' "$CFG/wallpaper.state" 2>/dev/null | tail -n1)"
+        if hypr; then
+            echo "anim=$(hopt animations:enabled)"
+            echo "blur=$(hopt decoration:blur:enabled)"
+            echo "shadow=$(hopt decoration:shadow:enabled)"
+        fi
+    } >"$GAME"
+
+    if [ "$(kv "$GAME" ai_was)" = on ]; then touch "$AI_GAME"; ai_stop; fi
+    have powerprofilesctl && powerprofilesctl set performance 2>/dev/null
+    have swaync-client && swaync-client -dn >/dev/null 2>&1
+    [ "$(kv "$GAME" wallpaper)" = live ] && have praxis-wallpaper && praxis-wallpaper suspend >/dev/null 2>&1
+    if hypr; then
+        hyprctl eval 'hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false }, shadow = { enabled = false } } })' >/dev/null
+    fi
+    note "Game mode on" "AI off, GPU free, performance profile, notifications silenced." input-gaming
+}
+game_off() {
+    [ -f "$GAME" ] || { echo "game mode is not on"; return 0; }
+    local p d
+    if hypr; then     # only what was actually recorded when Game mode started
+        local a b sh
+        a=$(kv "$GAME" anim); b=$(kv "$GAME" blur); sh=$(kv "$GAME" shadow)
+        [ -n "$a" ]  && hyprctl eval "hl.config({ animations = { enabled = $(lua_bool "$a") } })" >/dev/null
+        [ -n "$b" ]  && hyprctl eval "hl.config({ decoration = { blur = { enabled = $(lua_bool "$b") } } })" >/dev/null
+        [ -n "$sh" ] && hyprctl eval "hl.config({ decoration = { shadow = { enabled = $(lua_bool "$sh") } } })" >/dev/null
+    fi
+    p=$(kv "$GAME" profile); [ -n "$p" ] && have powerprofilesctl && powerprofilesctl set "$p" 2>/dev/null
+    d=$(kv "$GAME" dnd);     [ "$d" = false ] && have swaync-client && swaync-client -df >/dev/null 2>&1
+    [ "$(kv "$GAME" wallpaper)" = live ] && have praxis-wallpaper && praxis-wallpaper restore >/dev/null 2>&1
+    if [ -e "$AI_GAME" ]; then
+        rm -f "$AI_GAME"
+        [ -e "$AI_OFF" ] || ai_start
+    fi
+    rm -f "$GAME"
+    note "Game mode off" "Everything is back the way it was." input-gaming
+}
+game() {
+    case "${1:-status}" in
+        on) game_on ;;
+        off) game_off ;;
+        toggle) if [ -f "$GAME" ]; then game_off; else game_on; fi ;;
+        status) [ -f "$GAME" ] && echo on || echo off ;;
+        *) echo "usage: praxis-mode game on|off|toggle|status" >&2; return 2 ;;
+    esac
+}
+
+# ── Battery saver ───────────────────────────────────────────────────────────
+internal_panel() {    # name of the built-in screen, if Hyprland drives one
+    hyprctl -j monitors all 2>/dev/null | jq -r '[.[] | select(.name | test("^(eDP|LVDS|DSI)"))][0].name // empty'
+}
+set_refresh() {       # <output> low|high|<Hz> — same resolution, position and scale
+    local out=$1 want=$2 info w h x y s mode
+    info=$(hyprctl -j monitors 2>/dev/null | jq -c --arg o "$out" '.[] | select(.name == $o)')
+    [ -n "$info" ] || return 0
+    w=$(jq -r .width <<<"$info"); h=$(jq -r .height <<<"$info")
+    x=$(jq -r .x <<<"$info");     y=$(jq -r .y <<<"$info"); s=$(jq -r .scale <<<"$info")
+    # candidate rates at the current resolution, e.g. "120.00" "60.00"
+    mode=$(jq -r --arg r "${w}x${h}@" '.availableModes[] | select(startswith($r)) | ltrimstr($r) | rtrimstr("Hz")' <<<"$info" |
+        sort -n | case "$want" in
+            low)  awk '$1 >= 59 && $1 <= 61 {print; f=1; exit} $1 >= 47 && !l {l=$1} END {if (!f && l) print l}' ;;
+            high) tail -n1 ;;
+            *)    awk -v w="$want" 'function abs(x) {return x < 0 ? -x : x} {d = abs($1 - w); if (best == "" || d < bd) {best = $1; bd = d}} END {print best}' ;;
+        esac)
+    [ -n "$mode" ] || return 0
+    hyprctl eval "hl.monitor({ output = \"$out\", mode = \"${w}x${h}@${mode}\", position = \"${x}x${y}\", scale = $s })" >/dev/null
+}
+saver_on() {   # [auto]
+    [ -f "$SAVER" ] && return 0
+    local panel
+    {
+        echo "by=${1:-user}"
+        have powerprofilesctl && echo "profile=$(powerprofilesctl get 2>/dev/null)"
+        echo "wallpaper=$(sed -n 's/^mode=//p' "$CFG/wallpaper.state" 2>/dev/null | tail -n1)"
+    } >"$SAVER"
+    have powerprofilesctl && powerprofilesctl set power-saver 2>/dev/null
+    if hypr && panel=$(internal_panel) && [ -n "$panel" ]; then
+        echo "panel=$panel" >>"$SAVER"
+        echo "rate=$(hyprctl -j monitors | jq -r --arg o "$panel" '.[] | select(.name == $o) | .refreshRate')" >>"$SAVER"
+        set_refresh "$panel" low
+    fi
+    [ "$(kv "$SAVER" wallpaper)" = live ] && have praxis-wallpaper && praxis-wallpaper suspend >/dev/null 2>&1
+    curl -s -m 3 -X POST http://127.0.0.1:8778/api/unload >/dev/null 2>&1
+    [ "${1:-}" = auto ] || note "Battery saver on" "Power-saver profile, 60 Hz screen, still wallpaper." battery-low
+}
+saver_off() {   # [auto]
+    [ -f "$SAVER" ] || return 0
+    [ "${1:-}" = auto ] && [ "$(kv "$SAVER" by)" != auto ] && return 0     # the user turned it on: leave it
+    local p panel
+    p=$(kv "$SAVER" profile)
+    [ -n "$p" ] && [ "$p" != power-saver ] && have powerprofilesctl && powerprofilesctl set "$p" 2>/dev/null
+    panel=$(kv "$SAVER" panel)
+    [ -n "$panel" ] && hypr && set_refresh "$panel" "$(kv "$SAVER" rate | grep -E '^[0-9.]+$' || echo high)"   # the rate it had before
+    [ "$(kv "$SAVER" wallpaper)" = live ] && have praxis-wallpaper && praxis-wallpaper restore >/dev/null 2>&1
+    rm -f "$SAVER"
+    [ "${1:-}" = auto ] || note "Battery saver off" "" battery-full
+}
+on_battery() {
+    local s
+    for s in /sys/class/power_supply/*/; do
+        [ "$(cat "$s/type" 2>/dev/null)" = Mains ] && [ "$(cat "$s/online" 2>/dev/null)" = 1 ] && return 1
+    done
+    grep -qs Discharging /sys/class/power_supply/BAT*/status
+}
+saver() {
+    case "${1:-status}" in
+        on) saver_on ;;
+        off) saver_off ;;
+        toggle) if [ -f "$SAVER" ]; then saver_off; else saver_on; fi ;;
+        auto) if on_battery; then saver_on auto; else saver_off auto; fi ;;
+        status) [ -f "$SAVER" ] && echo on || echo off ;;
+        *) echo "usage: praxis-mode saver on|off|toggle|auto|status" >&2; return 2 ;;
+    esac
+}
+
+case "${1:-status}" in
+    ai)     shift; ai "$@" ;;
+    game)   shift; game "$@" ;;
+    saver)  shift; saver "$@" ;;
+    status)
+        printf '{"ai":"%s","game":%s,"saver":%s}\n' "$(ai_state)" \
+            "$([ -f "$GAME" ] && echo true || echo false)" "$([ -f "$SAVER" ] && echo true || echo false)" ;;
+    -h|--help|help) sed -n '3,22p' "$0" | sed 's/^# \?//' ;;
+    *) echo "praxis-mode: unknown mode '$1' (praxis-mode help)" >&2; exit 2 ;;
+esac

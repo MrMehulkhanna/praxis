@@ -1,0 +1,325 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AIOS</title>
+<style>
+:root {
+  --bg:    #0d0f13;
+  --bg2:   #13161c;
+  --bg3:   #1a1d24;
+  --fg:    #dde1ec;
+  --dim:   #6b717f;
+  --acc:   #7ca4f4;
+  --green: #4ade80;
+  --red:   #f87171;
+  --yel:   #fbbf24;
+  box-sizing: border-box;
+}
+*, *::before, *::after { box-sizing: inherit; margin: 0; padding: 0; }
+body {
+  font: 14px/1.6 "Inter", ui-sans-serif, system-ui;
+  background: var(--bg); color: var(--fg);
+  display: flex; flex-direction: column; height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* ── top bar ── */
+#bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #222530;
+  background: var(--bg2);
+  flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 10;
+}
+select, button {
+  background: var(--bg3); color: var(--fg);
+  border: 1px solid #2b2f3a; border-radius: 7px;
+  padding: 5px 10px; font: inherit; cursor: pointer;
+}
+button:hover { border-color: var(--acc); }
+#status-pill {
+  margin-left: auto; font-size: 11px; color: var(--dim);
+  display: flex; align-items: center; gap: 6px;
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--dim);
+  flex-shrink: 0;
+}
+.dot.live { background: var(--green); }
+.dot.warn { background: var(--yel); }
+
+/* ── panels layout ── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* sidebar */
+#side {
+  width: 200px; min-width: 200px;
+  background: var(--bg2);
+  border-right: 1px solid #222530;
+  display: flex; flex-direction: column;
+  overflow-y: auto; padding: 10px 0;
+}
+.side-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--dim); padding: 8px 12px 4px; text-transform: uppercase;
+}
+.side-item {
+  padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--dim);
+}
+.side-item:hover, .side-item.active { background: var(--bg3); color: var(--fg); }
+
+/* chat area */
+#chat-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#log {
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.msg { max-width: 780px; width: 100%; }
+.msg.user { align-self: flex-end; }
+.msg.assistant { align-self: flex-start; }
+
+.bubble {
+  padding: 10px 14px; border-radius: 12px;
+  white-space: pre-wrap; word-wrap: break-word; line-height: 1.55;
+}
+.user .bubble    { background: #1e2d52; color: var(--fg); }
+.assistant .bubble { background: var(--bg3); color: var(--fg); }
+
+.meta-line {
+  font-size: 10px; color: var(--dim); margin-top: 4px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.meta-line span { display: flex; align-items: center; gap: 3px; }
+
+/* token bar */
+.tok-bar { height: 3px; border-radius: 2px; background: #1e2040; margin-top: 5px; }
+.tok-fill { height: 100%; border-radius: 2px; background: var(--acc); transition: width .3s; }
+
+/* runs panel */
+#runs-wrap { display: none; flex: 1; overflow-y: auto; padding: 12px; }
+#runs-wrap.visible { display: block; }
+.run-row {
+  font-size: 12px; border-bottom: 1px solid #1e212a;
+  padding: 6px 0; color: var(--dim); display: flex; gap: 12px; flex-wrap: wrap;
+}
+.run-row span { color: var(--fg); }
+
+/* input row */
+#input-row {
+  display: flex; gap: 8px; padding: 10px 12px;
+  border-top: 1px solid #222530; background: var(--bg2);
+}
+#inp {
+  flex: 1; background: var(--bg3); color: var(--fg);
+  border: 1px solid #2b2f3a; border-radius: 9px;
+  padding: 10px 14px; font: inherit; resize: none;
+  line-height: 1.5; max-height: 140px; overflow-y: auto;
+}
+#inp:focus { outline: none; border-color: var(--acc); }
+#send-btn { padding: 10px 18px; }
+</style>
+
+<div id="bar">
+  <select id="model-sel" title="Active model"></select>
+  <button id="unload-btn" title="Free VRAM now">⬡ Free VRAM</button>
+  <button id="runs-btn"   title="Show run ledger">📋 Ledger</button>
+  <div id="status-pill">
+    <div class="dot" id="dot"></div>
+    <span id="status-txt">connecting…</span>
+  </div>
+</div>
+
+<div id="main">
+  <nav id="side">
+    <div class="side-label">Conversations</div>
+    <div class="side-item active" id="conv-default">Default</div>
+  </nav>
+
+  <div id="chat-wrap">
+    <div id="log"></div>
+    <div id="runs-wrap"></div>
+    <div id="input-row">
+      <textarea id="inp" rows="1" placeholder="Ask anything — stays on your machine"></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── state ── */
+const CONV_ID = 'c' + Date.now();
+let SELECTED_MODEL = '';
+let streaming = false;
+
+/* ── DOM refs ── */
+const log       = document.getElementById('log');
+const inp       = document.getElementById('inp');
+const dot       = document.getElementById('dot');
+const statusTxt = document.getElementById('status-txt');
+const modelSel  = document.getElementById('model-sel');
+const runsWrap  = document.getElementById('runs-wrap');
+
+/* ── status polling ── */
+async function refreshStatus() {
+  try {
+    const s = await (await fetch('/api/status')).json();
+    const loaded = s.loaded || 'unloaded';
+    dot.className = 'dot ' + (s.loaded ? 'live' : 'warn');
+    statusTxt.textContent =
+      `${loaded} · ${s.budget_mode} · ${s.objects} obj · ${s.db_mb} MB`;
+  } catch { dot.className = 'dot'; statusTxt.textContent = 'offline'; }
+}
+
+/* ── model list ── */
+async function loadModels() {
+  const models = await (await fetch('/api/models')).json();
+  const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+  const settings = await (await fetch('/api/settings')).json();
+  modelSel.innerHTML = `<option value="auto" ${settings.auto ? 'selected' : ''}>Auto · routes each request to the best available model</option>` + models.map(m => {
+    const meas = m.measured && m.measured.tok_per_s ? ` · ${m.measured.tok_per_s} tok/s` : '';
+    const why  = !m.available ? (m.paid ? ' — needs key' : ' — not downloaded') : '';
+    return `<option value="${m.id}" ${!m.available ? 'disabled' : ''} ${m.selected && !settings.auto ? 'selected' : ''}>`
+      + `${m.label} · ${m.role} · ${stars(m.quality)} · ${m.speed}${meas} · ${m.vram}${why}</option>`;
+  }).join('');
+  SELECTED_MODEL = modelSel.value;
+}
+// Selecting here selects everywhere: shell, CLI and voice all read the same setting.
+modelSel.addEventListener('change', async () => {
+  SELECTED_MODEL = modelSel.value;
+  await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'},
+                                 body: JSON.stringify({ selected_model: SELECTED_MODEL }) });
+  refreshStatus();
+});
+
+/* ── message helpers ── */
+function addMsg(role, text) {
+  const wrap   = document.createElement('div');
+  wrap.className = `msg ${role}`;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  wrap.appendChild(bubble);
+  log.appendChild(wrap);
+  log.scrollTop = log.scrollHeight;
+  return { wrap, bubble };
+}
+
+function addMeta(wrap, meta) {
+  const pct = meta.budget > 0
+    ? Math.round(meta.context_tokens / meta.budget * 100) : 0;
+  const ml = document.createElement('div');
+  ml.className = 'meta-line';
+  ml.innerHTML =
+    `<span>🧠 ${meta.context_tokens}/${meta.budget} tok (${pct}%)</span>` +
+    `<span>📎 ${meta.retrieved} retrieved</span>` +
+    `<span>⚡ ${meta.model}</span>`;
+  const bar  = document.createElement('div'); bar.className = 'tok-bar';
+  const fill = document.createElement('div'); fill.className = 'tok-fill';
+  fill.style.width = Math.min(100, pct) + '%';
+  bar.appendChild(fill);
+  wrap.appendChild(ml);
+  wrap.appendChild(bar);
+}
+
+/* ── send ── */
+async function send() {
+  const q = inp.value.trim();
+  if (!q || streaming) return;
+  inp.value = ''; inp.style.height = '';
+  streaming = true;
+
+  addMsg('user', q);
+  const { wrap, bubble } = addMsg('assistant', '▋');
+  bubble.textContent = '▋';
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: q,
+        conversation_id: CONV_ID,
+        model: SELECTED_MODEL,
+      }),
+    });
+    const reader = resp.body.getReader();
+    const dec    = new TextDecoder();
+    let   buf    = '';
+    let   first  = true;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+
+      for (const part of parts) {
+        const evMatch   = part.match(/^event: (.+)$/m);
+        const dataMatch = part.match(/^data: (.*)$/m);
+        if (!dataMatch) continue;
+        const ev   = evMatch ? evMatch[1] : 'token';
+        const data = JSON.parse(dataMatch[1]);
+
+        if (ev === 'meta') {
+          addMeta(wrap, data);
+        } else if (ev === 'error') {
+          bubble.textContent = '⚠ ' + data;
+          bubble.style.color = 'var(--red)';
+        } else if (ev !== 'done') {
+          if (first) { bubble.textContent = ''; first = false; }
+          bubble.textContent += data;
+          log.scrollTop = log.scrollHeight;
+        }
+      }
+    }
+  } catch (e) {
+    bubble.textContent = '⚠ Network error: ' + e.message;
+  }
+
+  if (bubble.textContent === '▋') bubble.textContent = '(no output)';
+  streaming = false;
+  refreshStatus();
+}
+
+/* ── run ledger ── */
+async function toggleRuns() {
+  const visible = runsWrap.classList.toggle('visible');
+  if (!visible) return;
+  const runs = await (await fetch('/api/runs')).json();
+  runsWrap.innerHTML = `<div style="font-size:11px;color:var(--dim);padding:4px 0 8px">
+    Run ledger — last ${runs.length} calls</div>` +
+    runs.map(r =>
+      `<div class="run-row">
+        <span>${new Date(r.created_at*1000).toLocaleTimeString()}</span>
+        <span>${r.model}</span>
+        <span>in:${r.in_tok} out:${r.out_tok}</span>
+        <span>${r.ms} ms</span>
+        <span style="color:${r.status==='ok'?'var(--green)':'var(--red)'}">
+          ${r.status}</span>
+      </div>`
+    ).join('');
+}
+
+/* ── auto-resize textarea ── */
+inp.addEventListener('input', () => {
+  inp.style.height = '';
+  inp.style.height = Math.min(140, inp.scrollHeight) + 'px';
+});
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+/* ── wire buttons ── */
+document.getElementById('send-btn').onclick  = send;
+document.getElementById('unload-btn').onclick = () =>
+  fetch('/api/unload', { method: 'POST' }).then(refreshStatus);
+document.getElementById('runs-btn').onclick  = toggleRuns;
+
+/* ── init ── */
+loadModels();
+refreshStatus();
+setInterval(refreshStatus, 5000);
+</script>

@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""praxis-dictate — type with your voice, into whatever window has focus.
+
+    praxis-dictate              start listening; run it again to stop and type   (Super+H)
+    praxis-dictate --command    say what you want done; the matching shell command
+                                is typed for you to check — never run    (Super+Shift+H)
+    praxis-dictate cancel       stop listening, type nothing
+    praxis-dictate status       idle | listening | working
+
+While typing text you can say "new line", "new paragraph", and end with
+"press enter" to send it. Speech is turned into text on this computer
+(Whisper, through the AIOS backend when it runs, otherwise directly); the
+command helper needs the AI switched on. Listening stops by itself after
+PRAXIS_DICTATE_MAX seconds (default 60).
+"""
+import json, os, re, shutil, signal, subprocess, sys, time, urllib.request
+
+RUN = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "praxis")
+STATE, PIDF, WAV = (os.path.join(RUN, n) for n in ("dictate.state", "dictate.pid", "dictate.wav"))
+API = "http://127.0.0.1:8778"
+VENV_PY = os.path.expanduser("~/aios/.venv/bin/python3")
+MAX_S = int(os.environ.get("PRAXIS_DICTATE_MAX", "60"))
+WHISPER = os.environ.get("AIOS_WHISPER_MODEL", "base")
+
+
+def note(title, body="", icon="audio-input-microphone"):
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "-a", "Voice typing", "-i", icon, "-t", "3500", title, body],
+                       stderr=subprocess.DEVNULL)
+
+
+def set_state(state, mode="text"):
+    os.makedirs(RUN, exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(f"state={state}\nmode={mode}\nsince={int(time.time())}\n")
+    os.replace(tmp, STATE)
+
+
+def read_state():
+    try:
+        kv = dict(l.split("=", 1) for l in open(STATE).read().split("\n") if "=" in l)
+    except OSError:
+        return {"state": "idle", "mode": "text"}
+    if kv.get("state") == "listening" and not recorder_pid():
+        kv["state"] = "idle"                       # the recorder died (crash, logout)
+    if kv.get("state") == "working" and time.time() - int(kv.get("since", 0)) > 180:
+        kv["state"] = "idle"                       # a run that never finished
+    return kv
+
+
+def recorder_pid():
+    try:
+        pid = int(open(PIDF).read().split()[0])
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def start(mode):
+    if not shutil.which("pw-record"):
+        note("Voice typing needs PipeWire", "pw-record is missing (pipewire package).", "dialog-error")
+        return 1
+    os.makedirs(RUN, exist_ok=True)
+    try:
+        os.remove(WAV)
+    except FileNotFoundError:
+        pass
+    rec = subprocess.Popen(["pw-record", "--channels=1", "--rate=16000", WAV],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    # a forgotten dictation ends by itself
+    guard = subprocess.Popen(["bash", "-c", f"sleep {MAX_S}; exec {sys.argv[0]!r} stop"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    with open(PIDF, "w") as f:
+        f.write(f"{rec.pid} {guard.pid}\n")
+    set_state("listening", mode)
+    return 0
+
+
+def stop_recorder():
+    try:
+        pids = [int(p) for p in open(PIDF).read().split()]
+    except (OSError, ValueError):
+        pids = []
+    for i, pid in enumerate(pids):
+        try:
+            if i == 0:
+                os.kill(pid, signal.SIGINT)        # pw-record finishes the file on SIGINT
+            else:
+                os.killpg(pid, signal.SIGTERM)     # the time-limit guard: bash and its sleep
+        except (ProcessLookupError, PermissionError):
+            pass
+    if pids:
+        for _ in range(30):                        # wait for the WAV to be closed
+            try:
+                os.kill(pids[0], 0)
+                time.sleep(0.05)
+            except ProcessLookupError:
+                break
+    try:
+        os.remove(PIDF)
+    except FileNotFoundError:
+        pass
+
+
+def transcribe():
+    if not os.path.exists(WAV) or os.path.getsize(WAV) < 16000:      # < 0.5 s of audio
+        return ""
+    try:                                           # warm Whisper inside the backend
+        req = urllib.request.Request(f"{API}/api/voice/transcribe", data=json.dumps({"path": WAV}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            return json.loads(r.read()).get("text", "").strip()
+    except Exception:
+        pass
+    if os.path.exists(VENV_PY):                    # backend off: run Whisper directly
+        code = ("import sys\nfrom faster_whisper import WhisperModel\n"
+                f"m = WhisperModel({WHISPER!r}, device='cpu', compute_type='int8')\n"
+                "s, _ = m.transcribe(sys.argv[1], vad_filter=True, beam_size=1)\n"
+                "print(' '.join(x.text.strip() for x in s).strip())")
+        r = subprocess.run([VENV_PY, "-c", code, WAV], capture_output=True, text=True, timeout=300)
+        if r.returncode == 0:
+            return r.stdout.strip()
+    raise RuntimeError("no speech recognition available — run aios-setup once to install it")
+
+
+# Whisper's stock phrases for silence or noise
+NOISE = {"", "you", "thank you", "thank you.", "thanks for watching!", "thanks for watching.",
+         "bye.", ".", "[blank_audio]", "(silence)"}
+
+
+def shape(text):
+    """Spoken layout commands → characters. Returns (text, press_enter)."""
+    t = text.strip()
+    enter = False
+    m = re.search(r"[\s,.]*\b(?:and\s+)?(?:press|hit)\s+enter[\s.!]*$", t, re.I)
+    if m:
+        t, enter = t[:m.start()].rstrip(" ,"), True
+    # "…files. New line. Then…" → "…files.\nThen…": keep the sentence's own full stop
+    t = re.sub(r",?\s*\bnew paragraph\b[.,!]?\s*", "\n\n", t, flags=re.I)
+    t = re.sub(r",?\s*\bnew ?line\b[.,!]?\s*", "\n", t, flags=re.I)
+    return t, enter
+
+
+def ask_command(spoken):
+    body = {
+        "model": "auto", "stream": False, "max_tokens": 160, "temperature": 0.1,
+        "messages": [
+            {"role": "system", "content":
+                "Turn the user's spoken request into ONE shell command for Arch Linux (bash). "
+                "Reply with the command only: no explanation, no code fences, no comments. "
+                "Prefer safe, read-only commands; never add sudo unless the request needs root."},
+            {"role": "user", "content": spoken},
+        ],
+    }
+    req = urllib.request.Request(f"{API}/v1/chat/completions", data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180) as r:
+        out = json.loads(r.read())["choices"][0]["message"]["content"]
+    out = re.sub(r"<think>.*?</think>", "", out, flags=re.S)
+    lines = [l.strip() for l in out.replace("```bash", "").replace("```sh", "").replace("```", "").splitlines()]
+    cmd = next((l for l in lines if l and not l.startswith("#")), "")
+    return cmd.strip("`").strip()
+
+
+def type_text(text, enter=False):
+    if not shutil.which("wtype"):
+        raise RuntimeError("wtype is missing (pacman -S wtype)")
+    time.sleep(0.25)                               # let go of Super first, or it combines with the letters
+    parts = text.split("\n")
+    for i, part in enumerate(parts):
+        if part:
+            subprocess.run(["wtype", "--", part], check=True)
+        if i < len(parts) - 1:
+            subprocess.run(["wtype", "-k", "Return"], check=True)
+    if enter:
+        subprocess.run(["wtype", "-k", "Return"], check=True)
+
+
+def finish(mode):
+    stop_recorder()
+    set_state("working", mode)
+    try:
+        heard = transcribe()
+        if heard.strip().lower() in NOISE:
+            note("Didn't catch that", "Nothing was typed. Press Super+H and speak a little louder or closer.")
+            return 0
+        if mode == "command":
+            try:
+                cmd = ask_command(heard)
+            except Exception:
+                note("The AI is off", f"Heard: “{heard}”. Turn the AI on in Control Center to get commands.", "dialog-warning")
+                return 1
+            if not cmd:
+                note("No command for that", f"Heard: “{heard}”")
+                return 1
+            type_text(cmd)                         # typed, never run: you check it and press Enter
+            return 0
+        text, enter = shape(heard)
+        type_text(text, enter)
+        return 0
+    except Exception as e:
+        note("Voice typing failed", str(e), "dialog-error")
+        return 1
+    finally:
+        set_state("idle", mode)
+        try:
+            os.remove(WAV)
+        except FileNotFoundError:
+            pass
+
+
+def main(argv):
+    args = [a for a in argv if not a.startswith("-")]
+    verb = args[0] if args else "toggle"
+    mode = "command" if "--command" in argv or "-c" in argv else "text"
+    st = read_state()
+    if verb in ("-h", "--help", "help") or "--help" in argv or "-h" in argv:
+        print(__doc__.strip())
+        return 0
+    if verb == "status":
+        print(st["state"])
+        return 0
+    if verb == "cancel":
+        stop_recorder()
+        set_state("idle", st.get("mode", "text"))
+        return 0
+    if verb == "stop":
+        return finish(st.get("mode", mode)) if st["state"] == "listening" else 0
+    if verb in ("toggle", "start"):
+        if st["state"] == "listening":
+            return finish(st.get("mode", mode)) if verb == "toggle" else 0
+        if st["state"] == "working":
+            return 0                               # still typing the last one
+        return start(mode)
+    print(__doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

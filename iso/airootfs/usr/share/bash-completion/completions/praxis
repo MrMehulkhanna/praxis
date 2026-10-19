@@ -1,0 +1,29 @@
+# bash completion for the `praxis` meta-command.
+# Subcommands are discovered from praxis-* binaries on PATH, so this also
+# picks up any third-party praxis-* tools that get installed later.
+
+_praxis() {
+    local cur prev subs
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # Top level: list subcommand stems
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        # discover every `praxis-<name>` on PATH; strip the prefix once
+        subs=$(compgen -c praxis- | sed 's/^praxis-//' | sort -u)
+        COMPREPLY=( $(compgen -W "$subs help" -- "$cur") )
+        return 0
+    fi
+
+    # Delegate deeper completions to the underlying binary when it advertises
+    # one. Fall back to plain filename completion otherwise.
+    local sub="${COMP_WORDS[1]}"
+    if declare -F "_praxis-$sub" >/dev/null 2>&1; then
+        "_praxis-$sub"
+    else
+        COMPREPLY=( $(compgen -f -- "$cur") )
+    fi
+}
+
+complete -F _praxis praxis

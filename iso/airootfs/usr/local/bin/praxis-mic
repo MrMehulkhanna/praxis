@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# praxis-mic — toggle / mute / unmute the default source; notifies.
+set -uo pipefail
+
+command -v wpctl >/dev/null || { echo "install wireplumber" >&2; exit 1; }
+
+case "${1:-toggle}" in
+    toggle) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
+    mute)   wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1 ;;
+    unmute) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0 ;;
+    *) echo "usage: praxis-mic [toggle|mute|unmute]" >&2; exit 2 ;;
+esac
+
+state=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@)   # e.g. "Volume: 0.75 [MUTED]"
+if echo "$state" | grep -q MUTED; then icon=""; lbl="mic muted"; else icon=""; lbl="mic on"; fi
+command -v notify-send >/dev/null && \
+    notify-send -a "Praxis" -t 900 -h "string:x-canonical-private-synchronous:mic" "$icon Microphone" "$lbl"

@@ -1,0 +1,71 @@
+{
+  "_readme": [
+    "Cloud providers. Each is DISABLED until you (1) put the key in ~/aios/config/aios.env,",
+    "(2) set \"enabled\": true here, and (3) leave ZERO_COST budget mode (Settings → AI or `ai config budget FREE_ONLINE`).",
+    "\"free\": true marks models that had a no-cost tier when this file was written — tiers change; the",
+    "system detects 401/429 responses and backs off, it never bypasses limits. Costs are per 1M tokens (USD)",
+    "and are only estimates; \"quota\" is reported as unknown because none of these APIs expose it."
+  ],
+  "providers": [
+    {
+      "id": "groq", "name": "Groq", "enabled": false,
+      "base_url": "https://api.groq.com/openai/v1", "api_key_env": "GROQ_API_KEY",
+      "models": [
+        { "id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B", "role": "Quality", "quality": 4, "speed": "fast", "ctx": 131072, "free": true, "cost_in": 0, "cost_out": 0 },
+        { "id": "llama-3.1-8b-instant",    "label": "Llama 3.1 8B",  "role": "Daily",   "quality": 3, "speed": "fast", "ctx": 131072, "free": true, "cost_in": 0, "cost_out": 0 }
+      ]
+    },
+    {
+      "id": "openrouter", "name": "OpenRouter", "enabled": false,
+      "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY",
+      "models": [
+        { "id": "qwen/qwen3-coder:free", "label": "Qwen3 Coder (free)", "role": "Code", "quality": 4, "speed": "medium", "ctx": 262144, "free": true, "cost_in": 0, "cost_out": 0 },
+        { "id": "deepseek/deepseek-r1:free", "label": "DeepSeek R1 (free)", "role": "Quality", "quality": 4, "speed": "slow", "ctx": 163840, "free": true, "cost_in": 0, "cost_out": 0 }
+      ]
+    },
+    {
+      "id": "gemini", "name": "Google Gemini", "enabled": false,
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "api_key_env": "GOOGLE_API_KEY",
+      "models": [
+        { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "role": "Daily", "quality": 4, "speed": "fast", "ctx": 1048576, "free": true, "cost_in": 0, "cost_out": 0 },
+        { "id": "gemini-2.5-pro",   "label": "Gemini 2.5 Pro",   "role": "Quality", "quality": 5, "speed": "medium", "ctx": 1048576, "free": false, "cost_in": 1.25, "cost_out": 10 }
+      ]
+    },
+    {
+      "id": "mistral", "name": "Mistral", "enabled": false,
+      "base_url": "https://api.mistral.ai/v1", "api_key_env": "MISTRAL_API_KEY",
+      "models": [
+        { "id": "codestral-latest", "label": "Codestral", "role": "Code", "quality": 4, "speed": "fast", "ctx": 256000, "free": true, "cost_in": 0, "cost_out": 0 },
+        { "id": "mistral-small-latest", "label": "Mistral Small", "role": "Daily", "quality": 3, "speed": "fast", "ctx": 128000, "free": true, "cost_in": 0, "cost_out": 0 }
+      ]
+    },
+    {
+      "id": "cerebras", "name": "Cerebras", "enabled": false,
+      "base_url": "https://api.cerebras.ai/v1", "api_key_env": "CEREBRAS_API_KEY",
+      "models": [
+        { "id": "llama-3.3-70b", "label": "Llama 3.3 70B (Cerebras)", "role": "Quality", "quality": 4, "speed": "fast", "ctx": 65536, "free": true, "cost_in": 0, "cost_out": 0 }
+      ]
+    },
+    {
+      "id": "github", "name": "GitHub Models", "enabled": false,
+      "base_url": "https://models.inference.ai.azure.com", "api_key_env": "GITHUB_TOKEN",
+      "models": [
+        { "id": "gpt-4o-mini", "label": "GPT-4o mini (GitHub)", "role": "Daily", "quality": 4, "speed": "fast", "ctx": 128000, "free": true, "cost_in": 0, "cost_out": 0 }
+      ]
+    },
+    {
+      "id": "anthropic", "name": "Anthropic", "enabled": false,
+      "base_url": "https://api.anthropic.com/v1", "api_key_env": "ANTHROPIC_API_KEY",
+      "models": [
+        { "id": "claude-sonnet-5", "label": "Claude Sonnet 5", "role": "Quality", "quality": 5, "speed": "fast", "ctx": 200000, "free": false, "cost_in": 3, "cost_out": 15 }
+      ]
+    },
+    {
+      "id": "openai", "name": "OpenAI", "enabled": false,
+      "base_url": "https://api.openai.com/v1", "api_key_env": "OPENAI_API_KEY",
+      "models": [
+        { "id": "gpt-4.1-mini", "label": "GPT-4.1 mini", "role": "Daily", "quality": 4, "speed": "fast", "ctx": 1000000, "free": false, "cost_in": 0.4, "cost_out": 1.6 }
+      ]
+    }
+  ]
+}

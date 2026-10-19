@@ -1,0 +1,5 @@
+#!/bin/sh
+# Installing into one existing partition is now a choice inside praxis-install
+# ("In one existing partition I choose"), which also checks the partition first.
+echo "[praxis] installing into an existing partition is part of 'praxis-install' now — starting it…"
+exec /usr/local/bin/praxis-install "$@"

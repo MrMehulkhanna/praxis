@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# aios-setup — first-run setup for AIOS, the local AI backend inside Praxis.
+# Run as the desktop user (needs internet). Safe to re-run: every step checks
+# what already exists and only does the missing work.
+#
+#   1. copy the backend from /opt/aios into ~/aios (writable working copy)
+#   2. write config/aios.env from the example (ZERO_COST: nothing leaves the machine)
+#   3. create the Python venv and install requirements
+#   4. download the text-to-speech voice (piper, en_US "amy")
+#   5. install + start the aios.service user unit
+#   6. optionally download a language model sized for this machine
+set -euo pipefail
+
+SRC=/opt/aios
+DEST="$HOME/aios"
+VOICE_DIR="$DEST/models/piper-amy"
+step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+
+[ -d "$SRC" ] || { echo "!! $SRC not found — this is not a Praxis system." >&2; exit 1; }
+
+step "1/6  Backend working copy"
+if [ -d "$DEST" ]; then
+    echo "   $DEST exists — keeping it"
+else
+    cp -a "$SRC" "$DEST"
+    echo "   copied to $DEST"
+fi
+
+step "2/6  Configuration"
+if [ ! -f "$DEST/config/aios.env" ] && [ -f "$DEST/config/aios.env.example" ]; then
+    install -m600 "$DEST/config/aios.env.example" "$DEST/config/aios.env"
+    echo "   wrote config/aios.env (ZERO_COST mode, no API keys)"
+else
+    echo "   config/aios.env already present"
+fi
+
+step "3/6  Python environment"
+[ -x "$DEST/.venv/bin/python" ] || python -m venv "$DEST/.venv"
+"$DEST/.venv/bin/pip" install --quiet --upgrade pip
+REQ="$DEST/requirements.txt"
+[ -f "$REQ" ] || REQ=/usr/local/share/aios/aios-requirements.txt
+"$DEST/.venv/bin/pip" install --quiet -r "$REQ"
+echo "   dependencies installed from $REQ"
+
+step "4/6  Voice (text-to-speech)"
+if compgen -G "$VOICE_DIR/**/*.onnx" >/dev/null || find "$VOICE_DIR" -name '*.onnx' 2>/dev/null | grep -q .; then
+    echo "   voice already installed"
+else
+    "$DEST/.venv/bin/huggingface-cli" download rhasspy/piper-voices \
+        en/en_US/amy/low/en_US-amy-low.onnx en/en_US/amy/low/en_US-amy-low.onnx.json \
+        --local-dir "$VOICE_DIR" >/dev/null \
+        && echo "   downloaded en_US-amy-low into $VOICE_DIR" \
+        || echo "   voice download failed — voice replies stay text-only until you re-run aios-setup"
+fi
+
+step "5/6  Background service"
+UNIT="$HOME/.config/systemd/user/aios.service"
+if [ ! -f "$UNIT" ] && [ -f "$DEST/config/systemd/aios.service" ]; then
+    install -Dm644 "$DEST/config/systemd/aios.service" "$UNIT"
+fi
+systemctl --user daemon-reload
+systemctl --user enable --now aios.service && echo "   aios.service running on 127.0.0.1:8778"
+
+step "6/6  Language model (optional)"
+if command -v praxis-models >/dev/null; then
+    praxis-models recommend || true
+    echo
+    read -rp "Model id to download now (Enter to skip): " model
+    [ -n "${model:-}" ] && praxis-models download "$model"
+else
+    echo "   run 'praxis-models recommend' later to pick a model for this hardware"
+fi
+
+touch "$HOME/.aios-setup-done"
+printf '\n\033[1;32mAIOS is ready.\033[0m  Try:  ai "hello"   ·   SUPER+I for the AI panel\n'

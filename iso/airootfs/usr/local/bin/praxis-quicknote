@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""
+praxis-quicknote — jot a fast note into ~/aios/notes/ with metadata.
+
+Modes:
+    praxis-quicknote                          rofi input prompt, one line
+    praxis-quicknote "the note text"          shell-arg form
+    praxis-quicknote --edit                   open today's file in $EDITOR
+    praxis-quicknote --list                   list recent notes (newest first)
+    praxis-quicknote --search "keyword"       grep across all notes
+    praxis-quicknote --ingest                 push notes into AIOS RAG index
+
+Notes live in $XDG_DATA_HOME/praxis/notes/YYYY-MM-DD.md (override with
+PRAXIS_NOTES_DIR) — one file per day, so the RAG ingester can pull whole
+days at once and query later with `ai rag q`. They are deliberately kept
+outside the ~/aios source tree so personal notes can never be committed.
+"""
+import argparse, datetime, os, pathlib, shutil, subprocess, sys
+
+HOME = pathlib.Path.home()
+_XDG_DATA = pathlib.Path(os.environ.get("XDG_DATA_HOME", HOME / ".local" / "share"))
+NOTES = pathlib.Path(os.environ.get("PRAXIS_NOTES_DIR", _XDG_DATA / "praxis" / "notes"))
+NOTES.mkdir(parents=True, exist_ok=True)
+
+# One-time migration from the old in-repo location (~/aios/notes).
+_LEGACY = HOME / "aios" / "notes"
+if _LEGACY.is_dir():
+    for _f in _LEGACY.glob("*.md"):
+        _dst = NOTES / _f.name
+        if _dst.exists():
+            _dst.write_text(_dst.read_text() + "\n" + _f.read_text())
+            _f.unlink()
+        else:
+            shutil.move(str(_f), _dst)
+    try:
+        _LEGACY.rmdir()
+    except OSError:
+        pass
+
+
+def today_file() -> pathlib.Path:
+    return NOTES / (datetime.date.today().isoformat() + ".md")
+
+
+def append(text: str) -> pathlib.Path:
+    f = today_file()
+    header = "# " + datetime.date.today().isoformat() + "\n\n" if not f.exists() else ""
+    stamp = datetime.datetime.now().strftime("%H:%M")
+    with f.open("a") as fp:
+        fp.write(f"{header}- **{stamp}** — {text.strip()}\n")
+    return f
+
+
+def rofi_input(prompt: str = "note") -> str | None:
+    try:
+        r = subprocess.run(
+            ["rofi", "-dmenu", "-p", prompt, "-lines", "0", "-l", "0"],
+            input="", capture_output=True, text=True, timeout=120,
+        )
+        s = r.stdout.strip()
+        return s or None
+    except FileNotFoundError:
+        # fallback: plain terminal prompt
+        try:
+            return input(f"{prompt}: ").strip() or None
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+
+def list_notes(limit: int = 20) -> None:
+    files = sorted(NOTES.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    for f in files:
+        sz = f.stat().st_size
+        lines = sum(1 for _ in f.open()) if sz else 0
+        print(f"{f.name:<14} {lines:>3} entries  {sz:>5} B")
+
+
+def search(needle: str) -> None:
+    hits = 0
+    for f in sorted(NOTES.glob("*.md")):
+        for i, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            if needle.lower() in line.lower():
+                print(f"{f.name}:{i}: {line}")
+                hits += 1
+    if hits == 0:
+        print("no matches")
+
+
+def ingest() -> None:
+    # reuse the existing ai rag CLI, which posts to /api/rag/add.
+    ai = HOME / "aios" / "ai"
+    if not ai.exists():
+        print("ai CLI not found at " + str(ai), file=sys.stderr); sys.exit(1)
+    for f in sorted(NOTES.glob("*.md")):
+        subprocess.run([str(ai), "rag", "add", str(f)])
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(prog="praxis-quicknote", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("text", nargs="*", help="note text (else opens a rofi prompt)")
+    p.add_argument("--edit",   action="store_true", help="open today's file in $EDITOR")
+    p.add_argument("--list",   action="store_true", help="list recent daily files")
+    p.add_argument("--search", metavar="Q", help="grep across all notes")
+    p.add_argument("--ingest", action="store_true", help="push notes into AIOS RAG index")
+    args = p.parse_args()
+
+    if args.list:   list_notes(); return
+    if args.search: search(args.search); return
+    if args.ingest: ingest(); return
+    if args.edit:
+        editor = os.environ.get("EDITOR", "vim")
+        subprocess.run([editor, str(today_file())]); return
+
+    text = " ".join(args.text).strip()
+    if not text:
+        text = rofi_input() or ""
+    if not text:
+        return
+    path = append(text)
+    print(f"→ {path}")
+
+
+if __name__ == "__main__":
+    main()

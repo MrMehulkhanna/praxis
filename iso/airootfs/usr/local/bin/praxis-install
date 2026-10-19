@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-install — the text installer for Praxis Linux.
+#
+#  Asks a few questions, shows exactly what will change, then hands the plan
+#  to praxis-install-engine (the same engine the graphical installer uses).
+#  Where Praxis can go, on the disk you pick:
+#    • next to Windows — Windows' drive is made smaller, its files stay
+#    • in free (unallocated) space that is already there
+#    • in one existing partition you choose (it is formatted)
+#    • on the whole disk (everything on it is erased)
+# ============================================================================
+set -uo pipefail
+B=$'\033[1m' C=$'\033[36m' G=$'\033[32m' Y=$'\033[33m' R=$'\033[31m' D=$'\033[2m' X=$'\033[0m'
+die()  { echo -e "\n${R}!! $*${X}" >&2; exit 1; }
+head() { echo -e "\n${B}${C}── $* ${X}"; }
+ask()  { local p=$1 d=${2-} v; read -rp "  $p${d:+ ${D}[$d]${X}}: " v; echo "${v:-$d}"; }
+pick() {   # pick "<question>" option… → prints the chosen index (0-based); menu on stderr
+    local q=$1 i n
+    shift; n=$#
+    for ((i = 1; i <= n; i++)); do echo "   ${B}$i${X}) ${!i}" >&2; done
+    while :; do
+        read -rp "  $q [1-$n]: " i
+        [[ "$i" =~ ^[0-9]+$ ]] && [ "$i" -ge 1 ] && [ "$i" -le "$n" ] && { echo $((i - 1)); return; }
+    done
+}
+gib() { echo $(( ($1 + 512) / 1024 )); }
+
+echo -e "
+  ${B}Praxis Linux — installer${X}
+  ${D}Arch-based · local-first AI · your files stay yours${X}"
+[ "$(id -u)" -eq 0 ] || die "Run as root:  sudo praxis-install"
+[ -d /sys/firmware/efi ] || die "This PC started the installer in legacy BIOS mode. Praxis needs UEFI: turn off CSM / Legacy boot in the firmware settings."
+command -v praxis-install-engine >/dev/null || die "praxis-install-engine is missing from this image"
+command -v jq >/dev/null || die "jq is missing from this image"
+
+# ── 1. internet ─────────────────────────────────────────────────────────────
+head "1/7  Internet"
+online() { timeout 5 curl -sI https://archlinux.org >/dev/null 2>&1; }
+if online; then
+    echo "  ${G}✓${X} online"
+else
+    echo "  Not online yet — the installer downloads current packages."
+    systemctl is-active NetworkManager >/dev/null 2>&1 || systemctl start NetworkManager
+    read -rp "  Press Enter to pick a Wi-Fi network… " _
+    nmtui-connect || nmtui || true
+    for _ in 1 2 3 4 5; do online && break; sleep 2; done
+    online || die "Still offline. Connect first (Wi-Fi icon in the top bar, or nmtui), then run the installer again."
+    echo "  ${G}✓${X} online"
+fi
+
+# ── 2. disk ─────────────────────────────────────────────────────────────────
+head "2/7  Where to install"
+echo "  Looking at the disks…"
+PROBE=$(praxis-install-engine --probe) || die "could not read the disks"
+mapfile -t DISKS < <(jq -r '.disks[] | select(.is_live | not) | .path' <<<"$PROBE")
+[ "${#DISKS[@]}" -gt 0 ] || die "no disk to install to was found (the USB drive itself doesn't count)"
+LABELS=()
+for d in "${DISKS[@]}"; do
+    LABELS+=("$(jq -r --arg d "$d" '.disks[] | select(.path == $d) |
+        "\(.path)  \(.model)  \((.size_mib / 1024) | floor) GiB" + (if .has_windows then "  — has Windows" else "" end)' <<<"$PROBE")")
+done
+DI=$(pick "Disk" "${LABELS[@]}")
+DISK=${DISKS[$DI]}
+DJ=$(jq --arg d "$DISK" '.disks[] | select(.path == $d)' <<<"$PROBE")
+echo
+jq -r '.partitions[] | "     \(.path)  \((.size_mib / 1024 * 10 | floor) / 10) GiB  \(.fstype)  \(.role)\(if .os != "" then "  (" + .os + ")" else "" end)"' <<<"$DJ"
+jq -r '.free[] | select(.size_mib >= 1024) | "     unallocated  \((.size_mib / 1024) | floor) GiB"' <<<"$DJ"
+
+# ── 3. how ──────────────────────────────────────────────────────────────────
+head "3/7  How"
+MODES=() MLABELS=()
+add_mode() {   # id label
+    if [ "$(jq -r ".options.$1.possible" <<<"$DJ")" = true ]; then
+        MODES+=("$1"); MLABELS+=("$2")
+    else
+        echo "   ${D}·  $2 — not possible: $(jq -r ".options.$1.reason" <<<"$DJ")${X}"
+    fi
+}
+add_mode alongside "Next to Windows — make Windows' drive smaller (its files stay)"
+add_mode free      "In the free space ($(gib "$(jq -r '.options.free.size_mib' <<<"$DJ")") GiB unallocated) — nothing else changes"
+add_mode partition "In one existing partition I choose (it is formatted)"
+add_mode wipe      "Erase the whole disk and use all of it"
+[ "${#MODES[@]}" -gt 0 ] || die "Praxis can't be installed on this disk (see the reasons above)."
+MI=$(pick "Choice" "${MLABELS[@]}")
+MODE=${MODES[$MI]}
+SHRINK_PART="" PRAXIS_MIB="" TARGET_PART=""
+case "$MODE" in
+    alongside)
+        SHRINK_PART=$(jq -r '.options.alongside.part' <<<"$DJ")
+        MAXG=$(( $(jq -r '.options.alongside.max_praxis_mib' <<<"$DJ") / 1024 ))
+        DEFG=$(( $(jq -r '.options.alongside.default_praxis_mib' <<<"$DJ") / 1024 ))
+        CURG=$(( $(jq -r '.options.alongside.part_size_mib' <<<"$DJ") / 1024 ))
+        echo "  Windows' drive $SHRINK_PART is $CURG GiB. Praxis can have 30 – $MAXG GiB of it."
+        while :; do
+            G_=$(ask "GiB for Praxis" "$DEFG")
+            [[ "$G_" =~ ^[0-9]+$ ]] && [ "$G_" -ge 30 ] && [ "$G_" -le "$MAXG" ] && break
+            echo "  ${Y}between 30 and $MAXG, please${X}"
+        done
+        PRAXIS_MIB=$((G_ * 1024))
+        ;;
+    partition)
+        mapfile -t CANDS < <(jq -r '.options.partition.candidates[]' <<<"$DJ")
+        CL=()
+        for c in "${CANDS[@]}"; do
+            CL+=("$(jq -r --arg c "$c" '.partitions[] | select(.path == $c) | "\(.path)  \((.size_mib / 1024) | floor) GiB  \(.fstype) \(.label)"' <<<"$DJ")")
+        done
+        CI=$(pick "Partition to format" "${CL[@]}")
+        TARGET_PART=${CANDS[$CI]}
+        ;;
+esac
+
+head "4/7  File system"
+FI=$(pick "File system" "btrfs with snapshots — undo a bad update from the boot menu (recommended)" "ext4 — simple and classic")
+FS=$([ "$FI" = 0 ] && echo btrfs || echo ext4)
+
+# ── 5. you ──────────────────────────────────────────────────────────────────
+head "5/7  You"
+FULLNAME=$(ask "Your name" "")
+while [[ "$FULLNAME" == *[:,=]* ]]; do FULLNAME=$(ask "Your name (without : , =)" ""); done
+SUG=$(echo "${FULLNAME%% *}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'); SUG=${SUG:-user}
+while :; do
+    USERNAME=$(ask "User name" "$SUG")
+    [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && [ "$USERNAME" != root ] && [ "$USERNAME" != praxis ] && break
+    echo "  ${Y}lowercase letters, digits, - and _, starting with a letter${X}"
+done
+while :; do
+    read -rsp "  Password: " PW; echo
+    [ "${#PW}" -ge 4 ] || { echo "  ${Y}at least 4 characters${X}"; continue; }
+    read -rsp "  Again: " PW2; echo
+    [ "$PW" = "$PW2" ] && break || echo "  ${Y}they didn't match${X}"
+done
+PASSWORD_HASH=$(printf '%s' "$PW" | openssl passwd -6 -stdin); unset PW PW2
+while :; do
+    HOST=$(ask "Computer name" "${USERNAME}-praxis")
+    [[ "$HOST" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] && break
+    echo "  ${Y}letters, digits and -${X}"
+done
+TZ_GUESS=$(curl -fsm 4 https://ipapi.co/timezone 2>/dev/null || true)
+[ -f "/usr/share/zoneinfo/$TZ_GUESS" ] || TZ_GUESS=UTC
+while :; do
+    TIMEZONE=$(ask "Time zone" "$TZ_GUESS")
+    [ -f "/usr/share/zoneinfo/$TIMEZONE" ] && break
+    echo "  ${Y}unknown — e.g. Asia/Kolkata, Europe/Berlin, America/New_York${X}"
+done
+XKB=$(ask "Keyboard layout" "us")
+LOCALE=$(ask "Language/locale" "en_US.UTF-8")
+grep -q "^#\?${LOCALE//./\\.} " /etc/locale.gen || { echo "  ${Y}unknown locale — using en_US.UTF-8${X}"; LOCALE=en_US.UTF-8; }
+LI=$(pick "When the computer starts" "Ask for my password (lock screen)" "Log me in automatically" "Text login prompt")
+LOGIN=$(case "$LI" in 0) echo lock ;; 1) echo auto ;; *) echo password ;; esac)
+
+# ── 6. apps ─────────────────────────────────────────────────────────────────
+head "6/7  Extra apps (optional)"
+. /usr/local/lib/praxis/install-common.sh
+mapfile -t BUNDLES < <(praxis_app_bundles)
+for i in "${!BUNDLES[@]}"; do
+    IFS='|' read -r _ title desc _ <<<"${BUNDLES[$i]}"
+    echo "   ${B}$((i + 1))${X}) $title — ${D}$desc${X}"
+done
+SEL=$(ask "Numbers separated by spaces (Enter = none)" "")
+APPS=""
+for n in $SEL; do
+    [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#BUNDLES[@]}" ] && APPS+="$(cut -d'|' -f1 <<<"${BUNDLES[$((n - 1))]}") "
+done
+APPS=${APPS% }
+
+# ── 7. confirm ──────────────────────────────────────────────────────────────
+head "7/7  Check"
+case "$MODE" in
+    alongside) WHAT="Windows' drive $SHRINK_PART gets $((PRAXIS_MIB / 1024)) GiB smaller; Praxis goes into that space. Windows keeps its files and checks its drive once at its next start." ;;
+    free)      WHAT="Praxis goes into the unallocated space. Nothing else on $DISK changes." ;;
+    partition) WHAT="${R}$TARGET_PART is formatted${X} — everything on it is erased. Other partitions stay." ;;
+    wipe)      WHAT="${R}EVERYTHING on $DISK is erased.${X}" ;;
+esac
+cat <<S
+  Disk        $DISK
+  What        $WHAT
+  File system $FS
+  You         ${FULLNAME:-$USERNAME} ($USERNAME) on "$HOST"
+  Time zone   $TIMEZONE   Keyboard $XKB   Locale $LOCALE
+  Start-up    $LOGIN
+  Apps        ${APPS:-none}
+  Boot menu   GRUB — Praxis plus every other OS found (Windows, …)
+S
+WORD=PROCEED; [ "$MODE" = wipe ] && WORD=ERASE
+c=$(ask "Type $WORD to install")
+[ "$c" = "$WORD" ] || die "Stopped — nothing was changed."
+
+PLAN=$(mktemp /run/praxis-plan.XXXXXX); chmod 600 "$PLAN"
+trap 'rm -f "$PLAN"' EXIT
+{
+    printf 'DISK=%s\nMODE=%s\nFS=%s\n' "$DISK" "$MODE" "$FS"
+    [ -n "$SHRINK_PART" ] && printf 'SHRINK_PART=%s\nPRAXIS_MIB=%s\n' "$SHRINK_PART" "$PRAXIS_MIB"
+    [ -n "$TARGET_PART" ] && printf 'TARGET_PART=%s\n' "$TARGET_PART"
+    printf 'HOSTNAME=%s\nUSERNAME=%s\nFULLNAME=%s\n' "$HOST" "$USERNAME" "$FULLNAME"
+    printf "PASSWORD_HASH='%s'\n" "$PASSWORD_HASH"
+    printf 'TIMEZONE=%s\nLOCALE=%s\nKEYMAP=us\nXKB_LAYOUT=%s\nLOGIN=%s\nAPPS=%s\n' "$TIMEZONE" "$LOCALE" "$XKB" "$LOGIN" "$APPS"
+} >"$PLAN"
+praxis-install-engine --check "$PLAN" >/dev/null || { praxis-install-engine --check "$PLAN"; die "the plan was not accepted"; }
+
+echo
+RESULT=1
+while IFS= read -r line; do
+    if [[ "$line" =~ ^@@\ FAIL\ (.*)$ ]]; then
+        echo -e "\n${R}!! ${BASH_REMATCH[1]}${X}"
+    elif [[ "$line" =~ ^@@\ ([0-9]+)\ (.*)$ ]]; then
+        printf '\r\033[K  %s[%3s%%]%s %s' "$B" "${BASH_REMATCH[1]}" "$X" "${BASH_REMATCH[2]:0:70}"
+        [ "${BASH_REMATCH[1]}" = 100 ] && RESULT=0
+    fi
+done < <(praxis-install-engine "$PLAN" 2>/dev/null)
+echo
+if [ "$RESULT" = 0 ]; then
+    echo -e "
+  ${G}${B}Praxis Linux is installed.${X}
+  Restart, take out the USB drive, and pick 'Praxis' in the boot menu
+  (Windows and any other OS are in the same menu). If the PC goes straight
+  to Windows, press its boot-menu key while it starts (often F12, F9 or Esc).
+  Full log: /var/log/praxis-install.log"
+else
+    echo -e "  The installation did not finish — details in /var/log/praxis-install.log"
+    exit 1
+fi

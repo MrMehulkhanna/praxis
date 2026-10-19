@@ -1,0 +1,28 @@
+[Unit]
+Description=Praxis voice genie (continuous, wake-word gated)
+After=graphical-session.target
+Wants=aios.service
+# Belt-and-braces backoff (StartLimit* belong in [Unit], not [Service])
+StartLimitBurst=6
+StartLimitIntervalSec=180
+
+[Service]
+Type=simple
+# Restart on crash if mic device / backend blip out
+Restart=on-failure
+RestartSec=5
+
+# Wake word "praxis". Speak it, pause, then ask — the pause gives the
+# energy detector something to trigger on.  --no-speak avoids double-audio
+# when the user is already talking; comment it out for spoken replies.
+ExecStart=/usr/local/bin/praxis-genie --wake praxis
+
+# Log through the journal so `journalctl --user -u praxis-genie.service` works.
+StandardOutput=journal
+StandardError=journal
+
+# Belt and braces: don't let a runaway loop hog CPU.
+Nice=5
+
+[Install]
+WantedBy=default.target

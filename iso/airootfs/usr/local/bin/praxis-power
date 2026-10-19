@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# praxis-power — one-shot session/system power menu using rofi -dmenu.
+# Bind to something like SUPER+SHIFT+Q.  Actions map to systemctl / loginctl
+# / Hyprland dispatchers.
+set -uo pipefail
+
+opts=(
+  "  Lock         hyprlock"
+  "  Suspend      systemctl suspend"
+  "  Hibernate    systemctl hibernate"
+  "  Log out      loginctl terminate-user \$USER"
+  "  Reboot       systemctl reboot"
+  "  Shut down    systemctl poweroff"
+)
+
+if ! command -v rofi >/dev/null; then
+    printf '%s\n' "${opts[@]}"
+    read -rp "> " sel
+else
+    sel=$(printf '%s\n' "${opts[@]}" | rofi -dmenu -i -p "power" -theme-str 'window {width: 340px;} listview {lines: 6;}' 2>/dev/null || true)
+fi
+[ -z "$sel" ] && exit 0
+
+# grab everything after the first two whitespace-separated columns
+cmd=$(echo "$sel" | awk '{for (i=3; i<=NF; i++) printf $i" "; print ""}' | sed 's/ *$//')
+[ -z "$cmd" ] && exit 0
+
+# hyprlock doesn't need eval-with-user, everything else may
+case "$cmd" in
+  hyprlock)
+    exec hyprlock ;;
+  systemctl*)
+    exec sudo -n bash -c "$cmd" 2>/dev/null || exec bash -c "$cmd" ;;
+  loginctl*)
+    exec bash -c "$cmd" ;;
+  *)
+    exec bash -c "$cmd" ;;
+esac

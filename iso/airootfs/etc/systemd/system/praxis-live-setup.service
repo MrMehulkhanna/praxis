@@ -1,0 +1,13 @@
+[Unit]
+Description=Praxis live session: create the autologin user
+Before=getty@tty1.service
+After=systemd-user-sessions.service
+ConditionPathExists=/run/archiso
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/praxis-live-setup
+
+[Install]
+WantedBy=multi-user.target

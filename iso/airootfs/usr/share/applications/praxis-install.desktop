@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Install Praxis Linux
+GenericName=System Installer
+Comment=Install Praxis on this computer — next to Windows, in free space, or on a whole disk
+Icon=praxis-install
+Exec=/usr/local/bin/praxis-installer
+Terminal=false
+Categories=System;
+Keywords=install;installer;setup;disk;dual boot;windows;
+StartupNotify=true
