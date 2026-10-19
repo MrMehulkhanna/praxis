@@ -274,12 +274,48 @@ if [ -d "$SRC_REPO/iso/airootfs/usr/local/bin" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Restart Desktop Shell & Reload Hyprland
+# 5b. Graphics drivers, CPU microcode & firmware for THIS computer
 # ---------------------------------------------------------------------------
-log "Restarting desktop shell & reloading Hyprland"
-if pgrep -x Hyprland >/dev/null 2>&1; then
-    hyprctl reload >/dev/null 2>&1 || true
-    success "Hyprland configuration reloaded"
+# Detected from the PCI IDs exactly as the installer does, so a PC installed
+# from an older ISO (or with a GPU the old detection missed) gets its drivers.
+log "Checking graphics drivers, microcode & firmware"
+HWDETECT="$SRC_REPO/iso/airootfs/usr/local/lib/praxis/hwdetect.sh"
+[ -f "$HWDETECT" ] || HWDETECT=/usr/local/lib/praxis/hwdetect.sh
+if [ -f "$HWDETECT" ] && command -v pacman >/dev/null 2>&1; then
+    # shellcheck source=/dev/null
+    . "$HWDETECT"
+    read -ra HW_PKGS <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null || true)")"
+    UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
+    [ -n "$UCODE" ] && HW_PKGS+=("$UCODE")
+    HW_PKGS+=(linux-firmware brightnessctl)
+    MISSING=()
+    for p in "${HW_PKGS[@]}"; do pacman -Q "$p" >/dev/null 2>&1 || MISSING+=("$p"); done
+    if [ "${#MISSING[@]}" -eq 0 ]; then
+        success "Drivers complete: ${HW_PKGS[*]}"
+    else
+        info "Installing: ${MISSING[*]}"
+        if [ "$EUID" -eq 0 ]; then
+            pacman -S --needed --noconfirm "${MISSING[@]}" || warn "Some drivers could not be installed"
+        else
+            sudo pacman -S --needed --noconfirm "${MISSING[@]}" || warn "Some drivers could not be installed"
+        fi
+        success "Drivers installed — restart the computer to start using them"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Restart Desktop Shell & Reload the window manager
+# ---------------------------------------------------------------------------
+# hyprctl must talk to the user's session: as root it finds no instance
+log "Restarting desktop shell & reloading window manager"
+DESK_USER=$(ps -eo user:32,comm | awk '$2 ~ /^Hyprland$/ && $1 != "root" {print $1; exit}')
+if [ -n "$DESK_USER" ]; then
+    if [ "$(id -un)" = "$DESK_USER" ] && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        hyprctl reload >/dev/null 2>&1 || true
+    else
+        sudo -u "$DESK_USER" env XDG_RUNTIME_DIR="/run/user/$(id -u "$DESK_USER")" hyprctl -i 0 reload >/dev/null 2>&1 || true
+    fi
+    success "Window manager configuration reloaded"
 fi
 
 if command -v praxis-restart-shell >/dev/null 2>&1; then
