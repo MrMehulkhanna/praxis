@@ -461,6 +461,9 @@ grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxi
 # keep Praxis bootable without the firmware menu: fallback loader, first in
 # BootOrder, and the same check at every startup (HP/Acer firmware reorders)
 PRAXIS_NO_NVRAM=$([ "${PLAN_TEST:-}" = 1 ] && echo 1) /usr/local/bin/praxis-bootfix --install
+# hybrid-GPU laptops: use the backlight of the GPU that drives the screen
+# (this is the same machine, so its /sys tells the truth inside the chroot)
+/usr/local/bin/praxis-backlightfix || true
 grub-mkconfig -o /boot/grub/grub.cfg
 
 # the AI backend starts CPU-only until the user picks a model for their GPU
