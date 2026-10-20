@@ -88,21 +88,26 @@ Column {
         }
     }
 
+    // TextEdit (read-only) rather than Text, so any part of an answer can be
+    // selected with the mouse and copied with Ctrl+C
     Component {
         id: prose
-        Text {
+        TextEdit {
             property var seg
             width: root.maxWidth
-            text: seg.plainmono ? seg.body : root.mdInline((seg.body || "").replace(/^\n+|\n+$/g, ""))
+            readOnly: true
+            selectByMouse: true
+            selectionColor: Theme.alpha(Theme.accent, 0.4)
+            selectedTextColor: Theme.text
+            text: seg.plainmono ? seg.body : root.mdInline((seg.body || "").replace(/^\n+|\n+$/g, "")).replace(/\n/g, "<br>")
             visible: text.length > 0
             color: Theme.text
             font.family: seg.plainmono ? Theme.fontMono : Theme.font
             font.pixelSize: seg.plainmono ? Theme.fontXs : Theme.fontMd
-            textFormat: seg.plainmono ? Text.PlainText : Text.StyledText
-            wrapMode: Text.Wrap
+            textFormat: seg.plainmono ? TextEdit.PlainText : TextEdit.RichText
+            wrapMode: TextEdit.Wrap
         }
     }
-
 
     Component {
         id: codeBlock
@@ -145,7 +150,7 @@ Column {
                         MouseArea {
                             id: cma; anchors.fill: parent; hoverEnabled: true
                             onClicked: {
-                                Quickshell.execDetached(["bash", "-lc", "wl-copy -- " + JSON.stringify(seg.body)])
+                                Quickshell.execDetached(["wl-copy", "--", seg.body])
                                 copyBtn.done = true; copyReset.restart()
                             }
                         }
@@ -153,14 +158,16 @@ Column {
                     }
                 }
                 // the code
-                Text {
+                TextEdit {
                     anchors { left: parent.left; right: parent.right; margins: 10 }
                     leftPadding: 10; rightPadding: 10; topPadding: 6; bottomPadding: 8
+                    readOnly: true; selectByMouse: true
+                    selectionColor: Theme.alpha(Theme.accent, 0.4)
                     text: seg.body
                     color: Theme.text
                     font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
-                    wrapMode: Text.WrapAnywhere
-                    textFormat: Text.PlainText
+                    wrapMode: TextEdit.WrapAnywhere
+                    textFormat: TextEdit.PlainText
                 }
             }
         }
