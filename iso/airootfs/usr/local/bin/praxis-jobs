@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# praxis-jobs — let the AI fill job application forms from your saved links.
+# Free: browser-use (open source) in a real Chrome window, with a free model
+# (Gemini / OpenRouter / Groq free tiers) or the local one.
+#
+#   praxis-jobs setup             install the agent (once, ~200 MB)
+#   praxis-jobs profile           write your details (opens the profile file)
+#   praxis-jobs add URL…          save job links (or: praxis-jobs import file.txt)
+#   praxis-jobs list              links and how far each one got
+#   praxis-jobs login [URL]       sign in to LinkedIn / Workday … once, in the agent's browser
+#   praxis-jobs test              practice run on a local test form — nothing is sent anywhere
+#   praxis-jobs run [--limit N] [--url URL] [--submit]
+#                                 fill the forms; stops before Submit for your review
+#                                 unless --submit is given
+#   praxis-jobs reset URL         mark a link as not done
+set -uo pipefail
+
+JOBS=${PRAXIS_JOBS_DIR:-$HOME/.config/praxis/jobs}
+VENV=${PRAXIS_JOBS_VENV:-$HOME/.local/share/praxis/jobs-venv}
+LIB=${PRAXIS_LIB:-/usr/local/lib/praxis}
+BU_VERSION=0.13.11
+mkdir -p "$JOBS"
+
+say() { echo "praxis-jobs: $*"; }
+need_venv() {
+    [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c 'import browser_use' 2>/dev/null && return
+    say "the agent isn't installed yet — installing it now"
+    cmd_setup || exit 1
+}
+chrome() { command -v google-chrome-stable || command -v google-chrome || command -v chromium; }
+
+cmd_setup() {
+    command -v uv >/dev/null || { say "needs uv (sudo pacman -S uv)"; return 1; }
+    [ -n "$(chrome)" ] || { say "needs Chrome or Chromium (sudo pacman -S chromium)"; return 1; }
+    uv venv -q --allow-existing --python 3.12 "$VENV" || return 1
+    VIRTUAL_ENV=$VENV uv pip install -q "browser-use==$BU_VERSION" || return 1
+    say "ready"
+}
+
+cmd_profile() {
+    if [ ! -f "$JOBS/profile.md" ]; then
+        cat >"$JOBS/profile.md" <<'EOF'
+# Job application profile — the agent uses ONLY what is written here.
+# Anything a form asks that isn't here is left empty and reported to you.
+
+Name: Your Name
+Email: you@example.com
+Phone: +91 00000 00000
+Location: City, Country
+Resume: ~/Documents/resume.pdf
+LinkedIn: https://www.linkedin.com/in/...
+GitHub: https://github.com/...
+Portfolio:
+
+Work authorization: (e.g. Indian citizen, no sponsorship needed)
+Notice period: (e.g. immediate / 30 days)
+Expected salary: (e.g. 6 LPA, or "open")
+Willing to relocate: yes / no
+Years of experience:
+Highest degree: (degree, college, year, grade)
+
+Skills: Python, …
+
+Experience:
+- Role, Company, from – to: what you did
+
+Standard answers:
+- Why do you want this job? …
+- Tell us about yourself: …
+
+Optional voluntary questions (gender, disability, veteran …): prefer not to say
+EOF
+    fi
+    xdg-open "$JOBS/profile.md" >/dev/null 2>&1 || "${EDITOR:-nano}" "$JOBS/profile.md"
+    say "profile: $JOBS/profile.md"
+}
+
+cmd_add() {
+    [ $# -gt 0 ] || { say "usage: praxis-jobs add URL…"; return 2; }
+    local n=0 u
+    for u in "$@"; do
+        [[ $u =~ ^https?:// ]] || { say "skipped (not a link): $u"; continue; }
+        grep -qxF "$u" "$JOBS/links.txt" 2>/dev/null && continue
+        echo "$u" >>"$JOBS/links.txt"; n=$((n + 1))
+    done
+    say "added $n link(s) — $(grep -c . "$JOBS/links.txt" 2>/dev/null || echo 0) saved"
+}
+
+cmd_import() {
+    [ -f "${1:-}" ] || { say "usage: praxis-jobs import FILE (any text with links in it)"; return 2; }
+    mapfile -t found < <(grep -oE 'https?://[^[:space:]<>"'"'"')]+' "$1" | sort -u)
+    cmd_add "${found[@]}"
+}
+
+cmd_list() {
+    "${VENV}/bin/python" - "$JOBS" 2>/dev/null <<'EOF' || cat "$JOBS/links.txt" 2>/dev/null
+import json, pathlib, sys
+d = pathlib.Path(sys.argv[1])
+st = json.loads((d / "status.json").read_text()) if (d / "status.json").is_file() else {}
+links = [l.strip() for l in (d / "links.txt").read_text().splitlines() if l.strip()] if (d / "links.txt").is_file() else []
+mark = {"submitted": "✓", "filled": "…", "failed": "✗", "skipped": "-"}
+for u in links:
+    s = st.get(u, {})
+    print(f"{mark.get(s.get('state'), ' ')} {s.get('state', 'pending'):9} {u}")
+print(f"\n{len(links)} links · {sum(1 for u in links if st.get(u, {}).get('state') == 'submitted')} submitted")
+EOF
+}
+
+cmd_login() {
+    local c; c=$(chrome) || { say "needs Chrome or Chromium"; return 1; }
+    say "sign in to the sites you apply on, then close the window — the agent will stay signed in"
+    "$c" --user-data-dir="$JOBS/chrome-profile" --no-first-run "${1:-https://www.linkedin.com/login}" >/dev/null 2>&1
+}
+
+cmd_reset() {
+    need_venv
+    "$VENV/bin/python" - "$JOBS/status.json" "${1:?URL}" <<'EOF'
+import json, sys
+p, u = sys.argv[1], sys.argv[2]
+try: s = json.load(open(p))
+except Exception: s = {}
+s.pop(u, None); json.dump(s, open(p, "w"), indent=1)
+EOF
+}
+
+case "${1:-help}" in
+    setup)   cmd_setup ;;
+    profile) cmd_profile ;;
+    add)     shift; cmd_add "$@" ;;
+    import)  shift; cmd_import "$@" ;;
+    list)    cmd_list ;;
+    login)   shift; cmd_login "$@" ;;
+    reset)   shift; cmd_reset "$@" ;;
+    run)     shift; need_venv; exec "$VENV/bin/python" "$LIB/jobs_agent.py" "$@" ;;
+    test)    shift; need_venv; exec "$VENV/bin/python" "$LIB/jobs_selftest.py" "$@" ;;
+    *)       sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac
