@@ -25,6 +25,7 @@ install -Dm644 "$REPO/config/systemd/aios.service" "$SKEL/.config/systemd/user/a
 
 install -d "$DEST/opt/aios"
 git -C "$REPO" ls-files -z -- . ':!iso' ':!.github' ':!tests' ':!desktop/wallpapers' ':!docs/*.mp4' ':!docs/*.gif' ':!docs/screenshots' \
+    ':!push' ':!docs/*.sh' ':!*HANDOFF*' ':!AGENTS.md' ':!GEMINI.md' \
     | rsync -a --from0 --files-from=- "$REPO/" "$DEST/opt/aios/"
 install -Dm644 "$REPO/requirements.txt" "$DEST/usr/local/share/aios/aios-requirements.txt"
 if [ -n "$AURREPO" ]; then
