@@ -299,7 +299,7 @@ if [ -f "$HWDETECT" ] && command -v pacman >/dev/null 2>&1; then
     read -ra HW_PKGS <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null || true)")"
     UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
     [ -n "$UCODE" ] && HW_PKGS+=("$UCODE")
-    HW_PKGS+=(linux-firmware brightnessctl zenity)
+    HW_PKGS+=(linux-firmware brightnessctl zenity poppler)
     MISSING=()
 
     for p in "${HW_PKGS[@]}"; do pacman -Q "$p" >/dev/null 2>&1 || MISSING+=("$p"); done

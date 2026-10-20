@@ -41,6 +41,7 @@ wf-recorder
 brightnessctl
 playerctl
 zenity
+poppler
 
 # ── audio ────────────────────────────────────────────────────────────────
 pipewire
