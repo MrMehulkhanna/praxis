@@ -171,6 +171,27 @@ if [ -d "$SRC_REPO/.git" ]; then
     )
 fi
 
+# Installed PCs only need what runs: leave developer files (notes, the push
+# helper, tests, ISO build/test scripts) out of the checkout and delete any
+# left by older updates. A developer checkout is marked with .praxis-dev.
+DEV_ONLY=(CLAUDE_HANDOFF.md AGENTS.md GEMINI.md push tests .github docs/demo.sh docs/selftest.sh
+          iso/build.sh iso/build_root.sh iso/flash.sh iso/publish.sh iso/test-install.sh iso/test-live.sh iso/test
+          desktop-audit-phase0.md session-status.md)
+if [ -d "$SRC_REPO/.git" ] && [ ! -e "$SRC_REPO/.praxis-dev" ]; then
+    ( cd "$SRC_REPO" || exit
+      { echo '/*'; for p in "${DEV_ONLY[@]}"; do echo "!/$p"; done; } >.git/info/sparse-checkout.new
+      git config core.sparseCheckout true
+      mv .git/info/sparse-checkout.new .git/info/sparse-checkout
+      git read-tree -mu HEAD 2>/dev/null || true )
+fi
+for d in "$SRC_REPO" /opt/aios; do
+    [ -d "$d" ] && [ ! -e "$d/.praxis-dev" ] || continue
+    for p in "${DEV_ONLY[@]}"; do
+        [ -e "$d/$p" ] || continue
+        if [ -w "$d" ]; then rm -rf "${d:?}/$p"; else sudo rm -rf "${d:?}/$p"; fi
+    done
+done
+
 if [ ! -d "$SRC_REPO/desktop/quickshell" ]; then
     info "Fetching desktop assets archive..."
     mkdir -p "$SRC_REPO"
