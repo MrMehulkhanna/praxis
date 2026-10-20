@@ -56,7 +56,7 @@ def _log_tail(n: int = 6) -> str:
 # Setting the profile's env var (e.g. AIOS_8B_NGL) forces a fixed value.
 #
 # quality: relative local ranking 1–5. No local model on this GPU is
-# Claude/GPT-class — that tier only exists as a cloud adapter (paid, opt-in).
+# frontier-class — that tier only exists as a cloud adapter (paid, opt-in).
 PROFILES: dict[str, dict] = {
     "local-qwen3-4b": {
         "dir": "qwen3-4b", "ngl": 99, "ctx": 8192,

@@ -80,7 +80,7 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 | **Reads the screen** | `Super+Shift+O` copies any text you can see — from images, videos, PDFs, error dialogs. `ai see screenshot.png "what's wrong?"` explains a picture. |
 | **Your documents, searchable** | `ai rag add ~/notes` — then ask questions across your own notes and papers. Retrieval happens on your machine. |
 | **Remembers the right things** | A context engine picks the most useful past conversation under a strict token budget — answers get better, not slower and more expensive. |
-| **Cloud when *you* want it** | Claude, OpenAI, Gemini, Groq or OpenRouter keys are optional. Budget modes — **₹0 Zero Cost**, free tiers only, ask-first, or unrestricted — are enforced at a single choke point. |
+| **Cloud when *you* want it** | OpenAI, Gemini, Groq or OpenRouter keys are optional. Budget modes — **₹0 Zero Cost**, free tiers only, ask-first, or unrestricted — are enforced at a single choke point. |
 | **AI that can't hurt you** | Every command the AI proposes is classified *auto / confirm / forbidden*. Only an explicit safe list runs unattended, and every decision is written to an audit log. |
 | **AI off in one tap** | Control Center › **AI off** frees the GPU and its memory completely — for games, video calls or battery. |
 
