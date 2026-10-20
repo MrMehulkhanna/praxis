@@ -130,22 +130,33 @@ Singleton {
         else chatProc.running = false           // no id yet: dropping the connection stops it too
     }
 
-    function send(text, images) {
+    // every message carries the same roles — a ListModel fixes them on the
+    // first append. images/files: one path per line ("" when none).
+    function addMessage(role, text, meta, images, files) {
+        messages.append({ role: role, text: text, meta: meta || "",
+                          images: (images || []).join("\n"), files: (files || []).join("\n") })
+    }
+
+    // text: what the user typed; images: paths sent to a vision model;
+    // files: other attachments (shown as chips); extra: their readable
+    // contents, sent to the model but kept out of the bubble.
+    function send(text, images, files, extra) {
         const msg = text ? text.trim() : ""
-        const imgs = (images && Array.isArray(images)) ? images : []
-        if ((!msg && imgs.length === 0) || streaming) return
+        const imgs = Array.isArray(images) ? images : []
+        const docs = Array.isArray(files) ? files : []
+        if ((!msg && !imgs.length && !docs.length) || streaming) return
         currentJob = ""
-        messages.append({ role: "user", text: msg, images: imgs, meta: "" })
-        messages.append({ role: "ai", text: "", images: [], meta: "" })
+        addMessage("user", msg, "", imgs, docs)
+        addMessage("ai", "", "")
         _aiIndex = messages.count - 1
         streaming = true
+        const prompt = extra ? (msg || "Look at the attached file(s).") + "\n\n" + extra : msg
         chatProc.command = ["curl", "-sN", "-X", "POST", root.base + "/api/ask",
                             "-H", "Content-Type: application/json",
-                            "-d", JSON.stringify({ message: msg, conversation_id: conversationId, model: "auto", images: imgs })]
+                            "-d", JSON.stringify({ message: prompt, conversation_id: conversationId, model: "auto", images: imgs })]
         chatProc.running = true
     }
     function clearChat() {
-
         messages.clear()
         conversationId = "shell-" + Math.floor(Date.now() / 1000)
     }
@@ -216,7 +227,7 @@ Singleton {
         if (!req || controlBusy) return
         controlBusy = true
         pending = null
-        messages.append({ role: "user", text: "! " + req, meta: "" })
+        addMessage("user", "! " + req, "")
         proposeProc.command = ["curl", "-s", "-m", "180", "-X", "POST", root.base + "/api/tool/propose",
                                "-H", "Content-Type: application/json", "-d", JSON.stringify({ request: req })]
         proposeProc.running = true
@@ -227,13 +238,13 @@ Singleton {
             onStreamFinished: {
                 root.controlBusy = false
                 let r; try { r = JSON.parse(this.text) } catch (e) {
-                    root.messages.append({ role: "sys", text: "⚠ Backend unreachable.", meta: "" }); return }
-                if (r.tier === "noop")      root.messages.append({ role: "sys", text: r.reason, meta: "" })
-                else if (r.tier === "error") root.messages.append({ role: "sys", text: "⚠ " + r.reason, meta: "" })
+                    root.addMessage("sys", "⚠ Backend unreachable.", ""); return }
+                if (r.tier === "noop")      root.addMessage("sys", r.reason, "")
+                else if (r.tier === "error") root.addMessage("sys", "⚠ " + r.reason, "")
                 else if (r.tier === "forbidden")
-                    root.messages.append({ role: "sys", text: "✗ Refused — " + r.reason, meta: "$ " + r.cmd })
+                    root.addMessage("sys", "✗ Refused — " + r.reason, "$ " + r.cmd)
                 else if (r.tier === "auto")
-                    root.messages.append({ role: "sys", text: "✓ Ran" + (r.output ? "\n" + r.output : ""), meta: "$ " + r.cmd })
+                    root.addMessage("sys", "✓ Ran" + (r.output ? "\n" + r.output : ""), "$ " + r.cmd)
                 else root.pending = r   // confirm tier → UI shows a card with Run / Cancel
             }
         }
@@ -243,14 +254,14 @@ Singleton {
         execProc.command = ["curl", "-s", "-m", "60", "-X", "POST", root.base + "/api/tool/exec",
                             "-H", "Content-Type: application/json", "-d", JSON.stringify({ token: pending.token })]
         execProc.running = true
-        messages.append({ role: "sys", text: "…", meta: "$ " + pending.cmd })
+        addMessage("sys", "…", "$ " + pending.cmd)
         pending = null
     }
     function cancelPending() {
         if (!pending) return
         Quickshell.execDetached(["curl", "-s", "-X", "POST", root.base + "/api/tool/cancel",
                                  "-H", "Content-Type: application/json", "-d", JSON.stringify({ token: pending.token })])
-        messages.append({ role: "sys", text: "Cancelled.", meta: "$ " + pending.cmd })
+        addMessage("sys", "Cancelled.", "$ " + pending.cmd)
         pending = null
     }
     Process {
