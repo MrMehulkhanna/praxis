@@ -57,6 +57,5 @@ desktop/quickshell/settings.json
 desktop/quickshell/eyecomfort.json
 
 # ── developer-only notes (never shipped) ─────────────────────────────────
-CLAUDE_HANDOFF.md
 *HANDOFF*.md
 .praxis-dev
