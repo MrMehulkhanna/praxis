@@ -26,63 +26,67 @@ OverlayWindow {
         color: Theme.glassStrong
         MouseArea { anchors.fill: parent; onClicked: picker.shown = false }
 
-        property var stagedImages: []
-        function addImage(path) {
-            if (!path) return
-            const p = path.trim()
-            if (p && stagedImages.indexOf(p) === -1) {
-                stagedImages = stagedImages.concat([p])
-            }
+        // staged attachments (paths): images go to a vision model, other
+        // files are read into the prompt by praxis-chat-image text
+        property var attachments: []
+        readonly property var stagedImages: attachments.filter(p => isImage(p))
+        readonly property var stagedFiles: attachments.filter(p => !isImage(p))
+        property bool reading: false
+        function isImage(p) { return /\.(png|jpe?g|webp|gif|bmp)$/i.test(p) }
+        function baseName(p) { return p.replace(/.*\//, "") }
+        function addPaths(out) {
+            const add = out.split("\n").map(l => l.trim().replace(/^file:\/\//, "")).filter(l => l && attachments.indexOf(l) === -1)
+            if (add.length) attachments = attachments.concat(add)
         }
 
-        Process {
-            id: imgPickProc
-            command: ["praxis-chat-image", "pick"]
-            stdout: StdioCollector {
-                onStreamFinished: {
-                    const p = this.text.trim()
-                    if (p) card.addImage(p)
-                }
-            }
+        // The panel covers the screen and holds the keyboard, so the file
+        // dialog and the screen selection would open underneath it: step
+        // aside while they run, come back with the result.
+        property var helperCmd: []
+        function runHelper(cmd) {
+            if (helper.running) return
+            helperCmd = cmd
+            Shell.closeAll()
+            helperDelay.restart()
+        }
+        Timer {    // let the panel slide away first, so a screenshot doesn't catch it
+            id: helperDelay; interval: Theme.slow + 80
+            onTriggered: { helper.command = card.helperCmd; helper.running = true }
         }
         Process {
-            id: imgShotProc
-            command: ["praxis-chat-image", "shot"]
-            stdout: StdioCollector {
-                onStreamFinished: {
-                    const p = this.text.trim()
-                    if (p) card.addImage(p)
-                }
-            }
+            id: helper
+            stdout: StdioCollector { onStreamFinished: card.addPaths(this.text) }
+            onExited: Shell.open("ai")
         }
+        // Ctrl+V: an image or files copied in a file manager become
+        // attachments; anything else is pasted as text
         Process {
-            id: imgPasteProc
+            id: pasteProc
             command: ["praxis-chat-image", "paste"]
+            stdout: StdioCollector { id: pasteOut }
+            onExited: code => { if (code === 0) card.addPaths(pasteOut.text); else input.paste() }
+        }
+        // documents → text for the model, then send
+        property string pendingText: ""
+        Process {
+            id: readProc
             stdout: StdioCollector {
                 onStreamFinished: {
-                    const p = this.text.trim()
-                    if (p) card.addImage(p)
+                    Aios.send(card.pendingText, card.stagedImages, card.stagedFiles, this.text)
+                    card.attachments = []
+                    card.reading = false
                 }
             }
         }
 
         DropArea {
             anchors.fill: parent
-            onEntered: drag => {
-                if (drag.hasUrls) drag.acceptProposedAction()
-            }
+            onEntered: drag => { if (drag.hasUrls) drag.acceptProposedAction() }
             onDropped: drop => {
-                if (drop.hasUrls) {
-                    for (let i = 0; i < drop.urls.length; i++) {
-                        let u = drop.urls[i].toString()
-                        if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(u)) {
-                            card.addImage(u.replace(/^file:\/\//, ""))
-                        }
-                    }
-                }
+                if (drop.hasUrls)
+                    card.addPaths(Array.from(drop.urls).map(u => decodeURIComponent(u.toString())).join("\n"))
             }
         }
-
 
         // ── header ──
         Item {
@@ -200,22 +204,26 @@ OverlayWindow {
                     Icon { name: "sparkle"; size: 28; color: Theme.alpha(Theme.accent, 0.5); anchors.horizontalCenter: parent.horizontalCenter }
                     Text { text: "Ask anything, or control the PC"; color: Theme.text2; font.family: Theme.font; font.pixelSize: Theme.fontMd; anchors.horizontalCenter: parent.horizontalCenter }
                     Text { text: "Start with  !  to run a command  —  e.g.  ! open firefox"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
-                    Text { text: "Attach images with 📷 or paste / drop screenshots directly"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
+                    Text { text: "Attach files or a screenshot, or paste and drop them in"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
                     Text { text: "Nothing leaves this machine in ₹0 mode."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; anchors.horizontalCenter: parent.horizontalCenter }
                 }
             }
             delegate: Item {
+                id: msg
                 required property var model
                 required property int index
                 width: list.width
                 height: bubble.height + (metaTxt.visible ? metaTxt.height + 3 : 0)
                 readonly property bool isUser: model.role === "user"
                 readonly property bool isSys: model.role === "sys"
+                readonly property var imgs: (model.images || "").split("\n").filter(p => p)
+                readonly property var docs: (model.files || "").split("\n").filter(p => p)
+                HoverHandler { id: msgHover }
                 Rectangle {
                     id: bubble
                     anchors.right: isUser ? parent.right : undefined
                     anchors.left: isUser ? undefined : parent.left
-                    width: Math.min(list.width * 0.88, Math.max(body.implicitWidth, msgImgFlow.implicitWidth) + 24)
+                    width: Math.min(list.width * 0.88, Math.max(body.implicitWidth, attFlow.implicitWidth) + 24)
                     height: bCol.implicitHeight + 18
                     radius: Theme.radiusLg
                     color: isUser ? Theme.alpha(Theme.accent, 0.22) : isSys ? Theme.alpha(Theme.green, 0.08) : Theme.alpha(Theme.text, 0.06)
@@ -225,45 +233,85 @@ OverlayWindow {
                         anchors { left: parent.left; top: parent.top; margins: 12; topMargin: 9 }
                         spacing: 6
                         Flow {
-                            id: msgImgFlow
-                            visible: !!(model.images && (model.images.count || model.images.length))
+                            id: attFlow
+                            visible: msg.imgs.length + msg.docs.length > 0
                             width: Math.min(list.width * 0.88 - 24, 320)
                             spacing: 6
                             Repeater {
-                                model: model.images
+                                model: msg.imgs
                                 Rectangle {
                                     required property var modelData
-                                    width: Math.min(msgImgFlow.width, 220)
+                                    width: Math.min(attFlow.width, 220)
                                     height: 130
                                     radius: Theme.radiusSm
                                     color: Theme.surface2
                                     clip: true
                                     Image {
                                         anchors.fill: parent
-                                        source: (typeof modelData === "string") ? (modelData.startsWith("data:") ? modelData : ("file://" + modelData.replace(/^file:\/\//, ""))) : ""
+                                        source: "file://" + parent.modelData
                                         fillMode: Image.PreserveAspectFit
                                         asynchronous: true
                                     }
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (typeof modelData === "string" && !modelData.startsWith("data:")) {
-                                                Quickshell.execDetached(["xdg-open", modelData.replace(/^file:\/\//, "")])
-                                            }
+                                        onClicked: Quickshell.execDetached(["xdg-open", parent.modelData])
+                                    }
+                                }
+                            }
+                            Repeater {
+                                model: msg.docs
+                                Rectangle {
+                                    required property var modelData
+                                    width: Math.min(docRow.implicitWidth + 18, attFlow.width); height: 28
+                                    radius: Theme.radiusSm
+                                    color: docMa.containsMouse ? Theme.hover : Theme.alpha(Theme.text, 0.06)
+                                    border.width: 1; border.color: Theme.border
+                                    Row {
+                                        id: docRow
+                                        anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter }
+                                        spacing: 5
+                                        Icon { name: "paperclip"; size: 12; color: Theme.text2; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: card.baseName(parent.parent.modelData); color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs
+                                            elide: Text.ElideMiddle; width: Math.min(implicitWidth, attFlow.width - 40)
+                                            anchors.verticalCenter: parent.verticalCenter
                                         }
+                                    }
+                                    MouseArea {
+                                        id: docMa; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: Quickshell.execDetached(["xdg-open", parent.modelData])
                                     }
                                 }
                             }
                         }
                         MessageBody {
                             id: body
-                            text: model.text.length ? model.text : (msgImgFlow.visible ? "" : "…")
+                            visible: model.text.length > 0 || !attFlow.visible
+                            text: model.text.length ? model.text : "…"
                             maxWidth: list.width * 0.88 - 24
                             mono: isSys
-                            opacity: model.text.length || msgImgFlow.visible ? 1 : 0.5
+                            opacity: model.text.length ? 1 : 0.5
                         }
                     }
+                }
+                // copy the whole message — beside the bubble, on hover
+                IconButton {
+                    id: copyMsg
+                    property bool done: false
+                    visible: model.text.length > 0 && (msgHover.hovered || done)
+                    anchors { top: bubble.top; topMargin: 2 }
+                    anchors.left: isUser ? undefined : bubble.right
+                    anchors.right: isUser ? bubble.left : undefined
+                    anchors.leftMargin: 4; anchors.rightMargin: 4
+                    icon: done ? "check" : "copy"; iconSize: 13; implicitWidth: 26; implicitHeight: 26; radius: 13
+                    iconColor: done ? Theme.green : Theme.text2
+                    onClicked: {
+                        Quickshell.execDetached(["wl-copy", "--", model.text])
+                        done = true; copyMsgReset.restart()
+                    }
+                    Timer { id: copyMsgReset; interval: 1400; onTriggered: copyMsg.done = false }
                 }
                 Text {
                     id: metaTxt
@@ -313,28 +361,45 @@ OverlayWindow {
             }
         }
 
-        // ── staged images tray ──
+        // ── staged attachments ──
         Flow {
             id: stagedTray
-            visible: card.stagedImages.length > 0
+            visible: card.attachments.length > 0
             anchors { left: parent.left; right: parent.right; bottom: inputBar.top; margins: 14; bottomMargin: 6 }
             spacing: 8
             Repeater {
-                model: card.stagedImages
+                model: card.attachments
                 Rectangle {
+                    id: att
                     required property var modelData
                     required property int index
-                    width: 52; height: 52; radius: Theme.radiusSm
-                    color: Theme.surface2; border.width: 1; border.color: Theme.accent
+                    readonly property bool img: card.isImage(modelData)
+                    width: img ? 52 : Math.min(fileRow.implicitWidth + 34, stagedTray.width)
+                    height: img ? 52 : 30
+                    radius: Theme.radiusSm
+                    color: Theme.surface2; border.width: 1; border.color: Theme.alpha(Theme.accent, 0.6)
                     clip: true
                     Image {
+                        visible: att.img
                         anchors.fill: parent
-                        source: modelData.startsWith("data:") ? modelData : ("file://" + modelData.replace(/^file:\/\//, ""))
+                        source: att.img ? "file://" + att.modelData : ""
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                     }
+                    Row {
+                        id: fileRow
+                        visible: !att.img
+                        anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                        spacing: 5
+                        Icon { name: "paperclip"; size: 12; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: card.baseName(att.modelData); color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontXs
+                            elide: Text.ElideMiddle; width: Math.min(implicitWidth, stagedTray.width - 60)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
                     Rectangle {
-                        anchors { top: parent.top; right: parent.right; margins: 2 }
+                        anchors { top: att.img ? parent.top : undefined; verticalCenter: att.img ? undefined : parent.verticalCenter; right: parent.right; margins: att.img ? 2 : 6 }
                         width: 16; height: 16; radius: 8
                         color: Qt.rgba(0, 0, 0, 0.75)
                         Text { anchors.centerIn: parent; text: "×"; color: "#fff"; font.pixelSize: 12; font.weight: Font.Bold }
@@ -342,9 +407,9 @@ OverlayWindow {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                const arr = [...card.stagedImages]
-                                arr.splice(index, 1)
-                                card.stagedImages = arr
+                                const arr = [...card.attachments]
+                                arr.splice(att.index, 1)
+                                card.attachments = arr
                             }
                         }
                     }
@@ -352,65 +417,92 @@ OverlayWindow {
             }
         }
 
-        // ── input ──
+        // ── input ── (grows with the text; Enter sends, Shift+Enter breaks the line)
         Rectangle {
             id: inputBar
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 14 }
-            height: 46; radius: 23
+            height: Math.min(Math.max(46, input.contentHeight + 26), 150)
+            Behavior on height { NumberAnimation { duration: Theme.fast; easing.type: Theme.easeMove } }
+            radius: 23
             color: Theme.alpha(Theme.text, 0.06)
             border.width: 1; border.color: input.activeFocus ? Theme.alpha(Theme.accent, 0.6) : Theme.border
             Behavior on border.color { ColorAnimation { duration: Theme.fast } }
             readonly property bool controlMode: input.text.trim().startsWith("!")
+            readonly property bool canSend: input.text.trim().length > 0 || card.attachments.length > 0
             Icon {
                 id: inIcon
-                anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 15 }
                 name: inputBar.controlMode ? "terminal" : "sparkle"; size: 15; color: inputBar.controlMode ? Theme.yellow : Theme.accent
             }
             IconButton {
                 id: attachBtn
-                anchors { left: inIcon.right; leftMargin: 4; verticalCenter: parent.verticalCenter }
-                icon: "image"; iconSize: 13; implicitWidth: 26; implicitHeight: 26; radius: 13
-                onClicked: imgPickProc.running = true
+                anchors { left: inIcon.right; leftMargin: 4; bottom: parent.bottom; bottomMargin: 10 }
+                icon: "paperclip"; iconSize: 14; implicitWidth: 26; implicitHeight: 26; radius: 13
+                onClicked: card.runHelper(["praxis-chat-image", "pick"])
             }
             IconButton {
                 id: shotBtn
-                anchors { left: attachBtn.right; leftMargin: 2; verticalCenter: parent.verticalCenter }
-                icon: "eye"; iconSize: 13; implicitWidth: 26; implicitHeight: 26; radius: 13
-                onClicked: imgShotProc.running = true
+                anchors { left: attachBtn.right; leftMargin: 2; bottom: parent.bottom; bottomMargin: 10 }
+                icon: "camera"; iconSize: 14; implicitWidth: 26; implicitHeight: 26; radius: 13
+                onClicked: card.runHelper(["praxis-chat-image", "shot"])
             }
-            TextInput {
-                id: input
-                anchors { left: shotBtn.right; leftMargin: 8; right: sendBtn.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontMd
+            Flickable {
+                id: inputFlick
+                anchors { left: shotBtn.right; leftMargin: 8; right: sendBtn.left; rightMargin: 8; top: parent.top; bottom: parent.bottom; topMargin: 13; bottomMargin: 13 }
+                contentHeight: input.contentHeight
                 clip: true
-                selectionColor: Theme.alpha(Theme.accent, 0.4)
-                Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !input.text; text: card.stagedImages.length > 0 ? "Ask about attached image…" : "Message  ·  ! to control PC"; color: Theme.muted; font: input.font }
-                function submit() {
-                    const t = text.trim()
-                    if (!t && card.stagedImages.length === 0) return
-                    if (t.startsWith("!")) {
-                        Aios.control(t.slice(1))
-                    } else {
-                        Aios.send(t, card.stagedImages)
-                    }
-                    text = ""
-                    card.stagedImages = []
+                boundsBehavior: Flickable.StopAtBounds
+                function follow(r) {    // keep the cursor in view
+                    if (contentY >= r.y) contentY = r.y
+                    else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
                 }
-                Keys.onReturnPressed: submit()
-                Keys.onEnterPressed: submit()
-                Keys.onEscapePressed: Shell.closeAll()
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-                        imgPasteProc.running = true
+                TextEdit {
+                    id: input
+                    width: inputFlick.width
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontMd
+                    wrapMode: TextEdit.Wrap
+                    selectByMouse: true
+                    selectionColor: Theme.alpha(Theme.accent, 0.4)
+                    textFormat: TextEdit.PlainText
+                    onCursorRectangleChanged: inputFlick.follow(cursorRectangle)
+                    Text {
+                        visible: !input.text
+                        text: card.reading ? "Reading attachments…" : card.attachments.length ? "Ask about the attachment…" : "Message  ·  ! to control PC"
+                        color: Theme.muted; font: input.font
+                    }
+                    function submit() {
+                        const t = text.trim()
+                        if ((!t && !card.attachments.length) || card.reading || Aios.streaming) return
+                        if (t.startsWith("!")) {
+                            Aios.control(t.slice(1))
+                        } else if (card.stagedFiles.length) {
+                            card.pendingText = t
+                            card.reading = true
+                            readProc.command = ["praxis-chat-image", "text"].concat(card.stagedFiles)
+                            readProc.running = true
+                        } else {
+                            Aios.send(t, card.stagedImages)
+                            card.attachments = []
+                        }
+                        text = ""
+                    }
+                    Keys.onPressed: event => {
+                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
+                            submit(); event.accepted = true
+                        } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
+                            pasteProc.running = true; event.accepted = true
+                        } else if (event.key === Qt.Key_Escape) {
+                            Shell.closeAll(); event.accepted = true
+                        }
                     }
                 }
             }
             IconButton {
                 id: sendBtn
-                anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                anchors { right: parent.right; rightMargin: 6; bottom: parent.bottom; bottomMargin: 6 }
                 // while an answer streams this is a stop button (frees the GPU right away)
                 icon: Aios.streaming ? "stop" : "send"; iconSize: 15; implicitWidth: 34; implicitHeight: 34; radius: 17
-                active: Aios.streaming || input.text.trim().length > 0 || card.stagedImages.length > 0
+                active: Aios.streaming || inputBar.canSend
                 onClicked: Aios.streaming ? Aios.stopAnswer() : input.submit()
             }
         }
@@ -490,7 +582,7 @@ OverlayWindow {
                         Text {
                             visible: modelData.available || modelData.provider !== "local"
                             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                            text: !modelData.available ? modelData.state : sel ? "✓" : ""
+                            text: !modelData.available ? (modelData.state || "") : sel ? "✓" : ""
                             color: sel ? Theme.accent : Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs
                         }
                         Rectangle {
