@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
-# praxis-chat-image — image helper for AIOS chat: capture, select, or paste images.
-# Outputs the saved or chosen image path to stdout.
+# praxis-chat-image — attachments for the AI chat: pick files, capture a part
+# of the screen, paste from the clipboard, or turn a document into text the
+# model can read. Paths come out one per line.
+#
+#   praxis-chat-image pick          choose files (any kind, several at once)
+#   praxis-chat-image shot          select a part of the screen
+#   praxis-chat-image paste         image or copied files from the clipboard
+#   praxis-chat-image text FILE…    readable contents of documents, for the prompt
 set -euo pipefail
 
 IMG_DIR="${XDG_RUNTIME_DIR:-/tmp}/aios-images"
 mkdir -p "$IMG_DIR"
+MAX_TEXT=${PRAXIS_ATTACH_MAX:-60000}      # bytes of text per file sent to the model
 
 cmd="${1:-pick}"
+
+# file:///home/a%20b.png → /home/a b.png
+uri_to_path() {
+    local u=${1%$'\r'}
+    [[ $u == file://* ]] || return 1
+    u=${u#file://}; u=${u#localhost}
+    printf '%b\n' "${u//%/\\x}"
+}
 
 case "$cmd" in
     shot)
@@ -22,43 +37,63 @@ case "$cmd" in
         echo "$out"
         ;;
     paste)
-        out="$IMG_DIR/clip-$(date +%s%N).png"
-        if ! command -v wl-paste >/dev/null 2>&1; then
-            echo "Error: wl-paste is required to paste images" >&2
-            exit 1
+        command -v wl-paste >/dev/null 2>&1 || { echo "Error: wl-paste is required to paste" >&2; exit 1; }
+        types=$(wl-paste --list-types 2>/dev/null || true)
+        if grep -qx 'text/uri-list' <<<"$types"; then          # files copied in a file manager
+            found=0
+            while IFS= read -r u || [ -n "$u" ]; do
+                p=$(uri_to_path "$u") || continue
+                [ -f "$p" ] && { echo "$p"; found=1; }
+            done < <(wl-paste --no-newline --type text/uri-list 2>/dev/null)
+            [ "$found" = 1 ] && exit 0
         fi
-        if wl-paste --type image/png > "$out" 2>/dev/null && [ -s "$out" ]; then
-            echo "$out"
-        elif wl-paste --type image/jpeg > "$out" 2>/dev/null && [ -s "$out" ]; then
-            echo "$out"
-        else
+        for t in image/png image/jpeg image/webp; do
+            grep -qx "$t" <<<"$types" || continue
+            out="$IMG_DIR/clip-$(date +%s%N).${t#image/}"
+            if wl-paste --type "$t" >"$out" 2>/dev/null && [ -s "$out" ]; then echo "$out"; exit 0; fi
             rm -f "$out"
-            exit 1
-        fi
+        done
+        exit 1
         ;;
     pick)
         if command -v zenity >/dev/null 2>&1; then
-            f=$(zenity --file-selection --title="Select image for AIOS" \
-                --file-filter="Images | *.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg" 2>/dev/null || true)
-            if [ -n "$f" ] && [ -f "$f" ]; then
-                echo "$f"
-            fi
+            zenity --file-selection --multiple --separator=$'\n' --title="Attach to chat" \
+                --file-filter="All files | *" \
+                --file-filter="Images | *.png *.jpg *.jpeg *.webp *.gif *.bmp" \
+                --file-filter="Documents | *.pdf *.txt *.md *.csv *.json *.log *.py *.sh *.js *.ts *.html *.css *.c *.cpp *.rs *.go *.java *.yaml *.yml *.toml" \
+                2>/dev/null || true
         elif command -v kdialog >/dev/null 2>&1; then
-            f=$(kdialog --getopenfilename "$HOME" "*.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg" 2>/dev/null || true)
-            if [ -n "$f" ] && [ -f "$f" ]; then
-                echo "$f"
-            fi
+            kdialog --multiple --separate-output --getopenfilename "$HOME" 2>/dev/null || true
+        else
+            echo "Error: zenity is required to choose files" >&2
+            exit 1
         fi
+        ;;
+    text)
+        shift
+        for f in "$@"; do
+            [ -f "$f" ] || continue
+            name=${f##*/}
+            mime=$(file -b --mime-type -- "$f" 2>/dev/null || echo application/octet-stream)
+            case "$mime" in
+                application/pdf)
+                    if command -v pdftotext >/dev/null 2>&1; then body=$(pdftotext -layout -- "$f" - 2>/dev/null | head -c "$MAX_TEXT")
+                    else body="(PDF — install poppler to read its text)"; fi ;;
+                text/*|application/json|application/xml|application/javascript|application/x-shellscript|application/toml|application/x-yaml|inode/x-empty)
+                    body=$(head -c "$MAX_TEXT" -- "$f") ;;
+                *)
+                    body="(binary file, $(du -h -- "$f" | cut -f1), $mime — contents not included)" ;;
+            esac
+            [ "$(stat -c %s -- "$f")" -gt "$MAX_TEXT" ] && [[ $mime != application/pdf ]] && [[ $body != \(binary* ]] && body+=$'\n… (cut off)'
+            printf 'Attached file: %s\n```\n%s\n```\n\n' "$name" "$body"
+        done
         ;;
     status)
         echo "image helper: ready"
-        echo "grim: $(command -v grim || echo 'missing')"
-        echo "slurp: $(command -v slurp || echo 'missing')"
-        echo "wl-paste: $(command -v wl-paste || echo 'missing')"
-        echo "zenity: $(command -v zenity || echo 'missing')"
+        for t in grim slurp wl-paste zenity pdftotext; do echo "$t: $(command -v $t || echo missing)"; done
         ;;
     *)
-        echo "Usage: praxis-chat-image [shot|paste|pick|status]" >&2
+        echo "Usage: praxis-chat-image [pick|shot|paste|text FILE…|status]" >&2
         exit 1
         ;;
 esac
