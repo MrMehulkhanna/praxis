@@ -170,6 +170,13 @@ Canvas {
             rr(ctx, 3, 4.5, 18, 12.5, 2); ctx.stroke(); line(ctx, 8.5, 20.5, 15.5, 20.5); line(ctx, 12, 17, 12, 20.5); break
         case "image":
             rr(ctx, 3.5, 4.5, 17, 15, 2); ctx.stroke(); poly(ctx, [[3.5, 16], [9, 11], [13, 15], [16, 12.5], [20.5, 16.5]], false); dot(ctx, 15.5, 8.5, 1.5); break
+        case "copy":
+            rr(ctx, 8.5, 8.5, 12, 12, 2); ctx.stroke(); poly(ctx, [[15.5, 5.5], [15.5, 3.5], [3.5, 3.5], [3.5, 15.5], [5.5, 15.5]], false); break
+        case "paperclip":
+            ctx.beginPath(); ctx.moveTo(16, 7.5); ctx.lineTo(16, 16); ctx.arc(12, 16, 4, 0, P); ctx.lineTo(8, 6.5)
+            ctx.arc(10.75, 6.5, 2.75, P, 0); ctx.lineTo(13.5, 15.5); ctx.arc(12, 15.5, 1.5, 0, P); ctx.lineTo(10.5, 8); ctx.stroke(); break
+        case "camera":
+            poly(ctx, [[3, 8], [7.5, 8], [9.5, 5], [14.5, 5], [16.5, 8], [21, 8], [21, 19], [3, 19]], true); arc(ctx, 12, 13, 3.5, 0, 2 * P); break
         case "user":
             arc(ctx, 12, 8.5, 4, 0, 2 * P); arc(ctx, 12, 22, 8, P * 1.15, P * 1.85); break
         case "bolt": poly(ctx, [[13.5, 2.5], [6, 13.5], [12, 13.5], [10.5, 21.5], [18, 10.5], [12, 10.5]], true); break
