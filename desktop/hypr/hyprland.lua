@@ -21,31 +21,6 @@
 ---- MONITORS ----
 ------------------
 
--- Auto-detect multi-GPU (e.g. Intel/AMD iGPU + NVIDIA dGPU) so external ports work
-local p_drm = io.popen("ls -1 /dev/dri/by-path/*-card 2>/dev/null")
-if p_drm then
-    local cards = {}
-    for line in p_drm:lines() do
-        table.insert(cards, line)
-    end
-    p_drm:close()
-    if #cards > 1 then
-        local igpu, dgpu
-        for _, c in ipairs(cards) do
-            if c:find("00:02.0") or c:find("amd") then
-                igpu = c
-            else
-                dgpu = c
-            end
-        end
-        if igpu and dgpu then
-            hl.env("AQ_DRM_DEVICES", igpu .. ":" .. dgpu)
-        else
-            hl.env("AQ_DRM_DEVICES", table.concat(cards, ":"))
-        end
-    end
-end
-
 -- See https://wiki.hypr.land/Configuring/Basics/Monitors/
 hl.monitor({
     output   = "",
