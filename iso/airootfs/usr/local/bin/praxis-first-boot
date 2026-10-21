@@ -29,6 +29,15 @@ if command -v timedatectl >/dev/null 2>&1 && command -v praxis-time >/dev/null 2
         ( praxis-time auto >/dev/null 2>&1 & )
     fi
 fi
+
+# Ensure speakers and microphone are unmuted on first boot
+if command -v amixer >/dev/null 2>&1; then
+    amixer sset Master unmute 80% >/dev/null 2>&1 || true
+    amixer sset Speaker unmute 80% >/dev/null 2>&1 || true
+    amixer sset Headphone unmute 80% >/dev/null 2>&1 || true
+    amixer sset Mic unmute 80% >/dev/null 2>&1 || true
+    amixer sset Capture unmute 80% >/dev/null 2>&1 || true
+fi
 if [ -f "$HOME/.aios-setup-done" ]; then
     notify-send -a "Praxis" -t 12000 "Welcome to Praxis Linux" \
         "Super+Space opens the palette, Super+H types what you say, Super+O is Control Center. Type 'praxis' in a terminal to see every command."

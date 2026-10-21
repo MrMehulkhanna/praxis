@@ -340,6 +340,58 @@ if [ -f "$HWDETECT" ] && command -v pacman >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+# 5b-2. Audio drivers & speaker priority configuration
+# ---------------------------------------------------------------------------
+log "Configuring audio outputs and speaker priority"
+WP_DIR="/etc/wireplumber/wireplumber.conf.d"
+if [ "$EUID" -eq 0 ] || command -v sudo >/dev/null 2>&1; then
+    [ "$EUID" -eq 0 ] && install -d -m755 "$WP_DIR" || sudo install -d -m755 "$WP_DIR"
+    WP_PRIO="$WP_DIR/50-speaker-priority.conf"
+    if [ ! -f "$WP_PRIO" ]; then
+        cat << 'EOF' | ( [ "$EUID" -eq 0 ] && cat > "$WP_PRIO" || sudo tee "$WP_PRIO" >/dev/null )
+monitor.alsa.rules = [
+  {
+    matches = [
+      { node.name = "~alsa_output.*speaker*" }
+      { node.name = "~alsa_output.*Speaker*" }
+      { node.name = "~alsa_output.*Headphones*" }
+      { node.name = "~alsa_output.*headphones*" }
+    ]
+    actions = {
+      update-props = {
+        priority.driver = 1009
+        priority.session = 1009
+      }
+    }
+  },
+  {
+    matches = [
+      { node.name = "~alsa_output.*hdmi*" }
+      { node.name = "~alsa_output.*HDMI*" }
+    ]
+    actions = {
+      update-props = {
+        priority.driver = 600
+        priority.session = 600
+      }
+    }
+  }
+]
+EOF
+    fi
+fi
+
+# Unmute ALSA speaker/headphone channels and set comfortable default volume
+if command -v amixer >/dev/null 2>&1; then
+    for c in Master Speaker Headphone Playback; do
+        amixer sset "$c" unmute 80% >/dev/null 2>&1 || true
+    done
+    for c in Mic Capture; do
+        amixer sset "$c" unmute 80% >/dev/null 2>&1 || true
+    done
+fi
+
+# ---------------------------------------------------------------------------
 # 5c. Voice typing & speech recognition (faster-whisper)
 # ---------------------------------------------------------------------------
 log "Checking voice typing speech recognition"
