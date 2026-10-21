@@ -21,6 +21,11 @@ LOCAL=$HOME/.config/hypr/praxis-local.lua
 WAIT=${PRAXIS_DISPLAY_WAIT:-15}
 mkdir -p "$RUN"
 
+if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    sig=$(ls -t "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr" 2>/dev/null | head -1)
+    [ -n "$sig" ] && export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+fi
+
 die() { echo "praxis-display: $*" >&2; exit 1; }
 mon() { hyprctl -j monitors all 2>/dev/null | jq -c --arg o "$1" '.[] | select(.name == $o)'; }
 apply() {   # output mode scale
@@ -112,16 +117,16 @@ case "${1:-status}" in
 
         case "$mode" in
             pc)
-                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disabled = true })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale, mirror = \"\" }) hl.monitor({ output = \"$ext\", disabled = true })"
                 ;;
             second)
-                hyprctl eval "hl.monitor({ output = \"$int\", disabled = true }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"0x0\", scale = 1 })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = true }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"0x0\", scale = 1, mirror = \"\" })"
                 ;;
             duplicate)
-                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"0x0\", mirror = \"$int\", scale = 1 })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale, mirror = \"\" }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"0x0\", mirror = \"$int\", scale = 1 })"
                 ;;
             extend|*)
-                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"auto-right\", scale = 1 })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale, mirror = \"\" }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"auto-right\", scale = 1, mirror = \"\" })"
                 ;;
         esac
         echo "projected to $mode (internal: $int, external: $ext)"
