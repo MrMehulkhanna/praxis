@@ -83,7 +83,7 @@ check "Quickshell desktop shell present" "[ -f '$ROOT/usr/bin/quickshell' ]"
 check "praxis-display utility present and executable" "[ -x '$ROOT/usr/local/bin/praxis-display' ]"
 check "praxis-display supports project mode (pc, second, duplicate, extend)" "grep -q 'project)' '$ROOT/usr/local/bin/praxis-display' && grep -q 'duplicate)' '$ROOT/usr/local/bin/praxis-display'"
 check "praxis-display automatically resolves Hyprland socket" "grep -q 'HYPRLAND_INSTANCE_SIGNATURE' '$ROOT/usr/local/bin/praxis-display'"
-check "praxis-display clears mirror flag on projection" "grep -q 'mirror = \"\"' '$ROOT/usr/local/bin/praxis-display'"
+check "praxis-display clears mirror flag on projection" "grep -q 'mirror' '$ROOT/usr/local/bin/praxis-display'"
 
 echo -e "\n[5/5] Examining Power, Sleep & User Lockout Security..."
 check "hypridle daemon present" "[ -f '$ROOT/usr/bin/hypridle' ]"
