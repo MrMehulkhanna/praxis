@@ -465,6 +465,13 @@ fi
 
 for s in $SERVICES $EXTRA_SERVICES; do systemctl enable "$s" 2>/dev/null || echo "note: could not enable $s"; done
 systemctl enable docker.socket 2>/dev/null || true
+# NVIDIA suspend/resume handling
+if pacman -Q nvidia-utils >/dev/null 2>&1; then
+    systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
+    install -d -m755 /etc/modprobe.d /etc/systemd/system/systemd-suspend.service.d
+    echo 'options nvidia NVreg_PreserveVideoMemoryAllocations=1' >/etc/modprobe.d/nvidia-power-management.conf
+    printf '[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' >/etc/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf
+fi
 
 # GRUB — writes only /EFI/Praxis on the EFI partition; Windows' own entry stays.
 # os-prober adds Windows (and any other OS) to the menu.

@@ -322,7 +322,7 @@ if [ -f "$HWDETECT" ] && command -v pacman >/dev/null 2>&1; then
     read -ra HW_PKGS <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null || true)")"
     UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
     [ -n "$UCODE" ] && HW_PKGS+=("$UCODE")
-    HW_PKGS+=(linux-firmware brightnessctl zenity poppler)
+    HW_PKGS+=(linux-firmware sof-firmware alsa-ucm-conf alsa-utils alsa-firmware brightnessctl zenity poppler)
     MISSING=()
 
     for p in "${HW_PKGS[@]}"; do pacman -Q "$p" >/dev/null 2>&1 || MISSING+=("$p"); done
@@ -385,6 +385,47 @@ EOF
         [ "$EUID" -eq 0 ] && chmod 0644 "$FAILLOCK_CONF" || sudo chmod 0644 "$FAILLOCK_CONF"
     fi
     [ "$EUID" -eq 0 ] && faillock --reset 2>/dev/null || sudo faillock --reset 2>/dev/null || true
+fi
+
+# NVIDIA suspend & power management fix
+if pacman -Q nvidia-utils >/dev/null 2>&1; then
+    if [ "$EUID" -eq 0 ]; then
+        systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
+        install -d -m755 /etc/modprobe.d /etc/systemd/system/systemd-suspend.service.d
+        echo 'options nvidia NVreg_PreserveVideoMemoryAllocations=1' >/etc/modprobe.d/nvidia-power-management.conf
+        printf '[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' >/etc/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
+        sudo install -d -m755 /etc/modprobe.d /etc/systemd/system/systemd-suspend.service.d
+        echo 'options nvidia NVreg_PreserveVideoMemoryAllocations=1' | sudo tee /etc/modprobe.d/nvidia-power-management.conf >/dev/null
+        printf '[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' | sudo tee /etc/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf >/dev/null
+    fi
+fi
+
+# Ensure laptop lid sleep behavior in logind
+LOGIND_PRAXIS="/etc/systemd/logind.conf.d/10-praxis.conf"
+if [ ! -f "$LOGIND_PRAXIS" ]; then
+    if [ "$EUID" -eq 0 ]; then
+        install -d -m755 /etc/systemd/logind.conf.d
+        cat << 'EOF' > "$LOGIND_PRAXIS"
+[Login]
+HandleLidSwitch=suspend
+HandleLidSwitchExternalPower=suspend
+HandleLidSwitchDocked=ignore
+HandlePowerKey=poweroff
+HandleSuspendKey=suspend
+EOF
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo install -d -m755 /etc/systemd/logind.conf.d
+        cat << 'EOF' | sudo tee "$LOGIND_PRAXIS" >/dev/null
+[Login]
+HandleLidSwitch=suspend
+HandleLidSwitchExternalPower=suspend
+HandleLidSwitchDocked=ignore
+HandlePowerKey=poweroff
+HandleSuspendKey=suspend
+EOF
+    fi
 fi
 
 # ---------------------------------------------------------------------------

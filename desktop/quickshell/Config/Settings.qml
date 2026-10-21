@@ -70,10 +70,10 @@ Singleton {
             property string wallpaper: ""
             property bool   liveOnBattery: false       // keep a live (video) wallpaper playing on battery
             property bool   autoSaver: true            // Battery saver on battery, off on the charger
-            property string idleMode: ""               // "" (untouched) | off | oled | screenoff — hypridle profile
+            property string idleMode: "screenoff"      // off | oled | screenoff — hypridle profile
             property bool   clock24h: false
             property bool   showSeconds: false
-            property int    sleepTimeout: 0            // minutes before auto-sleep; 0 = never
+            property int    sleepTimeout: 20           // minutes before auto-sleep; 0 = never
             property bool   touchGestures: true        // 3-finger swipe for workspace switching
             property int    dockOffset: 0              // px to raise dock above bottom edge (0 = flush)
         }
