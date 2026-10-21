@@ -370,6 +370,23 @@ if [ -f /usr/local/bin/praxis-backlightfix ]; then
     elif command -v sudo >/dev/null 2>&1; then sudo rm -f /usr/local/bin/praxis-backlightfix; fi
 fi
 
+# Ensure account lockout policy is safe and clear any failed login lockouts
+if [ "$EUID" -eq 0 ] || command -v sudo >/dev/null 2>&1; then
+    FAILLOCK_CONF="/etc/security/faillock.conf"
+    if [ ! -f "$FAILLOCK_CONF" ] || ! grep -q "admin_group = wheel" "$FAILLOCK_CONF" 2>/dev/null; then
+        cat << 'EOF' | ( [ "$EUID" -eq 0 ] && cat > "$FAILLOCK_CONF" || sudo tee "$FAILLOCK_CONF" >/dev/null )
+# Praxis account lockout policy: prevent locking out system administrator and primary user
+deny = 10
+unlock_time = 60
+fail_interval = 900
+even_deny_root = false
+admin_group = wheel
+EOF
+        [ "$EUID" -eq 0 ] && chmod 0644 "$FAILLOCK_CONF" || sudo chmod 0644 "$FAILLOCK_CONF"
+    fi
+    [ "$EUID" -eq 0 ] && faillock --reset 2>/dev/null || sudo faillock --reset 2>/dev/null || true
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Restart Desktop Shell & Reload the window manager
 # ---------------------------------------------------------------------------

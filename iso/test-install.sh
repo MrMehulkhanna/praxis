@@ -152,6 +152,7 @@ EOF
     [ -z "$failed" ] && ok "no failed units" || bad "failed units: $failed"
     check "branded as Praxis" guest 'grep -q Praxis /etc/os-release'
     check "user alex exists and may use sudo" guest 'id alex | grep -q wheel'
+    check "account lockout policy configured" guest 'grep -q "admin_group = wheel" /etc/security/faillock.conf'
     check "root file system is $fs" guest "test \"\$(findmnt -no FSTYPE /)\" = $fs"
     check "zram swap is on, sized to RAM" guest 'grep -q zram /proc/swaps'
     check "memory tuning applied (swappiness 180)" guest 'test "$(sysctl -n vm.swappiness)" = 180'

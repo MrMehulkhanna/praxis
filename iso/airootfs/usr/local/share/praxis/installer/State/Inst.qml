@@ -168,7 +168,7 @@ Singleton {
                     s.mode === "partition" ? "TARGET_PART=" + s.targetPart : "",
                     "HOSTNAME=" + s.hostName, "USERNAME=" + s.userName, "FULLNAME=" + (s.fullName.trim() || s.userName),
                     "PASSWORD_HASH='" + h + "'",
-                    "TIMEZONE=" + s.timezone, "LOCALE=" + s.locale, "KEYMAP=us", "XKB_LAYOUT=" + s.xkb,
+                    "TIMEZONE=" + s.timezone, "LOCALE=" + s.locale, "KEYMAP=" + (s.xkb === "gb" ? "uk" : (s.xkb || "us")), "XKB_LAYOUT=" + s.xkb,
                     "LOGIN=" + (s.lockAtStart ? "lock" : "auto"), "APPS=" + s.apps.join(" ")
                 ].filter(l => l !== "")
                 planProc.environment = { PLAN_TEXT: lines.join("\n") + "\n", PLAN_PATH: s.planPath }

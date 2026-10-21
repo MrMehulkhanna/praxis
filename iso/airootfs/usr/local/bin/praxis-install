@@ -194,7 +194,8 @@ trap 'rm -f "$PLAN"' EXIT
     [ -n "$TARGET_PART" ] && printf 'TARGET_PART=%s\n' "$TARGET_PART"
     printf 'HOSTNAME=%s\nUSERNAME=%s\nFULLNAME=%s\n' "$HOST" "$USERNAME" "$FULLNAME"
     printf "PASSWORD_HASH='%s'\n" "$PASSWORD_HASH"
-    printf 'TIMEZONE=%s\nLOCALE=%s\nKEYMAP=us\nXKB_LAYOUT=%s\nLOGIN=%s\nAPPS=%s\n' "$TIMEZONE" "$LOCALE" "$XKB" "$LOGIN" "$APPS"
+    KM=${XKB:-us}; [ "$KM" = gb ] && KM=uk
+    printf 'TIMEZONE=%s\nLOCALE=%s\nKEYMAP=%s\nXKB_LAYOUT=%s\nLOGIN=%s\nAPPS=%s\n' "$TIMEZONE" "$LOCALE" "$KM" "$XKB" "$LOGIN" "$APPS"
 } >"$PLAN"
 praxis-install-engine --check "$PLAN" >/dev/null || { praxis-install-engine --check "$PLAN"; die "the plan was not accepted"; }
 

@@ -396,7 +396,11 @@ sed -i "s/^#\(en_US.UTF-8 UTF-8\)/\1/" /etc/locale.gen
 sed -i "s/^#\(${LOCALE//./\\.} \)/\1/" /etc/locale.gen
 locale-gen >/dev/null
 echo "LANG=$LOCALE" >/etc/locale.conf
-echo "KEYMAP=$KEYMAP" >/etc/vconsole.conf
+KM="us"
+if [ -n "${KEYMAP:-}" ] && find /usr/share/kbd/keymaps/ -name "${KEYMAP}*.map.gz" 2>/dev/null | grep -q .; then
+    KM="$KEYMAP"
+fi
+echo "KEYMAP=$KM" >/etc/vconsole.conf
 echo "$HOSTNAME" >/etc/hostname
 printf '127.0.0.1  localhost\n::1        localhost\n127.0.1.1  %s.localdomain  %s\n' "$HOSTNAME" "$HOSTNAME" >/etc/hosts
 
@@ -405,9 +409,25 @@ sed -i 's/ autodetect//' /etc/mkinitcpio.conf
 mkinitcpio -P >/dev/null
 
 useradd -m -G wheel,video,audio,input,network,storage,users -c "$FULLNAME" -s /bin/bash "$USERNAME"
-usermod -p "$PASSWORD_HASH" "$USERNAME"
-usermod -p "$PASSWORD_HASH" root
+usermod -p "$PASSWORD_HASH" -U "$USERNAME" 2>/dev/null || true
+usermod -p "$PASSWORD_HASH" -U root 2>/dev/null || true
+passwd -u "$USERNAME" 2>/dev/null || true
+passwd -u root 2>/dev/null || true
+chage -E -1 -M 99999 "$USERNAME" 2>/dev/null || true
+chage -E -1 -M 99999 root 2>/dev/null || true
+command -v faillock >/dev/null 2>&1 && { faillock --user "$USERNAME" --reset 2>/dev/null || true; faillock --user root --reset 2>/dev/null || true; }
 getent group docker >/dev/null && usermod -aG docker "$USERNAME"
+
+install -d -m755 /etc/security
+cat << 'EOF' > /etc/security/faillock.conf
+# Praxis account lockout policy: prevent locking out system administrator and primary user
+deny = 10
+unlock_time = 60
+fail_interval = 900
+even_deny_root = false
+admin_group = wheel
+EOF
+chmod 0644 /etc/security/faillock.conf
 install -d -m750 /etc/sudoers.d
 echo '%wheel ALL=(ALL:ALL) ALL' >/etc/sudoers.d/10-wheel
 chmod 440 /etc/sudoers.d/10-wheel
