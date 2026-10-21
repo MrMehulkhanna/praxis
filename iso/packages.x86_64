@@ -51,6 +51,10 @@ pipewire-pulse
 wireplumber
 gst-plugin-pipewire
 libpulse
+sof-firmware
+alsa-ucm-conf
+alsa-utils
+alsa-firmware
 
 # ── network & bluetooth ──────────────────────────────────────────────────
 networkmanager
