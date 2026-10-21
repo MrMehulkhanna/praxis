@@ -354,11 +354,20 @@ for udir in /home/* "$HOME"; do
     fi
 done
 
-# hybrid-GPU laptops: brightness keys do nothing until the kernel uses the
-# backlight of the GPU that really drives the screen (needs one restart)
-if [ -x /usr/local/bin/praxis-backlightfix ]; then
-    if [ "$EUID" -eq 0 ]; then /usr/local/bin/praxis-backlightfix || true
-    elif command -v sudo >/dev/null 2>&1; then sudo /usr/local/bin/praxis-backlightfix || true; fi
+# Clean up any obsolete backlight kernel parameters from /etc/default/grub
+if [ -f /etc/default/grub ] && grep -q "acpi_backlight=native" /etc/default/grub; then
+    log "Reverting acpi_backlight kernel option from GRUB"
+    if [ "$EUID" -eq 0 ]; then
+        sed -i 's/ *acpi_backlight=native//g' /etc/default/grub
+        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo sed -i 's/ *acpi_backlight=native//g' /etc/default/grub
+        sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    fi
+fi
+if [ -f /usr/local/bin/praxis-backlightfix ]; then
+    if [ "$EUID" -eq 0 ]; then rm -f /usr/local/bin/praxis-backlightfix
+    elif command -v sudo >/dev/null 2>&1; then sudo rm -f /usr/local/bin/praxis-backlightfix; fi
 fi
 
 # ---------------------------------------------------------------------------
