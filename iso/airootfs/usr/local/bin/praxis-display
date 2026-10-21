@@ -79,6 +79,53 @@ case "${1:-status}" in
     list)
         hyprctl -j monitors all | jq -r '.[] | "\(.name)  \(.description)\n  now: \(.width)x\(.height)@\(.refreshRate * 100 | round / 100)  scale \(.scale)\n  modes: \(.availableModes | join(" "))"'
         ;;
+    project)
+        mode=${2:-extend}
+        all_mons=$(hyprctl -j monitors all 2>/dev/null || echo "[]")
+        int=$(echo "$all_mons" | jq -r '.[] | select(.name | startswith("eDP")) | .name' | head -1)
+        [ -n "$int" ] || int=$(echo "$all_mons" | jq -r '.[0].name // empty')
+
+        ext=$(echo "$all_mons" | jq -r --arg im "$int" '.[] | select(.name != $im) | .name' | head -1)
+        if [ -z "$ext" ]; then
+            for s in /sys/class/drm/card*-*/status; do
+                [ -f "$s" ] || continue
+                if [ "$(cat "$s" 2>/dev/null)" = "connected" ]; then
+                    c=$(basename "$(dirname "$s")" | sed 's/^card[0-9]*-//')
+                    if [[ "$c" != eDP* ]]; then
+                        ext="$c"
+                        break
+                    fi
+                fi
+            done
+        fi
+
+        if [ -z "$ext" ]; then
+            command -v notify-send >/dev/null && notify-send -a Praxis -i video-display "No external monitor detected" "Connect a display via HDMI or DisplayPort to project."
+            echo "praxis-display: no external display detected" >&2
+            exit 1
+        fi
+
+        int_scale=$(echo "$all_mons" | jq -r --arg im "$int" '.[] | select(.name == $im) | .scale' | head -1)
+        [ -n "$int_scale" ] && [ "$int_scale" != "null" ] || int_scale="auto"
+        int_mode=$(echo "$all_mons" | jq -r --arg im "$int" '.[] | select(.name == $im) | "\(.width)x\(.height)@\(.refreshRate * 100 | round / 100)"' | head -1)
+        [ -n "$int_mode" ] && [ "$int_mode" != "null" ] || int_mode="preferred"
+
+        case "$mode" in
+            pc)
+                hyprctl eval "hl.monitor({ output = \"$int\", mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disable = true })"
+                ;;
+            second)
+                hyprctl eval "hl.monitor({ output = \"$int\", disable = true }) hl.monitor({ output = \"$ext\", mode = \"preferred\", position = \"0x0\", scale = 1 })"
+                ;;
+            duplicate)
+                hyprctl eval "hl.monitor({ output = \"$int\", mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", mode = \"preferred\", position = \"0x0\", mirror = \"$int\", scale = 1 })"
+                ;;
+            extend|*)
+                hyprctl eval "hl.monitor({ output = \"$int\", mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", mode = \"preferred\", position = \"auto-right\", scale = 1 })"
+                ;;
+        esac
+        echo "projected to $mode (internal: $int, external: $ext)"
+        ;;
     -h|--help|help) sed -n '3,16p' "$0" | sed 's/^# \?//' ;;
     *) die "unknown command $1 (praxis-display help)" ;;
 esac
