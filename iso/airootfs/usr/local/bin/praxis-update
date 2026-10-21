@@ -322,7 +322,7 @@ if [ -f "$HWDETECT" ] && command -v pacman >/dev/null 2>&1; then
     read -ra HW_PKGS <<<"$(praxis_gpu_pkgs "$(lspci -nn 2>/dev/null || true)")"
     UCODE=$(praxis_ucode "$(grep -m1 vendor_id /proc/cpuinfo | awk '{print $3}')")
     [ -n "$UCODE" ] && HW_PKGS+=("$UCODE")
-    HW_PKGS+=(linux-firmware sof-firmware alsa-ucm-conf alsa-utils alsa-firmware brightnessctl zenity poppler)
+    HW_PKGS+=(linux-firmware sof-firmware alsa-ucm-conf alsa-utils alsa-firmware pipewire-audio alsa-card-profiles alsa-plugins rtkit brightnessctl zenity poppler)
     MISSING=()
 
     for p in "${HW_PKGS[@]}"; do pacman -Q "$p" >/dev/null 2>&1 || MISSING+=("$p"); done
@@ -347,8 +347,7 @@ WP_DIR="/etc/wireplumber/wireplumber.conf.d"
 if [ "$EUID" -eq 0 ] || command -v sudo >/dev/null 2>&1; then
     [ "$EUID" -eq 0 ] && install -d -m755 "$WP_DIR" || sudo install -d -m755 "$WP_DIR"
     WP_PRIO="$WP_DIR/50-speaker-priority.conf"
-    if [ ! -f "$WP_PRIO" ]; then
-        cat << 'EOF' | ( [ "$EUID" -eq 0 ] && cat > "$WP_PRIO" || sudo tee "$WP_PRIO" >/dev/null )
+    cat << 'EOF' | ( [ "$EUID" -eq 0 ] && cat > "$WP_PRIO" || sudo tee "$WP_PRIO" >/dev/null )
 monitor.alsa.rules = [
   {
     matches = [
@@ -375,10 +374,25 @@ monitor.alsa.rules = [
         priority.session = 600
       }
     }
+  },
+  {
+    matches = [
+      { node.name = "~alsa_input.*dmic*" }
+      { node.name = "~alsa_input.*Mic*" }
+      { node.name = "~alsa_input.*mic*" }
+      { node.name = "~alsa_input.*Headset*" }
+      { node.name = "~alsa_input.*headset*" }
+      { node.name = "~alsa_input.*internal*" }
+    ]
+    actions = {
+      update-props = {
+        priority.driver = 1009
+        priority.session = 1009
+      }
+    }
   }
 ]
 EOF
-    fi
 fi
 
 # Unmute ALSA speaker/headphone channels and set comfortable default volume
@@ -389,6 +403,12 @@ if command -v amixer >/dev/null 2>&1; then
     for c in Mic Capture; do
         amixer sset "$c" unmute 80% >/dev/null 2>&1 || true
     done
+fi
+if command -v wpctl >/dev/null 2>&1; then
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 >/dev/null 2>&1 || true
+    wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 80% >/dev/null 2>&1 || true
+    wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0 >/dev/null 2>&1 || true
+    wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SOURCE@ 80% >/dev/null 2>&1 || true
 fi
 
 # ---------------------------------------------------------------------------

@@ -60,6 +60,11 @@ praxis_copy_assets() {
              /usr/share/bash-completion/completions/praxis \
              /usr/share/zsh/site-functions/_praxis \
              /etc/systemd/zram-generator.conf \
+             /etc/systemd/logind.conf.d/10-praxis.conf \
+             /etc/wireplumber/wireplumber.conf.d/50-speaker-priority.conf \
+             /etc/udev/rules.d/90-backlight.rules \
+             /etc/security/faillock.conf \
+             /etc/sudoers.d/praxis-nopasswd \
              /etc/motd /etc/issue /etc/os-release; do
         [ -e "$src$f" ] || continue
         install -d "$root$(dirname "$f")"

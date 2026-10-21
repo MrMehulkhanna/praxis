@@ -45,6 +45,7 @@ poppler
 
 # ── audio ────────────────────────────────────────────────────────────────
 pipewire
+pipewire-audio
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
@@ -55,6 +56,9 @@ sof-firmware
 alsa-ucm-conf
 alsa-utils
 alsa-firmware
+alsa-card-profiles
+alsa-plugins
+rtkit
 
 # ── network & bluetooth ──────────────────────────────────────────────────
 networkmanager
