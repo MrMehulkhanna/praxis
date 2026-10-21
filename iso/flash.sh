@@ -25,8 +25,10 @@ else
     TARGET=${cands[0]}
 fi
 [ -b "$TARGET" ] || die "$TARGET is not a block device"
-[ "$(lsblk -dno TRAN "$TARGET")" = usb ] || die "$TARGET is not a USB disk — refusing"
 [ "$TARGET" != "$rootdisk" ] || die "$TARGET holds the running system — refusing"
+if [ -z "${2:-}" ] && [ "$(lsblk -dno TRAN "$TARGET")" != usb ]; then
+    die "$TARGET is not a USB disk — pass the target explicitly if writing to an external SSD"
+fi
 
 SIZE=$(stat -c %s "$ISO")
 printf 'ISO     %s (%s)\n' "$ISO" "$(numfmt --to=iec "$SIZE")"
