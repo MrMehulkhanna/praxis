@@ -112,16 +112,16 @@ case "${1:-status}" in
 
         case "$mode" in
             pc)
-                hyprctl eval "hl.monitor({ output = \"$int\", mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disable = true })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disabled = true })"
                 ;;
             second)
-                hyprctl eval "hl.monitor({ output = \"$int\", disable = true }) hl.monitor({ output = \"$ext\", mode = \"preferred\", position = \"0x0\", scale = 1 })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = true }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"0x0\", scale = 1 })"
                 ;;
             duplicate)
-                hyprctl eval "hl.monitor({ output = \"$int\", mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", mode = \"preferred\", position = \"0x0\", mirror = \"$int\", scale = 1 })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"0x0\", mirror = \"$int\", scale = 1 })"
                 ;;
             extend|*)
-                hyprctl eval "hl.monitor({ output = \"$int\", mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", mode = \"preferred\", position = \"auto-right\", scale = 1 })"
+                hyprctl eval "hl.monitor({ output = \"$int\", disabled = false, mode = \"$int_mode\", position = \"0x0\", scale = $int_scale }) hl.monitor({ output = \"$ext\", disabled = false, mode = \"preferred\", position = \"auto-right\", scale = 1 })"
                 ;;
         esac
         echo "projected to $mode (internal: $int, external: $ext)"
