@@ -13,13 +13,18 @@ set -euo pipefail
 die() { printf '\n\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
 
 BUILD=${PRAXIS_BUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/praxis-iso}
-ISO=${1:-$(ls -t "$BUILD"/out/praxis-*.iso 2>/dev/null | head -1 || true)}
+TARGET=""
+if [ -n "${1:-}" ] && [ -b "$1" ]; then
+    TARGET=$1
+    ISO=$(ls -t "$BUILD"/out/praxis-*.iso 2>/dev/null | head -1 || true)
+else
+    ISO=${1:-$(ls -t "$BUILD"/out/praxis-*.iso 2>/dev/null | head -1 || true)}
+    [ -n "${2:-}" ] && TARGET=$2
+fi
 [ -n "$ISO" ] && [ -f "$ISO" ] || die "no ISO found — build one with iso/build.sh or pass its path"
 
 rootdisk=/dev/$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" | head -1)
-if [ -n "${2:-}" ]; then
-    TARGET=$2
-else
+if [ -z "$TARGET" ]; then
     mapfile -t cands < <(lsblk -dpno NAME,SIZE,TRAN,TYPE | awk -v rd="$rootdisk" '$3=="usb" && $4=="disk" && $2!="0B" && $1!=rd {print $1}')
     [ "${#cands[@]}" -eq 1 ] || die "found ${#cands[@]} USB disks (${cands[*]:-none}) — pass the device explicitly"
     TARGET=${cands[0]}
