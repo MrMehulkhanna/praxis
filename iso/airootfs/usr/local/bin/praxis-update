@@ -457,6 +457,48 @@ EOF
         [ "$EUID" -eq 0 ] && chmod 0644 "$FAILLOCK_CONF" || sudo chmod 0644 "$FAILLOCK_CONF"
     fi
     [ "$EUID" -eq 0 ] && faillock --reset 2>/dev/null || sudo faillock --reset 2>/dev/null || true
+
+    # Fail-safe emergency and rescue console (never lock out maintenance access)
+    EMERG_DIR="/etc/systemd/system/emergency.service.d"
+    RESCUE_DIR="/etc/systemd/system/rescue.service.d"
+    [ "$EUID" -eq 0 ] && install -d -m755 "$EMERG_DIR" "$RESCUE_DIR" || sudo install -d -m755 "$EMERG_DIR" "$RESCUE_DIR"
+    printf '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' | ( [ "$EUID" -eq 0 ] && cat > "$EMERG_DIR/override.conf" || sudo tee "$EMERG_DIR/override.conf" >/dev/null )
+    printf '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' | ( [ "$EUID" -eq 0 ] && cat > "$RESCUE_DIR/override.conf" || sudo tee "$RESCUE_DIR/override.conf" >/dev/null )
+    if [ "$EUID" -eq 0 ]; then
+        sed -i 's|^root:[*!]:|root::|' /etc/shadow 2>/dev/null || true
+    else
+        sudo sed -i 's|^root:[*!]:|root::|' /etc/shadow 2>/dev/null || true
+    fi
+fi
+
+# Ensure storage controllers (Intel VMD, NVMe, SATA, USB SSD) are built into initramfs
+if [ -f /etc/mkinitcpio.conf ]; then
+    if ! grep -q "vmd" /etc/mkinitcpio.conf 2>/dev/null; then
+        log "Ensuring storage and VMD drivers in initramfs"
+        if [ "$EUID" -eq 0 ]; then
+            sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci uas usb_storage btrfs ext4)/' /etc/mkinitcpio.conf
+            sed -i 's/ autodetect//' /etc/mkinitcpio.conf
+            mkinitcpio -P >/dev/null 2>&1 || true
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci uas usb_storage btrfs ext4)/' /etc/mkinitcpio.conf
+            sudo sed -i 's/ autodetect//' /etc/mkinitcpio.conf
+            sudo mkinitcpio -P >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+
+# Ensure GRUB includes USB root delay and emergency console force
+if [ -f /etc/default/grub ]; then
+    if ! grep -q "SYSTEMD_SULOGIN_FORCE" /etc/default/grub 2>/dev/null; then
+        log "Updating GRUB bootloader parameters for fail-safe rescue"
+        if [ "$EUID" -eq 0 ]; then
+            sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"|GRUB_CMDLINE_LINUX_DEFAULT="\1 rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"|' /etc/default/grub
+            grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"|GRUB_CMDLINE_LINUX_DEFAULT="\1 rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"|' /etc/default/grub
+            sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+        fi
+    fi
 fi
 
 # NVIDIA suspend & power management fix

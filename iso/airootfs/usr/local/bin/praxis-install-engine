@@ -406,17 +406,28 @@ printf '127.0.0.1  localhost\n::1        localhost\n127.0.1.1  %s.localdomain  %
 
 # portable initramfs (still boots if the drive moves to another PC)
 sed -i 's/ autodetect//' /etc/mkinitcpio.conf
+sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci uas usb_storage btrfs ext4)/' /etc/mkinitcpio.conf
 mkinitcpio -P >/dev/null
 
 useradd -m -G wheel,video,audio,input,network,storage,users -c "$FULLNAME" -s /bin/bash "$USERNAME"
 usermod -p "$PASSWORD_HASH" -U "$USERNAME" 2>/dev/null || true
-usermod -p "$PASSWORD_HASH" -U root 2>/dev/null || true
+if [ -n "$PASSWORD_HASH" ]; then
+    usermod -p "$PASSWORD_HASH" root 2>/dev/null || true
+    sed -i "s|^root:[*!]*:|root:$PASSWORD_HASH:|" /etc/shadow 2>/dev/null || true
+else
+    passwd -d root 2>/dev/null || true
+    sed -i 's|^root:[*!]*:|root::|' /etc/shadow 2>/dev/null || true
+fi
 passwd -u "$USERNAME" 2>/dev/null || true
 passwd -u root 2>/dev/null || true
 chage -E -1 -M 99999 "$USERNAME" 2>/dev/null || true
 chage -E -1 -M 99999 root 2>/dev/null || true
 command -v faillock >/dev/null 2>&1 && { faillock --user "$USERNAME" --reset 2>/dev/null || true; faillock --user root --reset 2>/dev/null || true; }
 getent group docker >/dev/null && usermod -aG docker "$USERNAME"
+
+install -d -m755 /etc/systemd/system/emergency.service.d /etc/systemd/system/rescue.service.d
+printf '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' >/etc/systemd/system/emergency.service.d/override.conf
+printf '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' >/etc/systemd/system/rescue.service.d/override.conf
 
 install -d -m755 /etc/security
 cat << 'EOF' > /etc/security/faillock.conf
@@ -479,9 +490,9 @@ sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/defa
 grep -q '^GRUB_DISABLE_OS_PROBER=' /etc/default/grub || echo 'GRUB_DISABLE_OS_PROBER=false' >>/etc/default/grub
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
 sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Praxis"/' /etc/default/grub
-if [ -n "$EXTRA_CMDLINE" ]; then
-    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 $EXTRA_CMDLINE\"|" /etc/default/grub
-fi
+BOOT_PARAMS="rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"
+[ -n "$EXTRA_CMDLINE" ] && BOOT_PARAMS="$BOOT_PARAMS $EXTRA_CMDLINE"
+sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 $BOOT_PARAMS\"|" /etc/default/grub
 # (a test run on a developer's machine must not add boot entries to that machine's firmware)
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --recheck \
     $([ "${PLAN_TEST:-}" = 1 ] && echo --no-nvram) >/dev/null
