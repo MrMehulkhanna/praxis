@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  praxis-audio — inspect, unmute, and configure audio output and input
+#
+#    praxis-audio status     show active audio sinks, sources, and volume
+#    praxis-audio unmute     unmute all channels (speakers, mic) and set volume
+#    praxis-audio reset      restart PipeWire & WirePlumber user services
+# ============================================================================
+set -euo pipefail
+
+case "${1:-status}" in
+    status)
+        echo "=== Audio Sinks & Sources ==="
+        wpctl status 2>/dev/null | sed -n '/Audio/,/Video/p' || pactl list sinks short 2>/dev/null || true
+        ;;
+    unmute)
+        for c in Master Speaker Headphone Mic "Capture" "Internal Mic"; do
+            amixer -q set "$c" unmute 2>/dev/null || true
+            amixer -q set "$c" 80% 2>/dev/null || true
+        done
+        default_sink=$(wpctl status 2>/dev/null | grep -E '\*\s+[0-9]+\.' | head -1 | awk '{print $2}' | tr -d '.' || true)
+        if [ -n "$default_sink" ]; then
+            wpctl set-mute "$default_sink" 0 2>/dev/null || true
+            wpctl set-volume "$default_sink" 0.8 2>/dev/null || true
+        fi
+        echo "Audio channels unmuted and set to 80% volume."
+        ;;
+    reset)
+        systemctl --user restart pipewire pipewire-pulse wireplumber 2>/dev/null || true
+        sleep 1
+        "$0" unmute
+        echo "PipeWire and WirePlumber restarted and unmuted."
+        ;;
+    -h|--help|help)
+        echo "Usage: praxis-audio {status|unmute|reset}"
+        ;;
+    *)
+        echo "Usage: praxis-audio {status|unmute|reset}"
+        exit 1
+        ;;
+esac
