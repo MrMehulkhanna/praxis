@@ -700,9 +700,34 @@ OverlayWindow {
         id: bluetooth
         Column {
             spacing: 0
+
+            Component.onCompleted: {
+                if (Net.btEnabled) {
+                    Net.startBtScan(30)
+                }
+            }
+
             SettingRow { label: "Bluetooth"; description: Net.btLabel; Toggle { enabled: Net.btAvailable; checked: Net.btEnabled; onToggled: v => Net.setBt(v) } }
-            SettingRow { label: "Discover new devices"; description: Net.adapter && Net.adapter.discovering ? "Scanning…" : "Off"
-                Toggle { enabled: Net.btEnabled; checked: Net.adapter ? Net.adapter.discovering : false; onToggled: v => Net.setDiscovering(v) } }
+            SettingRow {
+                label: "Discover new devices"
+                description: Net.btScanning
+                    ? "Scanning for nearby devices (" + (Net.btScanRemaining > 0 ? Net.btScanRemaining + "s" : "active") + ")…"
+                    : "Scan paused. Click scan or toggle to search."
+                Row {
+                    spacing: 8
+                    Btn {
+                        enabled: Net.btEnabled
+                        icon: Net.btScanning ? "refresh-cw" : "search"
+                        label: Net.btScanning ? "Scanning (" + (Net.btScanRemaining > 0 ? Net.btScanRemaining + "s" : "active") + ")…" : "Scan (30s)"
+                        onClicked: Net.startBtScan(30)
+                    }
+                    Toggle {
+                        enabled: Net.btEnabled
+                        checked: Net.btScanning
+                        onToggled: v => { if (v) Net.startBtScan(30); else Net.stopBtScan() }
+                    }
+                }
+            }
             H { text: "DEVICES" }
             Repeater {
                 model: Net.btDevices.slice().sort((a, b) => (b.connected - a.connected) || (b.paired - a.paired))
@@ -715,6 +740,14 @@ OverlayWindow {
                         Btn { visible: modelData.connected; icon: "x"; label: "Disconnect"; onClicked: modelData.disconnect() }
                         Btn { visible: !modelData.connected && modelData.paired; icon: "check"; label: "Connect"; onClicked: modelData.connect() }
                         Btn { visible: !modelData.paired; icon: "plus"; label: modelData.pairing ? "Pairing…" : "Pair"; onClicked: modelData.pair() }
+                        Btn {
+                            visible: !modelData.paired
+                            icon: "key"
+                            label: "Pair with PIN"
+                            onClicked: {
+                                Shell.run(["praxis-bluetooth", "pair", modelData.address, modelData.name || modelData.deviceName || modelData.address])
+                            }
+                        }
                         Btn { visible: modelData.paired; icon: "trash"; onClicked: modelData.forget() }
                     }
                 }

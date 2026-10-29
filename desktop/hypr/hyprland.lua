@@ -67,6 +67,7 @@ hl.on("hyprland.start", function ()
   hl.exec_cmd("systemctl --user start aios.service")  -- local AI backend
   hl.exec_cmd("praxis-clipboard watch")               -- clipboard history (Super+Shift+V)
   hl.exec_cmd("hypridle &")                           -- idle management: dim, lock, screen off, sleep
+  hl.exec_cmd("blueman-applet &")                     -- Bluetooth authentication agent (PIN/passkey/pairing prompts)
   hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1")  -- GUI auth prompts for root-only hardware toggles
 end)
 

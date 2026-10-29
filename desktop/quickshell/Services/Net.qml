@@ -69,6 +69,47 @@ Singleton {
     readonly property string btLabel: !btAvailable ? "No adapter" : !btEnabled ? "Off"
                                     : btConnected.length ? btConnected.map(d => d.name || d.deviceName).join(", ") : "On"
 
-    function setBt(on) { if (adapter) adapter.enabled = on }
-    function setDiscovering(on) { if (adapter) adapter.discovering = on }
+    property int btScanRemaining: 0
+    readonly property bool btScanning: btScanRemaining > 0 || (adapter ? adapter.discovering : false)
+
+    Timer {
+        id: btScanCountdown
+        interval: 1000
+        repeat: true
+        running: root.btScanRemaining > 0
+        onTriggered: {
+            root.btScanRemaining--
+            if (root.btScanRemaining <= 0) {
+                root.stopBtScan()
+            }
+        }
+    }
+
+    function setBt(on) {
+        if (adapter) {
+            adapter.enabled = on
+            if (on) startBtScan(30)
+            else stopBtScan()
+        }
+    }
+
+    function setDiscovering(on) {
+        if (adapter) {
+            adapter.discovering = on
+            if (on && btScanRemaining <= 0) btScanRemaining = 30
+            else if (!on) btScanRemaining = 0
+        }
+    }
+
+    function startBtScan(seconds) {
+        if (!adapter) return
+        if (!adapter.enabled) adapter.enabled = true
+        adapter.discovering = true
+        btScanRemaining = seconds || 30
+    }
+
+    function stopBtScan() {
+        btScanRemaining = 0
+        if (adapter) adapter.discovering = false
+    }
 }

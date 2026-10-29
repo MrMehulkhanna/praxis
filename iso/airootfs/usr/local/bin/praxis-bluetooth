@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# ============================================================================
+# praxis-bluetooth — Bluetooth device helper, 30s scanner, and PIN pairing
+# ============================================================================
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  praxis-bluetooth scan [seconds]               Scan for nearby devices (default: 30s)
+  praxis-bluetooth pair <address> [name] [pin]  Pair with a device (prompts for PIN if needed)
+  praxis-bluetooth connect <address>            Trust and connect to a device
+  praxis-bluetooth disconnect <address>         Disconnect from a device
+  praxis-bluetooth list                         List all paired and nearby devices
+  praxis-bluetooth status                       Show controller status
+  praxis-bluetooth agent                        Ensure bluetooth authentication agent is running
+EOF
+    exit 1
+}
+
+CMD=${1:-usage}
+shift || true
+
+ensure_agent() {
+    if ! pgrep -f "blueman-applet" >/dev/null 2>&1; then
+        if command -v blueman-applet >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]; then
+            nohup blueman-applet >/dev/null 2>&1 &
+        fi
+    fi
+}
+
+case "$CMD" in
+    agent)
+        ensure_agent
+        echo "Bluetooth authentication agent ready."
+        ;;
+
+    scan)
+        SECS=${1:-30}
+        echo "Starting $SECS-second Bluetooth scan..."
+        bluetoothctl --timeout "$SECS" scan on || true
+        echo "Scan completed."
+        ;;
+
+    pair)
+        [ $# -ge 1 ] || usage
+        ADDR=$1
+        NAME=${2:-$ADDR}
+        PIN=${3:-}
+
+        ensure_agent
+
+        if [ -z "$PIN" ]; then
+            if command -v zenity >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]; then
+                PIN=$(zenity --entry \
+                    --title="Bluetooth Pairing: $NAME" \
+                    --text="Enter PIN or Passkey for $NAME (leave blank for auto-pair):" \
+                    2>/dev/null || true)
+            fi
+        fi
+
+        echo "Pairing with $NAME ($ADDR)..."
+        bluetoothctl trust "$ADDR" >/dev/null 2>&1 || true
+
+        if [ -n "$PIN" ]; then
+            printf "%s\n" "$PIN" | bluetoothctl pair "$ADDR" || true
+        else
+            bluetoothctl pair "$ADDR" || true
+        fi
+
+        sleep 1
+        bluetoothctl connect "$ADDR" || true
+        ;;
+
+    connect)
+        [ $# -ge 1 ] || usage
+        ADDR=$1
+        echo "Connecting to $ADDR..."
+        bluetoothctl trust "$ADDR" >/dev/null 2>&1 || true
+        bluetoothctl connect "$ADDR"
+        ;;
+
+    disconnect)
+        [ $# -ge 1 ] || usage
+        ADDR=$1
+        echo "Disconnecting from $ADDR..."
+        bluetoothctl disconnect "$ADDR"
+        ;;
+
+    list)
+        echo "Paired devices:"
+        bluetoothctl paired-devices || true
+        echo
+        echo "Discovered devices:"
+        bluetoothctl devices || true
+        ;;
+
+    status)
+        bluetoothctl show || true
+        ;;
+
+    *)
+        usage
+        ;;
+esac
