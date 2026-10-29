@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  
+  <!-- Primary Meta Tags -->
+  <title>Praxis Linux (AIOS) — The Sovereign AI Operating System | Zero Telemetry, Zero Freezes</title>
+  <meta name="title" content="Praxis Linux (AIOS) — The Sovereign AI Operating System | Zero Telemetry, Zero Freezes">
+  <meta name="description" content="Praxis Linux is an offline-first, private operating system powered by local AI, a buttery 120Hz Wayland glass desktop, and non-destructive alongside-Windows dual-boot. Zero telemetry, zero cloud tracking, zero freezes.">
+  <meta name="keywords" content="Praxis Linux, AIOS, Local AI OS, Private Linux, Hyprland Wayland, Offline AI, llama.cpp desktop, Whisper voice typing, Windows dual boot, Zero Telemetry Linux, Mehul Khanna">
+  <meta name="author" content="Mehul Khanna">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://mrmehulkhanna.github.io/praxis/">
+  <meta name="theme-color" content="#080a0f">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://mrmehulkhanna.github.io/praxis/">
+  <meta property="og:title" content="Praxis Linux (AIOS) — The Sovereign AI Operating System">
+  <meta property="og:description" content="A private Linux desktop with an AI that lives inside it. 100% offline, zero telemetry, buttery 120Hz Wayland motion, and safe alongside-Windows dual-boot.">
+  <meta property="og:image" content="https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/website/assets/screenshots/settings-shortcuts.png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://mrmehulkhanna.github.io/praxis/">
+  <meta property="twitter:title" content="Praxis Linux (AIOS) — The Sovereign AI Operating System">
+  <meta property="twitter:description" content="A private Linux desktop with an AI that lives inside it. Zero telemetry, zero cloud tracking, zero freezes.">
+  <meta property="twitter:image" content="https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/website/assets/screenshots/settings-shortcuts.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/praxis.svg">
+  <link rel="apple-touch-icon" href="assets/praxis-logo.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Schema.org JSON-LD Structured Data for Google Search Engine Optimization -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Praxis Linux (AIOS)",
+    "operatingSystem": "Linux x86_64",
+    "applicationCategory": "OperatingSystem",
+    "description": "An offline-first, private operating system powered by local AI, a buttery 120Hz Wayland glass desktop, and non-destructive alongside-Windows dual-boot. Zero telemetry, zero cloud tracking, zero freezes.",
+    "softwareVersion": "2026.10.29",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Mehul Khanna",
+      "email": "mehulkhanna277@gmail.com",
+      "url": "https://github.com/MrMehulkhanna"
+    },
+    "downloadUrl": "https://github.com/MrMehulkhanna/praxis/releases",
+    "fileSize": "1940MB",
+    "keywords": "Linux, AIOS, Local AI, Whisper, llama.cpp, Hyprland, Wayland, Privacy, Zero Telemetry"
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Background Lighting Mesh -->
+  <div class="bg-mesh" aria-hidden="true"></div>
+
+  <!-- Header & Navigation -->
+  <header class="site-header">
+    <div class="container nav-wrap">
+      <a href="#" class="brand">
+        <img src="assets/praxis.svg" alt="Praxis Logo" class="brand-icon">
+        <span class="brand-name">Praxis</span>
+        <span class="brand-badge">AIOS</span>
+      </a>
+
+      <nav>
+        <ul class="nav-links">
+          <li><a href="#features" class="nav-link">Features</a></li>
+          <li><a href="#comparison" class="nav-link">vs Windows 11</a></li>
+          <li><a href="#philosophy" class="nav-link">Philosophy</a></li>
+          <li><a href="#desktop" class="nav-link">Desktop Tour</a></li>
+          <li><a href="#hardware" class="nav-link">Hardware</a></li>
+          <li><a href="#download" class="nav-link">Download</a></li>
+          <li><a href="#faq" class="nav-link">FAQ</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="https://github.com/MrMehulkhanna/praxis" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span>Star on GitHub</span>
+        </a>
+        <button class="mobile-menu-btn" aria-label="Toggle navigation">
+          <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section with Interactive 3D WebGL Canvas -->
+  <section class="hero-section">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="hero-pill">
+          <span class="pulse-dot"></span>
+          <span>Knowledge, Put into Action · Stable ISO 2026.10</span>
+        </div>
+
+        <h1 class="hero-title">
+          The Sovereign AI <br>
+          <span class="gradient-text">Operating System.</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          A high-refresh Linux desktop with an AI that lives natively inside it. Zero telemetry. Zero reboots. Zero freezes. Fast on an ordinary laptop, offline-first, and safe to dual-boot next to Windows.
+        </p>
+
+        <div class="hero-badges">
+          <span class="badge-item">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Arch Linux Base
+          </span>
+          <span class="badge-item">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            120Hz Wayland Native
+          </span>
+          <span class="badge-item">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            100% Offline Local AI
+          </span>
+          <span class="badge-item">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Zero Telemetry
+          </span>
+        </div>
+
+        <div class="hero-ctas">
+          <a href="#download" class="btn-primary">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <span>Download Praxis ISO (1.9 GB)</span>
+          </a>
+          <a href="#comparison" class="btn-secondary">
+            <span>Why Switch from Windows</span>
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- 3D Interactive WebGL Display -->
+      <div class="hero-3d-box">
+        <div id="canvas-container"></div>
+        <div class="viewport-overlay">
+          <span class="viewport-pill">⚡ 3D LIVE HARDWARE PREVIEW</span>
+          <span class="interactive-hint">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
+            </svg>
+            Drag to Rotate &amp; Tilt
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Creator's Intent & Philosophy (The Manifesto) -->
+  <section id="philosophy">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">THE MANIFESTO</span>
+        <h2 class="section-title">Why Mehul Khanna Built Praxis</h2>
+        <p class="section-desc">
+          Modern personal computing has become broken by design. Praxis was engineered to reclaim sovereignty, dignity, and raw computing performance.
+        </p>
+      </div>
+
+      <div class="intent-grid">
+        <div class="intent-card">
+          <div class="card-icon-wrap rose">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+            </svg>
+          </div>
+          <h3>Escaping the Windows Bloat &amp; Freeze Trap</h3>
+          <p>
+            Windows 11 treats your laptop as an ad terminal. Forced cloud accounts, silent telemetry pipelines, unrequested reboots mid-work, and debilitating sleep/wake freezes have ruined everyday computing. Praxis proves that an OS should boot in seconds and never freeze under memory pressure.
+          </p>
+        </div>
+
+        <div class="intent-card">
+          <div class="card-icon-wrap violet">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+          </div>
+          <h3>AI as a Private Primitive, Not Spyware</h3>
+          <p>
+            Corporate AI products stream your keystrokes, screen contents, and microphone audio to distant datacenters. Praxis runs LLMs and Whisper directly on your machine's GPU or CPU. Your voice, your documents, and your code remain 100% on your SSD.
+          </p>
+        </div>
+
+        <div class="intent-card">
+          <div class="card-icon-wrap">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h3>Craftsmanship Without Compromise</h3>
+          <p>
+            No broken Bluetooth agents. No Wi-Fi dropouts. No clunky desktop papercuts. Tested in automated QEMU loops with synthetic Windows installations to ensure that dual-booting next to Windows never harms a single byte of your data.
+          </p>
+        </div>
+      </div>
+
+      <div class="quote-highlight">
+        <blockquote>
+          "Your computer already knows a lot about you — your files, your notes, your work. It should act on that knowledge: answer your questions, type what you say, fix itself, and get out of your way. Without sending your life to someone else's server."
+        </blockquote>
+        <cite>— Mehul Khanna, Creator of Praxis</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- Side-by-Side Comparison: Windows 11 vs Praxis Linux -->
+  <section id="comparison">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">HEAD-TO-HEAD</span>
+        <h2 class="section-title">Windows 11 vs Praxis Linux</h2>
+        <p class="section-desc">
+          Compare the engineering architecture of Windows 11 with the sovereign principles of Praxis.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th class="col-feature">Dimension</th>
+              <th class="col-windows">Windows 11</th>
+              <th class="col-praxis">Praxis Linux (AIOS)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-feature">Telemetry &amp; Tracking</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Pervasive</span><br>
+                Diagnostic data, app usage, and keystroke samples uploaded continuously.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ Zero Telemetry</span><br>
+                No tracking code, no background telemetry daemons, 100% private.
+              </td>
+            </tr>
+            <tr>
+              <td class="col-feature">AI Architecture</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Cloud Tethered</span><br>
+                Copilot &amp; Recall capture screen history and upload queries to Azure.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ Fully Local (llama.cpp)</span><br>
+                Runs models locally on your GPU/CPU. Cloud models are strictly opt-in.
+              </td>
+            </tr>
+            <tr>
+              <td class="col-feature">Voice Dictation</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Cloud-streamed speech</span><br>
+                Latency, requires network connection, audio analyzed externally.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ Local Whisper (Super+H)</span><br>
+                Instant voice typing into any app with zero internet required.
+              </td>
+            </tr>
+            <tr>
+              <td class="col-feature">Freeze &amp; Memory Resilience</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Severe Disk Thrashing</span><br>
+                Pagefile thrashing freezes cursor and locks UI under heavy workloads.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ ZRAM + PSI Protection</span><br>
+                RAM-compressed swap (zstd) + kernel PSI guard halts background tasks first.
+              </td>
+            </tr>
+            <tr>
+              <td class="col-feature">Dual-Boot Installation</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Overwrites Bootloader</span><br>
+                Windows updates frequently wipe or demote external EFI entries.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ Non-Destructive Auto-Shrink</span><br>
+                Safe NTFS shrink with byte-for-byte verification and EFI fallback backup.
+              </td>
+            </tr>
+            <tr>
+              <td class="col-feature">System Updates</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Mandatory Reboots</span><br>
+                Forces restart while you work; update screens can lock PC for 30+ minutes.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ 1-Click Zero-Downtime</span><br>
+                Pulls fixes via Git or package manager without password nags or forced reboot.
+              </td>
+            </tr>
+            <tr>
+              <td class="col-feature">Motion &amp; Fluidity</td>
+              <td class="col-windows">
+                <span class="badge-tag-bad">✖ Inconsistent UI Tech</span><br>
+                Mix of Win32, UWP, and WebViews; dropped frames during window moves.
+              </td>
+              <td class="col-praxis">
+                <span class="badge-tag-good">✔ 120Hz Spring Physics</span><br>
+                Pure Wayland compositor with sub-pixel snapping and 1:1 trackpad gestures.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Terminal & Local AI Suite -->
+  <section id="features">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">BUILT-IN INTELLIGENCE</span>
+        <h2 class="section-title">The `ai` System Command &amp; Voice Engine</h2>
+        <p class="section-desc">
+          Praxis doesn't bolt a chat window onto your screen. The AI is a deep system service accessible from your keyboard, voice, and terminal.
+        </p>
+      </div>
+
+      <div class="terminal-wrapper">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="t-dot red"></span>
+            <span class="t-dot yellow"></span>
+            <span class="t-dot green"></span>
+          </div>
+          <span class="terminal-title">praxis@sovereign: ~ (aios local service active)</span>
+          <span style="font-size: 0.75rem; color: #10b981;">● CUDA OFFLOAD</span>
+        </div>
+
+        <div class="terminal-tabs">
+          <button class="tab-btn active" data-tab="diagnostics">1. System Diagnostics</button>
+          <button class="tab-btn" data-tab="voice">2. Voice Dictation (Super+H)</button>
+          <button class="tab-btn" data-tab="doctor">3. Self-Healing (praxis doctor)</button>
+          <button class="tab-btn" data-tab="rag">4. Private Document RAG</button>
+        </div>
+
+        <div class="terminal-body">
+          <p><span class="t-prompt">praxis@machine:~$</span> <span class="t-cmd" id="terminal-cmd-text">ai "why is my laptop hot?"</span></p>
+          <pre class="t-output" id="terminal-output-text"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Desktop Experience & Features Grid -->
+  <section id="desktop">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">HIGH-REFRESH WAYLAND</span>
+        <h2 class="section-title">A Desktop That Feels Like Liquid Glass</h2>
+        <p class="section-desc">
+          Powered by Hyprland and Quickshell, Praxis delivers buttery animations, 1:1 trackpad gestures, and intuitive window snapping.
+        </p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-box">
+          <div class="card-icon-wrap">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+          </div>
+          <h4>Instant Window Snapping &amp; Thirds</h4>
+          <p>
+            <code>Super+← / →</code> snaps windows to exact halves. <code>Super+Alt+1/2/3</code> splits wide screens into clean thirds with zero overlap.
+          </p>
+        </div>
+
+        <div class="feature-box">
+          <div class="card-icon-wrap violet">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"/>
+            </svg>
+          </div>
+          <h4>System-Wide Push-to-Talk</h4>
+          <p>
+            Press <code>Super+H</code>, speak, and your words appear at your text cursor in any browser, code editor, or terminal. Processed locally via Whisper.
+          </p>
+        </div>
+
+        <div class="feature-box">
+          <div class="card-icon-wrap">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h4>One-Tap Game Mode (Super+G)</h4>
+          <p>
+            Temporarily unloads local AI from GPU memory, pauses live wallpapers, halts desktop blur, and gives 100% of GPU compute to your game.
+          </p>
+        </div>
+
+        <div class="feature-box">
+          <div class="card-icon-wrap rose">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <h4>Live 30-Second Wi-Fi Scanner</h4>
+          <p>
+            Never suffer from truncated Wi-Fi scans or broken PSK joins. Live countdown timer, automatic rescan, and clean password visibility toggle.
+          </p>
+        </div>
+
+        <div class="feature-box">
+          <div class="card-icon-wrap">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+            </svg>
+          </div>
+          <h4>Bluetooth PIN &amp; Passkey Pairing</h4>
+          <p>
+            Native BlueZ D-Bus authentication agent for mice, wireless keyboards, and headsets with automatic PipeWire audio routing.
+          </p>
+        </div>
+
+        <div class="feature-box">
+          <div class="card-icon-wrap violet">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h4>Screen OCR Assistant (Super+Shift+O)</h4>
+          <p>
+            Instantly copy text from video streams, protected web elements, screenshots, or error logs directly into your clipboard.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hardware Compatibility & Dual Boot Safety -->
+  <section id="hardware">
+    <div class="container">
+      <div class="dual-boot-banner">
+        <div class="dual-boot-info">
+          <h3>The Safest Dual-Boot Installer Built</h3>
+          <p>
+            Installing Linux alongside Windows shouldn't feel like gambling with your personal files. Praxis includes an intelligent installer that validates NTFS integrity, performs non-destructive shrinking, and preserves your Windows setup with byte-for-byte verification.
+          </p>
+          <ul class="safety-checklist">
+            <li>
+              <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              <span>Automated partition table backup prior to disk changes</span>
+            </li>
+            <li>
+              <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              <span>BitLocker &amp; Fast Startup safety detection with clear guidance</span>
+            </li>
+            <li>
+              <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              <span>HP &amp; Acer NVRAM boot priority enforcement with fallback loader</span>
+            </li>
+            <li>
+              <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              <span>Btrfs bootable snapshot before every system update</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="hardware-badges-card">
+          <h4 style="color: #ffffff; margin-bottom: 16px; font-size: 1.1rem;">Verified Hardware Targets</h4>
+          <div class="hw-grid">
+            <div class="hw-item">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+              <span>NVIDIA RTX 4060 / 30 Series</span>
+            </div>
+            <div class="hw-item">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+              <span>Intel 14th Gen / AMD Ryzen</span>
+            </div>
+            <div class="hw-item">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+              <span>OLED / High-DPI Displays</span>
+            </div>
+            <div class="hw-item">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+              <span>Wi-Fi 6E &amp; Bluetooth 5.3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download & Flash Section -->
+  <section id="download">
+    <div class="container">
+      <div class="download-card">
+        <div class="dl-details">
+          <span class="section-tag" style="margin-bottom: 8px;">GET STARTED TODAY</span>
+          <h3>Download Praxis 2026.10</h3>
+          <p>
+            Bootable Live ISO image for 64-bit UEFI computers. Try it directly from your USB drive with zero permanent disk modification before installing.
+          </p>
+
+          <div class="spec-list">
+            <span class="spec-tag">Size: 1.9 GB</span>
+            <span class="spec-tag">Arch Base: 2026.10</span>
+            <span class="spec-tag">Kernel: Linux 6.17</span>
+            <span class="spec-tag">License: MIT</span>
+          </div>
+
+          <a href="https://github.com/MrMehulkhanna/praxis/releases" target="_blank" rel="noopener noreferrer" class="btn-primary" style="display: inline-flex;">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <span>Download ISO from GitHub Releases</span>
+          </a>
+        </div>
+
+        <div class="dl-action-box">
+          <div class="hash-box">
+            <div>
+              <div class="hash-label">SHA-256 Checksum</div>
+              <div class="hash-value">0095d7abdac9700ce7e3346c7931bea6664f6397deae46757e01a15285866659</div>
+            </div>
+            <button class="btn-copy" data-copy="0095d7abdac9700ce7e3346c7931bea6664f6397deae46757e01a15285866659" title="Copy Checksum" aria-label="Copy SHA-256 Checksum">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="quick-cmd-box">
+            <span>bash iso/flash.sh praxis-*.iso /dev/sdX</span>
+            <button class="btn-copy" data-copy="bash iso/flash.sh praxis-*.iso /dev/sdX" title="Copy Flash Command" aria-label="Copy Flash Command">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          </div>
+
+          <p style="font-size: 0.8rem; color: #64748b;">
+            💡 On Windows, use <a href="https://rufus.ie/" target="_blank" rel="noopener" style="color: var(--accent-cyan);">Rufus</a> in DD Mode or <a href="https://etcher.balena.io/" target="_blank" rel="noopener" style="color: var(--accent-cyan);">BalenaEtcher</a> to write to your USB flash drive.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Google SEO Search FAQ Section -->
+  <section id="faq">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">FREQUENTLY ASKED QUESTIONS</span>
+        <h2 class="section-title">Everything You Need to Know</h2>
+        <p class="section-desc">Clear answers to help you evaluate and install Praxis Linux safely.</p>
+      </div>
+
+      <div class="faq-wrap">
+        <div class="faq-item active">
+          <button class="faq-question">
+            <span>Can I dual-boot Praxis next to Windows without losing my personal files?</span>
+            <svg class="faq-icon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="faq-answer">
+            <p>
+              Yes, absolutely. The Praxis installer features an automatic "Alongside Windows" mode that inspects your NTFS drive, tests shrinking without applying changes first, creates partition table backups, and safely allocates space. Your Windows installation and files remain 100% intact, and you can switch between Windows and Praxis at boot time.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>Does Praxis send any prompts, keystrokes, or data to cloud servers?</span>
+            <svg class="faq-icon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="faq-answer">
+            <p>
+              Zero. Everything is local by design. Local LLMs run via llama.cpp directly on your CPU or GPU (CUDA / Vulkan), and voice dictation runs on an embedded Whisper model. Cloud providers (like OpenAI or Groq) are strictly opt-in and blocked by a hard architectural gate unless you explicitly provide your own API key.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>What hardware do I need to run Praxis with local AI?</span>
+            <svg class="faq-icon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="faq-answer">
+            <p>
+              Praxis was engineered on an ordinary 16 GB laptop with a 6 GB GPU (such as an RTX 4060 or 3060). However, it runs gracefully on any 64-bit x86 machine with at least 4 GB RAM. The <code>praxis-models recommend</code> command automatically inspects your GPU's free VRAM and suggests quantized models that run fluidly without slowing down the desktop.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>How does Praxis eliminate the freezing issues found on Windows and other Linux distros?</span>
+            <svg class="faq-icon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="faq-answer">
+            <p>
+              Praxis pairs RAM-compressed ZRAM swap (using the fast zstd algorithm) with Linux Kernel Pressure Stall Information (PSI). If memory pressure approaches saturation, background token generation or file indexing is throttled automatically, protecting your desktop compositor and active applications from ever dropping a frame.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img src="assets/praxis.svg" alt="Praxis Logo" style="width: 28px; height: 28px;">
+            <span style="font-weight: 700; color: #ffffff; font-size: 1.1rem;">Praxis Linux</span>
+          </div>
+          <p>
+            Knowledge, put into action. An independent, sovereign operating system designed for human privacy and uncompromising performance.
+          </p>
+          <div style="font-size: 0.82rem; color: #64748b;">
+            Hosted globally with zero maintenance on <a href="https://pages.github.com" target="_blank" rel="noopener" style="color: var(--accent-cyan);">GitHub Pages</a>.
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h5>Product</h5>
+          <ul class="footer-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#comparison">Windows Comparison</a></li>
+            <li><a href="#desktop">Desktop &amp; Hyprland</a></li>
+            <li><a href="#download">Download ISO</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Documentation</h5>
+          <ul class="footer-links">
+            <li><a href="https://github.com/MrMehulkhanna/praxis/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener">Installation Guide</a></li>
+            <li><a href="https://github.com/MrMehulkhanna/praxis/blob/main/README.md" target="_blank" rel="noopener">Architecture &amp; Shortcuts</a></li>
+            <li><a href="https://github.com/MrMehulkhanna/praxis/issues" target="_blank" rel="noopener">Issue Tracker</a></li>
+            <li><a href="https://github.com/MrMehulkhanna/praxis/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Community</h5>
+          <ul class="footer-links">
+            <li><a href="https://github.com/MrMehulkhanna/praxis" target="_blank" rel="noopener">GitHub Repository</a></li>
+            <li><a href="https://github.com/MrMehulkhanna" target="_blank" rel="noopener">Mehul Khanna (Author)</a></li>
+            <li><a href="mailto:mehulkhanna277@gmail.com">Contact Creator</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>
+          © 2026 Praxis Linux. Crafted with precision by <a href="https://github.com/MrMehulkhanna" target="_blank" rel="noopener">Mehul Khanna</a>. MIT Licensed.
+        </div>
+        <div>
+          Free from telemetry. Free from cloud tethering. Free forever.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Three.js Library (Local Bundle with high-speed CDN fallback) -->
+  <script src="js/vendor/three.min.js"></script>
+  <!-- Interactive 3D WebGL Scene -->
+  <script src="js/three-scene.js"></script>
+  <!-- Client Interactivity & UI Scripts -->
+  <script src="js/main.js"></script>
+</body>
+</html>
