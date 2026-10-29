@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="https://mrmehulkhanna.github.io/praxis/"><b>🌐 Official Website</b></a> ·
   <a href="#-get-it">Get it</a> ·
   <a href="#-what-you-get">Features</a> ·
   <a href="#%EF%B8%8F-shortcuts">Shortcuts</a> ·
