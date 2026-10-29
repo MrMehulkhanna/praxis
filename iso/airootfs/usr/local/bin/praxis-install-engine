@@ -489,12 +489,18 @@ fi
 
 for s in $SERVICES $EXTRA_SERVICES; do systemctl enable "$s" 2>/dev/null || echo "note: could not enable $s"; done
 systemctl enable docker.socket 2>/dev/null || true
-# NVIDIA suspend/resume handling
+# NVIDIA suspend/resume & backlight handling
 if pacman -Q nvidia-utils >/dev/null 2>&1; then
     systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
     install -d -m755 /etc/modprobe.d /etc/systemd/system/systemd-suspend.service.d
     echo 'options nvidia NVreg_PreserveVideoMemoryAllocations=1' >/etc/modprobe.d/nvidia-power-management.conf
     printf '[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' >/etc/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf
+    cat >/etc/modprobe.d/nvidia.conf <<'NVCONF'
+# NVIDIA Backlight, KMS & Power Management configuration for Praxis OS
+options nvidia NVreg_RegistryDwords="EnableBrightnessControl=1"
+options nvidia NVreg_PreserveVideoMemoryAllocations=1
+options nvidia_drm modeset=1 fbdev=1
+NVCONF
 fi
 
 # GRUB — writes only /EFI/Praxis on the EFI partition; Windows' own entry stays.
@@ -503,7 +509,10 @@ sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/defa
 grep -q '^GRUB_DISABLE_OS_PROBER=' /etc/default/grub || echo 'GRUB_DISABLE_OS_PROBER=false' >>/etc/default/grub
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
 sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Praxis"/' /etc/default/grub
-BOOT_PARAMS="rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"
+BOOT_PARAMS="rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1 acpi_backlight=native"
+if pacman -Q nvidia-utils >/dev/null 2>&1; then
+    BOOT_PARAMS="$BOOT_PARAMS nvidia_drm.modeset=1 nvidia_drm.fbdev=1"
+fi
 [ -n "$EXTRA_CMDLINE" ] && BOOT_PARAMS="$BOOT_PARAMS $EXTRA_CMDLINE"
 sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 $BOOT_PARAMS\"|" /etc/default/grub
 # (a test run on a developer's machine must not add boot entries to that machine's firmware)

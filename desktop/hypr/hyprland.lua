@@ -80,6 +80,21 @@ end)
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 
+-- Auto-detect NVIDIA & Hybrid GPU (e.g. Intel + RTX 4060) configuration
+local function file_exists(path)
+  local f = io.open(path, "r")
+  if f then f:close(); return true end
+  return false
+end
+
+if file_exists("/dev/nvidia0") or file_exists("/sys/module/nvidia") then
+  hl.env("LIBVA_DRIVER_NAME", "nvidia")
+  hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+  hl.env("NVD_BACKEND", "direct")
+  hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
+  hl.env("AQ_FORCE_LINEAR_BLIT", "0")
+end
+
 
 -----------------------
 ----- PERMISSIONS -----

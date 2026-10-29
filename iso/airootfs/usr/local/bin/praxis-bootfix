@@ -57,10 +57,25 @@ LOADER="$ESP/EFI/Praxis/grubx64.efi"
 
 # 3. fallback loader: what firmware boots when it has no (usable) entry
 FB="$ESP/EFI/BOOT/BOOTX64.EFI"
+IS_HP=0
+if grep -qiE 'HP|Hewlett-Packard' /sys/class/dmi/id/sys_vendor 2>/dev/null; then
+    IS_HP=1
+fi
+
 if [ ! -e "$FB" ] || grep -aq 'GNU GRUB' "$FB" 2>/dev/null; then
     if ! cmp -s "$LOADER" "$FB" 2>/dev/null; then
         if [ "$MODE" = check ]; then say "fallback loader is missing or out of date"
         else install -Dm644 "$LOADER" "$FB" && say "fallback loader updated"; fi
+    fi
+elif [ "$IS_HP" -eq 1 ] && [ "${PRAXIS_NO_NVRAM:-}" != 1 ]; then
+    # HP laptops frequently reset NVRAM or ignore custom boot entries, booting only
+    # \EFI\BOOT\BOOTX64.EFI. Back up the existing fallback loader and install GRUB.
+    if ! cmp -s "$LOADER" "$FB" 2>/dev/null; then
+        if [ "$MODE" = check ]; then say "HP firmware detected: fallback loader should be updated to Praxis GRUB"
+        else
+            [ ! -f "$FB.winbak" ] && cp -a "$FB" "$FB.winbak"
+            install -Dm644 "$LOADER" "$FB" && say "HP firmware detected: updated fallback loader to Praxis GRUB (backed up original to $FB.winbak)"
+        fi
     fi
 else
     say "fallback loader belongs to another OS — left alone"

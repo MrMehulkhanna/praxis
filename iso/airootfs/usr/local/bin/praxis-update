@@ -501,18 +501,22 @@ if [ -f /etc/default/grub ]; then
     fi
 fi
 
-# NVIDIA suspend & power management fix
+# NVIDIA suspend, backlight & KMS configuration
 if pacman -Q nvidia-utils >/dev/null 2>&1; then
+    NV_MOD_CONF="/etc/modprobe.d/nvidia.conf"
+    NV_CONTENT=$'# NVIDIA Backlight, KMS & Power Management configuration for Praxis OS\noptions nvidia NVreg_RegistryDwords="EnableBrightnessControl=1"\noptions nvidia NVreg_PreserveVideoMemoryAllocations=1\noptions nvidia_drm modeset=1 fbdev=1'
     if [ "$EUID" -eq 0 ]; then
         systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
         install -d -m755 /etc/modprobe.d /etc/systemd/system/systemd-suspend.service.d
         echo 'options nvidia NVreg_PreserveVideoMemoryAllocations=1' >/etc/modprobe.d/nvidia-power-management.conf
         printf '[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' >/etc/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf
+        printf '%s\n' "$NV_CONTENT" >"$NV_MOD_CONF"
     elif command -v sudo >/dev/null 2>&1; then
         sudo systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
         sudo install -d -m755 /etc/modprobe.d /etc/systemd/system/systemd-suspend.service.d
         echo 'options nvidia NVreg_PreserveVideoMemoryAllocations=1' | sudo tee /etc/modprobe.d/nvidia-power-management.conf >/dev/null
         printf '[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' | sudo tee /etc/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf >/dev/null
+        printf '%s\n' "$NV_CONTENT" | sudo tee "$NV_MOD_CONF" >/dev/null
     fi
 fi
 

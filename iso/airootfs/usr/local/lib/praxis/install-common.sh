@@ -65,6 +65,7 @@ praxis_copy_assets() {
              /etc/systemd/system/rescue.service.d/override.conf \
              /etc/wireplumber/wireplumber.conf.d/50-speaker-priority.conf \
              /etc/udev/rules.d/90-backlight.rules \
+             /etc/modprobe.d/nvidia.conf \
              /etc/security/faillock.conf \
              /etc/sudoers.d/praxis-nopasswd \
              /etc/motd /etc/issue /etc/os-release; do

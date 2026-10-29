@@ -1,3 +1,5 @@
-# Ensure all backlight devices are writable for brightness control
-ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chmod a+w /sys/class/backlight/%k/brightness"
+# Ensure all backlight devices are accessible for brightness control
+ACTION=="add|change", SUBSYSTEM=="backlight", RUN+="/usr/bin/chmod a+rw /sys/class/backlight/%k/brightness"
+ACTION=="add|change", SUBSYSTEM=="leds", KERNEL=="*::kbd_backlight", RUN+="/usr/bin/chmod a+rw /sys/class/leds/%k/brightness"
 SUBSYSTEM=="backlight", TAG+="systemd", TAG+="seat", TAG+="uaccess"
+SUBSYSTEM=="leds", KERNEL=="*::kbd_backlight", TAG+="systemd", TAG+="seat", TAG+="uaccess"
