@@ -130,16 +130,9 @@ has_layer() {    # <monitor> <namespace>
 show_live() {    # <video> [force]
     command -v mpvpaper >/dev/null || die "mpvpaper is not installed (yay -S mpvpaper)"
     pkill -x hyprpaper 2>/dev/null
-    if [ "${2:-}" = force ] || ! pgrep -x mpvpaper >/dev/null; then
-        stop_procs -x mpvpaper
-        setsid -f "${MPV_ENV[@]}" mpvpaper -p -o "$MPV_OPTS" ALL "$1" >/dev/null 2>&1
-        return 0
-    fi
-    # repair: a monitor that has no live surface (plugged in later) gets its own player
-    local m
-    for m in $(monitors); do
-        has_layer "$m" mpvpaper || setsid -f "${MPV_ENV[@]}" mpvpaper -p -o "$MPV_OPTS" "$m" "$1" >/dev/null 2>&1
-    done
+    # Ensure any running mpvpaper instances are stopped first to prevent duplicate decoders
+    stop_procs -x mpvpaper
+    setsid -f "${MPV_ENV[@]}" mpvpaper -p -o "$MPV_OPTS" ALL "$1" >/dev/null 2>&1
     return 0
 }
 
