@@ -242,6 +242,17 @@ case "$MODE" in
         NUM=$(lsblk -no PARTN "$SHRINK_PART")
         CUR_MIB=$(( $(blockdev --getsize64 "$SHRINK_PART") / 1048576 ))
         NEW_MIB=$((CUR_MIB - PRAXIS_MIB))
+
+        # Check for BitLocker encryption
+        FSTYPE=$(blkid -o value -s TYPE "$SHRINK_PART" 2>/dev/null || true)
+        [ "$FSTYPE" != "BitLocker" ] || fail "Windows' drive is encrypted with BitLocker — please suspend BitLocker in Windows before installing"
+
+        # Check for Windows Fast Startup / unclean state before attempting any resize
+        NTFS_CHECK=$(ntfsfix --no-action "$SHRINK_PART" 2>&1 || true)
+        if echo "$NTFS_CHECK" | grep -qiE 'unclean|hibernat|fast startup|refused'; then
+            fail "Windows was not fully shut down (Fast Startup or Hibernation is active). In Windows, hold Shift while clicking 'Shut Down', then restart the installer."
+        fi
+
         INFO=$(ntfsresize --info --no-progress-bar "$SHRINK_PART" 2>&1) || fail "Windows' drive can't be resized: $(tail -n2 <<<"$INFO" | tr '\n' ' ')"
         MIN_FS=$(sed -n 's/.*You might resize at \([0-9]*\) bytes.*/\1/p' <<<"$INFO")
         [ -n "$MIN_FS" ] || fail "ntfsresize did not report a minimum size"
@@ -254,6 +265,8 @@ case "$MODE" in
         step 4 "Shrinking Windows' drive by $((PRAXIS_MIB / 1024)) GiB (this can take a few minutes)"
         echo y | ntfsresize --size "$FS_BYTES" --no-progress-bar "$SHRINK_PART"
         echo ",${NEW_MIB}MiB" | sfdisk --no-reread --no-tell-kernel -N "$NUM" "$DISK"
+        settle
+        blockdev --rereadpt "$DISK" 2>/dev/null || partx -u "$DISK" 2>/dev/null || true
         settle
         [ "$(( $(blockdev --getsize64 "$SHRINK_PART") / 1048576 ))" -eq "$NEW_MIB" ] || fail "the Windows partition has an unexpected size after shrinking"
         # ntfsresize flags the volume for one chkdsk at Windows' next start, so
