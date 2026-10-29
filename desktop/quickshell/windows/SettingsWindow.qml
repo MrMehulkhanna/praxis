@@ -648,14 +648,22 @@ OverlayWindow {
         id: network
         Column {
             spacing: 0
-            Component.onCompleted: Net.scan()
-            // Re-scan whenever Wi-Fi is turned back on so list is immediately fresh
-            Connections { target: Net; function onWifiEnabledChanged() { if (Net.wifiEnabled) Qt.callLater(Net.scan) } }
-            Timer { interval: 8000; running: Net.wifiEnabled; repeat: true; onTriggered: Net.scan() }
-            SettingRow { label: "Wi-Fi"; description: Net.label;
+            Component.onCompleted: if (Net.wifiEnabled) Net.startWifiScan(30)
+            Connections { target: Net; function onWifiEnabledChanged() { if (Net.wifiEnabled) Net.startWifiScan(30) } }
+            SettingRow {
+                label: "Wi-Fi"
+                description: Net.wifiScanning
+                    ? "Scanning for networks (" + (Net.wifiScanRemaining > 0 ? Net.wifiScanRemaining + "s" : "active") + ")…"
+                    : Net.label
                 Row {
                     spacing: 8
-                    Btn { icon: "refresh"; label: Net.scanning ? "Scanning…" : "Scan"; active: Net.scanning; onClicked: Net.scan() }
+                    Btn {
+                        enabled: Net.wifiEnabled
+                        icon: Net.wifiScanning ? "refresh-cw" : "search"
+                        label: Net.wifiScanning ? "Scanning (" + (Net.wifiScanRemaining > 0 ? Net.wifiScanRemaining + "s" : "active") + ")…" : "Scan (30s)"
+                        active: Net.wifiScanning
+                        onClicked: Net.startWifiScan(30)
+                    }
                     Toggle { checked: Net.wifiEnabled; onToggled: v => Net.setWifi(v) }
                 }
             }
@@ -674,21 +682,67 @@ OverlayWindow {
                             spacing: 6
                             Icon { name: "wifi"; size: 14; color: modelData.connected ? Theme.accent : Theme.muted; opacity: 0.4 + 0.6 * modelData.signalStrength / 100; anchors.verticalCenter: parent.verticalCenter }
                             Btn { visible: modelData.connected; icon: "x"; label: "Disconnect"; onClicked: { modelData.disconnect(); Qt.callLater(Net.scan) } }
-                            Btn { visible: !modelData.connected && modelData.known; icon: "check"; label: "Connect"; onClicked: { modelData.connect(); Qt.callLater(Net.scan) } }
-                            Btn { visible: !modelData.connected && !modelData.known; icon: "lock"; label: "Join"; onClicked: win.wifiPskFor = modelData.name }
+                            Btn { visible: !modelData.connected && modelData.known; icon: "check"; label: "Connect"; onClicked: { Net.connectWifi(modelData.name); Qt.callLater(Net.scan) } }
+                            Btn { visible: !modelData.connected && !modelData.known; icon: "lock"; label: "Join"; onClicked: win.wifiPskFor = (win.wifiPskFor === modelData.name ? "" : modelData.name) }
                             Btn { visible: modelData.known && !modelData.connected; icon: "trash"; onClicked: { modelData.forget(); Qt.callLater(Net.scan) } }
                         }
                     }
                     Rectangle {
                         visible: win.wifiPskFor === modelData.name && !modelData.connected
-                        width: parent.width; height: 40; radius: 20
+                        width: parent.width; height: 42; radius: 21
                         color: Theme.alpha(Theme.text, 0.06); border.width: 1; border.color: Theme.alpha(Theme.accent, 0.5)
-                        TextInput { id: psk; anchors { fill: parent; leftMargin: 14; rightMargin: 90 }
-                            verticalAlignment: TextInput.AlignVCenter; echoMode: TextInput.Password; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSm; focus: visible
-                            Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !psk.text; text: "Password"; color: Theme.muted; font: psk.font }
-                            Keys.onReturnPressed: { modelData.connectWithPsk(psk.text); psk.text = ""; win.wifiPskFor = ""; Qt.callLater(Net.scan) } }
-                        Btn { anchors { right: parent.right; rightMargin: 5; verticalCenter: parent.verticalCenter }
-                            icon: "check"; label: "Join"; active: true; iconColor: Theme.onAccent; onClicked: { modelData.connectWithPsk(psk.text); psk.text = ""; win.wifiPskFor = ""; Qt.callLater(Net.scan) } }
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14; anchors.rightMargin: 8
+                            spacing: 8
+                            TextInput {
+                                id: psk
+                                width: parent.width - joinBtn.width - showPassBtn.width - 24
+                                height: parent.height
+                                verticalAlignment: TextInput.AlignVCenter
+                                echoMode: showPassBtn.active ? TextInput.Normal : TextInput.Password
+                                color: Theme.text
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontSm
+                                focus: visible
+                                Text {
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    visible: !psk.text
+                                    text: "Enter password for " + modelData.name
+                                    color: Theme.muted
+                                    font: psk.font
+                                }
+                                Keys.onReturnPressed: {
+                                    if (psk.text.length > 0) {
+                                        Net.connectWifi(modelData.name, psk.text)
+                                        try { modelData.connectWithPsk(psk.text) } catch (e) {}
+                                    }
+                                    psk.text = ""
+                                    win.wifiPskFor = ""
+                                }
+                            }
+                            IconButton {
+                                id: showPassBtn
+                                icon: active ? "eye-off" : "eye"
+                                property bool active: false
+                                anchors.verticalCenter: parent.verticalCenter
+                                onClicked: active = !active
+                            }
+                            Btn {
+                                id: joinBtn
+                                anchors.verticalCenter: parent.verticalCenter
+                                icon: "check"; label: "Connect"; active: true; iconColor: Theme.onAccent
+                                onClicked: {
+                                    if (psk.text.length > 0) {
+                                        Net.connectWifi(modelData.name, psk.text)
+                                        try { modelData.connectWithPsk(psk.text) } catch (e) {}
+                                    }
+                                    psk.text = ""
+                                    win.wifiPskFor = ""
+                                }
+                            }
+                        }
                     }
                 }
             }

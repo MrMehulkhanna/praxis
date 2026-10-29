@@ -23,6 +23,18 @@ PanelWindow {
     readonly property bool hideForFullscreen: fullscreenHere && Settings.dockHideOnFullscreen
     visible: Settings.dockVisible && !hideForFullscreen
 
+    // Visible window count on current monitor's active workspace
+    readonly property var activeWs: hyprMon ? hyprMon.activeWorkspace : null
+    readonly property int activeWindowCount: {
+        if (!activeWs) return 0
+        const tls = ToplevelManager.toplevels.values
+        let c = 0
+        for (const t of tls) {
+            if (!t.minimized) c++
+        }
+        return c
+    }
+
     // Is the pointer on the dock? HoverHandlers are passive, so they stay
     // "hovered" while the pointer is over an icon. The MouseAreas used before
     // lost the hover to the icon's own MouseArea, so the dock slid away under
@@ -30,7 +42,7 @@ PanelWindow {
     readonly property bool pointerOn: dockHover.hovered || edgeHover.hovered
     readonly property bool wantHidden:
         !Settings.dockVisible ||
-        (Settings.dockAutoHide && !pointerOn && Shell.overlay !== "launcher") || hideForFullscreen
+        (Settings.dockAutoHide && activeWindowCount > 0 && !pointerOn && Shell.overlay !== "launcher") || hideForFullscreen
     property bool hidden: false
     onWantHiddenChanged: {
         if (hideForFullscreen) {
@@ -53,13 +65,15 @@ PanelWindow {
 
     readonly property int  iconSize: Theme.dockIcon
     readonly property int  padding: 8
+    readonly property int  windowGap: Theme.dockWindowGap
 
     implicitWidth: glass.width + 40
-    implicitHeight: iconSize + padding * 2 + Theme.dockMargin + 28 + Settings.dockOffset   // room for magnified icons + labels + elevation
-    // An auto-hiding dock floats over windows. Reserving space only while it is
-    // shown made every window shrink when the dock came up and grow back when it
-    // left — the button you were aiming at jumped away from the cursor.
-    exclusiveZone: (!Settings.dockVisible || Settings.dockAutoHide || hideForFullscreen) ? 0 : iconSize + padding * 2 + Theme.dockMargin + Settings.dockOffset
+    implicitHeight: iconSize + padding * 2 + Theme.dockMargin + windowGap + 28 + Settings.dockOffset   // room for magnified icons + labels + elevation
+    // An auto-hiding dock floats over windows. When docked, reserve space with a generous gap
+    // so windows never touch or crowd the dock.
+    exclusiveZone: (!Settings.dockVisible || Settings.dockAutoHide || hideForFullscreen)
+        ? 0
+        : iconSize + padding * 2 + Theme.dockMargin + windowGap + Settings.dockOffset
 
     // Only the dock itself (and, while hidden, a 3 px strip at the screen edge)
     // takes the mouse; the rest of this window lets clicks through to the apps

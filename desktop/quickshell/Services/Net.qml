@@ -34,30 +34,64 @@ Singleton {
     readonly property string label: wired ? "Wired" : !wifiEnabled ? "Wi-Fi off" : wifiConnected ? ssid : "Not connected"
 
     property bool scanning: false
+    property int wifiScanRemaining: 0
+    readonly property bool wifiScanning: wifiScanRemaining > 0 || scanning
+
+    Timer {
+        id: wifiScanCountdown
+        interval: 1000
+        repeat: true
+        running: root.wifiScanRemaining > 0
+        onTriggered: {
+            root.wifiScanRemaining--
+            if (root.wifiScanRemaining % 6 === 0 && root.wifiScanRemaining > 0) {
+                Quickshell.execDetached(["nmcli", "dev", "wifi", "rescan"])
+            }
+            if (root.wifiScanRemaining <= 0) {
+                root.stopWifiScan()
+            }
+        }
+    }
 
     function setWifi(on) {
         Networking.wifiEnabled = on
-        if (on) Qt.callLater(scan)
+        if (on) startWifiScan(30)
+        else stopWifiScan()
     }
 
     function scan() {
+        startWifiScan(30)
+    }
+
+    function startWifiScan(seconds) {
         if (wifiDevice) {
-            wifiDevice.scannerEnabled = false
-            Qt.callLater(() => { if (wifiDevice) wifiDevice.scannerEnabled = true })
+            wifiDevice.scannerEnabled = true
         }
         root.scanning = true
+        root.wifiScanRemaining = seconds || 30
         Quickshell.execDetached(["nmcli", "dev", "wifi", "rescan"])
-        scanResetTimer.restart()
     }
-    function stopScan() {
-        if (wifiDevice) wifiDevice.scannerEnabled = false
+
+    function stopWifiScan() {
+        root.wifiScanRemaining = 0
         root.scanning = false
+        if (wifiDevice) wifiDevice.scannerEnabled = false
+    }
+
+    function connectWifi(ssid, password) {
+        if (!ssid) return
+        if (password) {
+            Quickshell.execDetached(["nmcli", "dev", "wifi", "connect", ssid, "password", password])
+        } else {
+            Quickshell.execDetached(["nmcli", "dev", "wifi", "connect", ssid])
+        }
+        connectRefreshTimer.restart()
     }
 
     Timer {
-        id: scanResetTimer
+        id: connectRefreshTimer
         interval: 3500
-        onTriggered: root.scanning = false
+        onTriggered: root.scan()
     }
 
     // ── bluetooth ──────────────────────────────────────────────────────

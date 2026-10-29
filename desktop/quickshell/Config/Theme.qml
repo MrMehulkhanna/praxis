@@ -69,6 +69,7 @@ Singleton {
     readonly property int barMargin:   8
     readonly property int dockIcon:    Settings.dockIconSize
     readonly property int dockMargin:  10
+    readonly property int dockWindowGap: 16
 
     // ── type ───────────────────────────────────────────────────────────
     readonly property string font:     "Adwaita Sans"
