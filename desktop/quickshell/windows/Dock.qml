@@ -19,8 +19,9 @@ PanelWindow {
     WlrLayershell.namespace: "quickshell"
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
-    readonly property bool fullscreenHere: hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen
+    readonly property bool fullscreenHere: !!(hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen)
     readonly property bool hideForFullscreen: fullscreenHere && Settings.dockHideOnFullscreen
+    visible: Settings.dockVisible && !hideForFullscreen
 
     // Is the pointer on the dock? HoverHandlers are passive, so they stay
     // "hovered" while the pointer is over an icon. The MouseAreas used before
@@ -32,7 +33,11 @@ PanelWindow {
         (Settings.dockAutoHide && !pointerOn && Shell.overlay !== "launcher") || hideForFullscreen
     property bool hidden: false
     onWantHiddenChanged: {
-        if (wantHidden) {
+        if (hideForFullscreen) {
+            hideDebounce.stop()
+            revealDwell.stop()
+            hidden = true
+        } else if (wantHidden) {
             revealDwell.stop()
             hideDebounce.restart()
         } else {
@@ -114,7 +119,8 @@ PanelWindow {
         id: edge
         anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: glass.width; height: 3
-        HoverHandler { id: edgeHover }
+        enabled: !dock.hideForFullscreen
+        HoverHandler { id: edgeHover; enabled: !dock.hideForFullscreen }
     }
 
     Glass {

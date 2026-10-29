@@ -17,12 +17,14 @@ PanelWindow {
 
     anchors { top: true; left: true; right: true }
     implicitHeight: Theme.barHeight + Theme.barMargin
-    exclusiveZone: Theme.barHeight + Theme.barMargin
+    exclusiveZone: fullscreenHere ? 0 : Theme.barHeight + Theme.barMargin
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "quickshell"
 
     readonly property var hyprMon: Hyprland.monitorFor(screen)
+    readonly property bool fullscreenHere: !!(hyprMon && hyprMon.activeWorkspace && hyprMon.activeWorkspace.hasFullscreen)
+    visible: !fullscreenHere
     readonly property bool isFocusedScreen: Hyprland.focusedMonitor && hyprMon && Hyprland.focusedMonitor.name === hyprMon.name
     readonly property bool isSecondScreen: Quickshell.screens.length > 1 && (bar.hyprMon ? bar.hyprMon.id !== 0 : screen !== Quickshell.screens[0])
 
