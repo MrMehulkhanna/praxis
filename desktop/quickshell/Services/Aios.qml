@@ -95,6 +95,10 @@ Singleton {
     function setBudget(mode)  { patch({ budget_mode: mode }) }
     function setThinking(on)  { patch({ thinking: !!on }) }
     function setCloudFor(list) { patch({ prefer_cloud_for: list }) }
+    function unload() {
+        Quickshell.execDetached(["curl", "-sf", "-m", "5", "-X", "POST", root.base + "/api/unload"])
+        root.refresh()
+    }
     function downloadModel(id) {
         const cleanId = id.trim().replace(/^local-/, "")
         Quickshell.execDetached(["kitty", "--class", "praxis-model-dl", "--title", "Download & Verify Model", "-e", "bash", "-c", `praxis-models download "${cleanId}"; echo; read -p "Press Enter to finish..."`])
