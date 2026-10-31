@@ -85,9 +85,11 @@
       <nav>
         <ul class="nav-links">
           <li><a href="#features" class="nav-link">Features</a></li>
+          <li><a href="#architecture" class="nav-link">Architecture</a></li>
           <li><a href="#comparison" class="nav-link">vs Windows 11</a></li>
-          <li><a href="#philosophy" class="nav-link">Philosophy</a></li>
-          <li><a href="#desktop" class="nav-link">Desktop Tour</a></li>
+          <li><a href="#desktop" class="nav-link">Desktop</a></li>
+          <li><a href="#wallpapers" class="nav-link">Wallpapers</a></li>
+          <li><a href="#shortcuts" class="nav-link">Shortcuts</a></li>
           <li><a href="#hardware" class="nav-link">Hardware</a></li>
           <li><a href="#download" class="nav-link">Download</a></li>
           <li><a href="#faq" class="nav-link">FAQ</a></li>
@@ -165,6 +167,12 @@
 
       <!-- 3D Interactive WebGL Display -->
       <div class="hero-3d-box">
+        <div class="canvas-controls-bar">
+          <button class="view-ctrl-btn active" data-view="front">Front View</button>
+          <button class="view-ctrl-btn" data-view="iso">Isometric</button>
+          <button class="view-ctrl-btn" data-view="tilt">Keyboard Tilt</button>
+          <button class="view-ctrl-btn" data-view="spin">Auto-Spin ⚡</button>
+        </div>
         <div id="canvas-container"></div>
         <div class="viewport-overlay">
           <span class="viewport-pill">⚡ 3D LIVE HARDWARE PREVIEW</span>
@@ -378,6 +386,174 @@
     </div>
   </section>
 
+  <!-- Deep Architecture & Subsystems Explorer -->
+  <section id="architecture">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">ENGINEERING INTEGRITY</span>
+        <h2 class="section-title">The Four Pillars of Praxis Architecture</h2>
+        <p class="section-desc">
+          Explore how the Wayland shell, local AI daemon, zero-freeze kernel, and hardware ACPI layer work together seamlessly.
+        </p>
+      </div>
+
+      <div class="arch-wrapper">
+        <div class="arch-tabs-nav">
+          <button class="arch-tab-btn active" data-arch-target="arch-compositor">
+            <span>🪟 Wayland &amp; Shell</span>
+            <small style="font-size: 0.72rem; color: #94a3b8;">Hyprland + Quickshell 120Hz</small>
+          </button>
+          <button class="arch-tab-btn" data-arch-target="arch-ai">
+            <span>🤖 Sovereign Local AI</span>
+            <small style="font-size: 0.72rem; color: #94a3b8;">llama.cpp + Whisper + FTS5</small>
+          </button>
+          <button class="arch-tab-btn" data-arch-target="arch-kernel">
+            <span>🛡️ Zero-Freeze Kernel</span>
+            <small style="font-size: 0.72rem; color: #94a3b8;">ZRAM zstd + PSI Protection</small>
+          </button>
+          <button class="arch-tab-btn" data-arch-target="arch-hardware">
+            <span>⚡ Hardware &amp; Boot</span>
+            <small style="font-size: 0.72rem; color: #94a3b8;">Auto Backlight &amp; D-Bus Agent</small>
+          </button>
+        </div>
+
+        <div class="arch-panels-container">
+          <!-- Panel 1: Wayland & Shell -->
+          <div id="arch-compositor" class="arch-panel active">
+            <div class="arch-info">
+              <h3>Pure Wayland with Spring Dynamics</h3>
+              <p>
+                Praxis abandons legacy X11 wrappers and slow Electron UI shells. The desktop is built natively on Hyprland's Wayland compositor paired with Quickshell's declarative QML engine. Window motions follow physical spring equations, and multi-touch gestures map 1:1 with your fingers.
+              </p>
+              <ul class="arch-spec-list">
+                <li class="arch-spec-pill">120Hz / 144Hz High-Refresh Native</li>
+                <li class="arch-spec-pill">Sub-Pixel Window Snapping &amp; Thirds</li>
+                <li class="arch-spec-pill">dockWindowGap: 16px Aesthetic Spacing</li>
+                <li class="arch-spec-pill">1-Tap Game Mode (Super+G)</li>
+              </ul>
+            </div>
+            <div class="arch-card-box">
+              <h4 style="color: #ffffff; font-size: 1rem; margin-bottom: 8px;">Window Lifecycle Pipeline</h4>
+              <div class="arch-diagram-flow">
+                <div class="flow-step">
+                  <span class="step-number">1</span>
+                  <span class="step-text">Trackpad event processed with zero input latency</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">2</span>
+                  <span class="step-text">Spring dynamics interpolate smooth easing at display refresh rate</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">3</span>
+                  <span class="step-text">Quickshell dock auto-hides with reserved 16px gap against active windows</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel 2: Sovereign Local AI -->
+          <div id="arch-ai" class="arch-panel">
+            <div class="arch-info">
+              <h3>Operating System Native Intelligence</h3>
+              <p>
+                Praxis doesn't bolt an isolated chat app onto your screen. The local AI runs as a system daemon (<code>aios.service</code>) via llama.cpp with direct CUDA, Vulkan, and CPU offloading. Push-to-talk voice dictation (<code>Super+H</code>) streams directly into your focused cursor via an offline Whisper pipeline.
+              </p>
+              <ul class="arch-spec-list">
+                <li class="arch-spec-pill">100% Offline Local Model Inference</li>
+                <li class="arch-spec-pill">SQLite FTS5 + Hybrid Vector Retrieval</li>
+                <li class="arch-spec-pill">Zero Cloud Leakage / Zero Telemetry</li>
+                <li class="arch-spec-pill">Default-Deny Command Permission Gate</li>
+              </ul>
+            </div>
+            <div class="arch-card-box">
+              <h4 style="color: #ffffff; font-size: 1rem; margin-bottom: 8px;">Privacy &amp; Inference Gate</h4>
+              <div class="arch-diagram-flow">
+                <div class="flow-step">
+                  <span class="step-number">1</span>
+                  <span class="step-text">Voice or shortcut captured natively (Super+H / Super+I)</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">2</span>
+                  <span class="step-text">Diagnostic telemetry queried locally from hwmon / systemd</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">3</span>
+                  <span class="step-text">Tokens generated locally on GPU VRAM with zero network egress</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel 3: Zero-Freeze Kernel -->
+          <div id="arch-kernel" class="arch-panel">
+            <div class="arch-info">
+              <h3>Memory Thrashing &amp; Freeze Shield</h3>
+              <p>
+                Typical desktops freeze under heavy multitasking when the disk swap begins thrashing. Praxis solves this by pairing compressed in-RAM swap (ZRAM using high-throughput zstd) with Linux Kernel Pressure Stall Information (PSI). Heavy background indexing throttles early, guaranteeing your cursor never stutters.
+              </p>
+              <ul class="arch-spec-list">
+                <li class="arch-spec-pill">ZRAM zstd Compressed RAM Swap</li>
+                <li class="arch-spec-pill">Linux PSI (Pressure Stall Information) Guard</li>
+                <li class="arch-spec-pill">cgroups v2 Compositor Protection</li>
+                <li class="arch-spec-pill">OOM Killer Sacrifices AI Jobs Before Desktop</li>
+              </ul>
+            </div>
+            <div class="arch-card-box">
+              <h4 style="color: #ffffff; font-size: 1rem; margin-bottom: 8px;">Freeze Prevention Shield</h4>
+              <div class="arch-diagram-flow">
+                <div class="flow-step">
+                  <span class="step-number">1</span>
+                  <span class="step-text">Kernel monitors PSI pressure metrics (cpu, memory, io)</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">2</span>
+                  <span class="step-text">ZRAM compresses inactive pages in RAM at 3.5 GB/s</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">3</span>
+                  <span class="step-text">Desktop shell &amp; compositor retain 100% priority headroom</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel 4: Hardware & Boot -->
+          <div id="arch-hardware" class="arch-panel">
+            <div class="arch-info">
+              <h3>Universal Laptop ACPI &amp; Boot Resiliency</h3>
+              <p>
+                From dual-backlight OLED quirks to HP Omen RTX 4060 hybrid GPU modesetting, Praxis incorporates battle-tested hardware safeguards. The automated D-Bus agent eliminates Bluetooth pairing drops, while the NVRAM guardian keeps Windows from overwriting your bootloader.
+              </p>
+              <ul class="arch-spec-list">
+                <li class="arch-spec-pill">acpi_backlight=native + OLED PWM Clamp</li>
+                <li class="arch-spec-pill">Automated BlueZ D-Bus PIN Agent</li>
+                <li class="arch-spec-pill">30-Second Live Multi-Band Wi-Fi Scan</li>
+                <li class="arch-spec-pill">HP/Acer NVRAM Fallback EFI Guardian</li>
+              </ul>
+            </div>
+            <div class="arch-card-box">
+              <h4 style="color: #ffffff; font-size: 1rem; margin-bottom: 8px;">Hardware Safeguard Loop</h4>
+              <div class="arch-diagram-flow">
+                <div class="flow-step">
+                  <span class="step-number">1</span>
+                  <span class="step-text">PCI ID probing binds optimal driver (NVIDIA / AMD / Intel)</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">2</span>
+                  <span class="step-text">praxis-bluetooth registers authentication agent on system bus</span>
+                </div>
+                <div class="flow-step">
+                  <span class="step-number">3</span>
+                  <span class="step-text">BOOTX64.EFI fallback prevents aggressive vendor firmware resets</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Desktop Experience & Features Grid -->
   <section id="desktop">
     <div class="container">
@@ -460,6 +636,240 @@
           <p>
             Instantly copy text from video streams, protected web elements, screenshots, or error logs directly into your clipboard.
           </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wallpapers & Aesthetics Showcase -->
+  <section id="wallpapers">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">AESTHETIC CRAFTSMANSHIP</span>
+        <h2 class="section-title">Original 4K Wallpapers &amp; Themes</h2>
+        <p class="section-desc">
+          Thirteen original stills and three seamless live wallpapers, decoded on the integrated GPU so your discrete graphics can sleep. Click any theme to preview.
+        </p>
+      </div>
+
+      <div class="wallpaper-grid">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/aurora-still.jpg" data-wallpaper-title="Aurora Still (Signature Theme)">
+          <img src="assets/wallpapers/aurora-still.jpg" alt="Aurora Still" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Live / Still 4K</span>
+            <span class="wallpaper-name">Aurora Still</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/midnight-waves.jpg" data-wallpaper-title="Midnight Waves (Deep Cyber)">
+          <img src="assets/wallpapers/midnight-waves.jpg" alt="Midnight Waves" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">OLED Pure Dark</span>
+            <span class="wallpaper-name">Midnight Waves</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/bloom.jpg" data-wallpaper-title="Bloom (Glassmorphic Glow)">
+          <img src="assets/wallpapers/bloom.jpg" alt="Bloom" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Vivid HDR</span>
+            <span class="wallpaper-name">Bloom</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/dunes.jpg" data-wallpaper-title="Dunes (Minimal Warm)">
+          <img src="assets/wallpapers/dunes.jpg" alt="Dunes" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Minimalist</span>
+            <span class="wallpaper-name">Dunes</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/glacier.jpg" data-wallpaper-title="Glacier (Cold Slate)">
+          <img src="assets/wallpapers/glacier.jpg" alt="Glacier" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">High Altitude</span>
+            <span class="wallpaper-name">Glacier</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/dusk-horizon.jpg" data-wallpaper-title="Dusk Horizon (Neon Twilight)">
+          <img src="assets/wallpapers/dusk-horizon.jpg" alt="Dusk Horizon" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Ambient Glow</span>
+            <span class="wallpaper-name">Dusk Horizon</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/contours.jpg" data-wallpaper-title="Contours (Abstract Topo)">
+          <img src="assets/wallpapers/contours.jpg" alt="Contours" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Topographic</span>
+            <span class="wallpaper-name">Contours</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/ember.jpg" data-wallpaper-title="Ember (Dark Fire)">
+          <img src="assets/wallpapers/ember.jpg" alt="Ember" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Deep Contrast</span>
+            <span class="wallpaper-name">Ember</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Keyboard Shortcuts & Gestures Interactive Directory -->
+  <section id="shortcuts">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">CONTROL FROM THE KEYBOARD</span>
+        <h2 class="section-title">Speed of Thought Keyboard Architecture</h2>
+        <p class="section-desc">
+          Every shortcut read live from your active session. Grouped, searchable, and tuned for physical muscle memory.
+        </p>
+      </div>
+
+      <div class="shortcuts-box">
+        <div class="shortcut-filter-bar">
+          <div class="shortcut-search-box">
+            <svg class="search-icon-svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input type="text" id="shortcut-search-input" placeholder="Search shortcuts... e.g. voice, snap, lock">
+          </div>
+
+          <div class="shortcut-cat-chips">
+            <button class="shortcut-cat-btn active" data-cat="all">All</button>
+            <button class="shortcut-cat-btn" data-cat="everyday">Everyday</button>
+            <button class="shortcut-cat-btn" data-cat="windows">Windows &amp; Snapping</button>
+            <button class="shortcut-cat-btn" data-cat="ai">AI &amp; Voice</button>
+            <button class="shortcut-cat-btn" data-cat="tools">Tools</button>
+            <button class="shortcut-cat-btn" data-cat="gestures">Gestures</button>
+          </div>
+        </div>
+
+        <div class="shortcut-grid-table">
+          <!-- Everyday -->
+          <div class="shortcut-row" data-category="everyday">
+            <div class="key-combo"><span class="kbd-badge">Tap Super</span></div>
+            <div class="shortcut-desc-col">Open Application Search &amp; Command Palette</div>
+            <div class="shortcut-cat-tag">Everyday</div>
+          </div>
+          <div class="shortcut-row" data-category="everyday">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Q</span></div>
+            <div class="shortcut-desc-col">Launch GPU-accelerated Terminal (Foot)</div>
+            <div class="shortcut-cat-tag">Everyday</div>
+          </div>
+          <div class="shortcut-row" data-category="everyday">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">O</span></div>
+            <div class="shortcut-desc-col">Toggle Glass Control Center (Wi-Fi, Bluetooth, Audio, Displays)</div>
+            <div class="shortcut-cat-tag">Everyday</div>
+          </div>
+          <div class="shortcut-row" data-category="everyday">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">L</span></div>
+            <div class="shortcut-desc-col">Lock session with biometric / password protection</div>
+            <div class="shortcut-cat-tag">Everyday</div>
+          </div>
+          <div class="shortcut-row" data-category="everyday">
+            <div class="key-combo"><span class="kbd-badge">Ctrl</span> + <span class="kbd-badge">Shift</span> + <span class="kbd-badge">Esc</span></div>
+            <div class="shortcut-desc-col">Open Task Manager with live GPU VRAM &amp; AI task stop</div>
+            <div class="shortcut-cat-tag">Everyday</div>
+          </div>
+
+          <!-- Windows & Snapping -->
+          <div class="shortcut-row" data-category="windows">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">←</span> / <span class="kbd-badge">→</span></div>
+            <div class="shortcut-desc-col">Snap window to left / right half with exact 16px dock gap</div>
+            <div class="shortcut-cat-tag">Windows</div>
+          </div>
+          <div class="shortcut-row" data-category="windows">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">↑</span> / <span class="kbd-badge">↓</span></div>
+            <div class="shortcut-desc-col">Maximise window / restore to floating geometry</div>
+            <div class="shortcut-cat-tag">Windows</div>
+          </div>
+          <div class="shortcut-row" data-category="windows">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Alt</span> + <span class="kbd-badge">1 / 2 / 3</span></div>
+            <div class="shortcut-desc-col">Snap window into ultra-wide thirds (left, center, right column)</div>
+            <div class="shortcut-cat-tag">Windows</div>
+          </div>
+          <div class="shortcut-row" data-category="windows">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Alt</span> + <span class="kbd-badge">M</span></div>
+            <div class="shortcut-desc-col">Cycle desktop layout (Tiles → Master + Stack → 3 Columns)</div>
+            <div class="shortcut-cat-tag">Windows</div>
+          </div>
+          <div class="shortcut-row" data-category="windows">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Shift</span> + <span class="kbd-badge">←</span> / <span class="kbd-badge">→</span></div>
+            <div class="shortcut-desc-col">Instantly throw active window to secondary monitor</div>
+            <div class="shortcut-cat-tag">Windows</div>
+          </div>
+          <div class="shortcut-row" data-category="windows">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">1 … 9</span></div>
+            <div class="shortcut-desc-col">Switch workspace with 120Hz smooth spring interpolation</div>
+            <div class="shortcut-cat-tag">Windows</div>
+          </div>
+
+          <!-- AI & Voice -->
+          <div class="shortcut-row" data-category="ai">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">H</span></div>
+            <div class="shortcut-desc-col">Push-to-talk voice typing with local Whisper (zero cloud latency)</div>
+            <div class="shortcut-cat-tag">AI &amp; Voice</div>
+          </div>
+          <div class="shortcut-row" data-category="ai">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Shift</span> + <span class="kbd-badge">H</span></div>
+            <div class="shortcut-desc-col">Speak to generate terminal command (types into shell, never runs unconfirmed)</div>
+            <div class="shortcut-cat-tag">AI &amp; Voice</div>
+          </div>
+          <div class="shortcut-row" data-category="ai">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">I</span></div>
+            <div class="shortcut-desc-col">Open Sovereign AI Assistant (queries live hardware diagnostics)</div>
+            <div class="shortcut-cat-tag">AI &amp; Voice</div>
+          </div>
+          <div class="shortcut-row" data-category="ai">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">G</span></div>
+            <div class="shortcut-desc-col">Toggle Game Mode (frees 100% GPU VRAM, disables blur &amp; live wallpapers)</div>
+            <div class="shortcut-cat-tag">AI &amp; Voice</div>
+          </div>
+
+          <!-- Tools -->
+          <div class="shortcut-row" data-category="tools">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Shift</span> + <span class="kbd-badge">O</span></div>
+            <div class="shortcut-desc-col">Screen OCR: Copy unselectable text from any video, image, or dialog</div>
+            <div class="shortcut-cat-tag">Tools</div>
+          </div>
+          <div class="shortcut-row" data-category="tools">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Shift</span> + <span class="kbd-badge">V</span></div>
+            <div class="shortcut-desc-col">Clipboard history manager with instant search &amp; paste</div>
+            <div class="shortcut-cat-tag">Tools</div>
+          </div>
+          <div class="shortcut-row" data-category="tools">
+            <div class="key-combo"><span class="kbd-badge">Super</span> + <span class="kbd-badge">Shift</span> + <span class="kbd-badge">C</span></div>
+            <div class="shortcut-desc-col">Sub-pixel screen color picker (copies HEX / RGB to clipboard)</div>
+            <div class="shortcut-cat-tag">Tools</div>
+          </div>
+          <div class="shortcut-row" data-category="tools">
+            <div class="key-combo"><span class="kbd-badge">Print</span></div>
+            <div class="shortcut-desc-col">Interactive region / full desktop screenshot</div>
+            <div class="shortcut-cat-tag">Tools</div>
+          </div>
+
+          <!-- Gestures -->
+          <div class="shortcut-row" data-category="gestures">
+            <div class="key-combo"><span class="kbd-badge">3 Fingers ← / →</span></div>
+            <div class="shortcut-desc-col">Switch workspaces 1:1 with direct hand motion tracking</div>
+            <div class="shortcut-cat-tag">Gestures</div>
+          </div>
+          <div class="shortcut-row" data-category="gestures">
+            <div class="key-combo"><span class="kbd-badge">3 Fingers ↑</span></div>
+            <div class="shortcut-desc-col">Open multi-monitor workspace overview</div>
+            <div class="shortcut-cat-tag">Gestures</div>
+          </div>
+          <div class="shortcut-row" data-category="gestures">
+            <div class="key-combo"><span class="kbd-badge">4 Fingers ↓</span></div>
+            <div class="shortcut-desc-col">Trigger instant voice typing without touching keyboard</div>
+            <div class="shortcut-cat-tag">Gestures</div>
+          </div>
         </div>
       </div>
     </div>
@@ -701,6 +1111,17 @@
       </div>
     </div>
   </footer>
+
+  <!-- Wallpaper Lightbox Modal -->
+  <div id="wallpaper-modal" class="wallpaper-modal" role="dialog" aria-modal="true" aria-label="Wallpaper Preview">
+    <div class="modal-content-wrap">
+      <div class="modal-info-bar">
+        <h4 id="modal-wallpaper-title" style="font-size: 1.25rem; font-weight: 700;">Wallpaper Preview</h4>
+        <button id="modal-close-btn" class="modal-close-btn">✕ Close</button>
+      </div>
+      <img id="modal-wallpaper-img" class="modal-img" src="" alt="Full Wallpaper Preview">
+    </div>
+  </div>
 
   <!-- Three.js Library (Local Bundle with high-speed CDN fallback) -->
   <script src="js/vendor/three.min.js"></script>

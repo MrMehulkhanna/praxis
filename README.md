@@ -122,11 +122,13 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 
 | | |
 |---|---|
-| **Right drivers, automatically** | CPU microcode and GPU drivers are chosen from the PCI IDs — Intel, AMD, NVIDIA, hybrid laptops and older cards included. |
+| **Right drivers, automatically** | CPU microcode and GPU drivers are chosen from the PCI IDs — Intel, AMD, NVIDIA, hybrid laptops and older cards included. Complete support for 14th Gen Intel Core i7/i9 + RTX 4060/4070 laptops (e.g. HP Omen, ASUS ROG, Lenovo Legion) with custom ACPI backlight overrides and hybrid DRM modesetting. |
+| **Instant Bluetooth pairing** | `praxis-pair-keyboard` and the built-in `praxis-bluetooth-agent` handle passkey verification and PIN confirmations automatically over D-Bus — no dropped connections, no popup timeouts under Do Not Disturb. |
+| **30-Second live Wi-Fi scanner** | Live countdown scanning with multi-band discovery, instant PSK password visibility toggling, and robust reconnect logic. |
 | **Brightness on every laptop** | Many laptops expose two backlight controls and only one works. Praxis finds the one that really drives the screen — keys, slider and idle dimming all use it. OLED panels never go fully black. |
 | **Displays without fear** | Change resolution, refresh rate or scale; if you don't press **Keep** within 15 seconds it goes back by itself. Kept settings survive a restart. |
 | **Audio follows you** | Plug in headphones or connect Bluetooth earbuds — sound and mic switch over automatically. |
-| **No more freezes** | Compressed swap sized to your RAM, thrashing protection, and an out-of-memory guard that stops the AI model first — never your desktop. |
+| **No more freezes** | Compressed swap (zstd) sized to your RAM, kernel Pressure Stall Information (PSI) thrashing protection, and an out-of-memory guard that stops the AI model first — never your desktop compositor. |
 | **Clock agrees with Windows** | Dual-boot time is handled for you; time zone is detected automatically. |
 
 ### 🛡️ An installer you can trust with your Windows PC
