@@ -190,6 +190,37 @@ body {
   transform: translateY(-1px);
 }
 
+.btn-try-sim {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(125, 207, 255, 0.12);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.btn-try-sim:hover {
+  background: var(--accent-cyan);
+  color: #050811;
+  box-shadow: 0 0 20px rgba(88, 225, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-try-sim .pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse 2s infinite;
+}
+
 .mobile-menu-btn {
   display: none;
   background: none;
@@ -347,6 +378,64 @@ body {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
+}
+
+.btn-sim-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid var(--accent-violet);
+  color: #edf2f7;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 14px 24px;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+  transition: var(--transition);
+}
+
+.btn-sim-hero:hover {
+  background: rgba(139, 92, 246, 0.35);
+  border-color: #c4b5fd;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(139, 92, 246, 0.55);
+}
+
+.btn-sim-hero .pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-cyan);
+  animation: pulse 2s infinite;
+}
+
+.viewport-sim-launch {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(11, 13, 18, 0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s;
+}
+
+.viewport-sim-launch:hover {
+  background: var(--accent-cyan);
+  color: #050811;
+  box-shadow: 0 0 15px rgba(88, 225, 255, 0.5);
 }
 
 /* 3D Viewport Box */
