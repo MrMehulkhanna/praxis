@@ -1,0 +1,124 @@
+name: Publish GitHub Releases
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Create GitHub Releases
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create Releases via GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          create_or_update_release() {
+            local tag="$1"
+            local title="$2"
+            local notes="$3"
+            local extra_flag="$4"
+
+            echo "=== Processing release for tag: $tag ==="
+            if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              echo "Release $tag already exists, updating notes and title..."
+              gh release edit "$tag" --repo "${{ github.repository }}" --title "$title" --notes "$notes" $extra_flag
+            else
+              echo "Creating formal GitHub release for $tag..."
+              gh release create "$tag" --repo "${{ github.repository }}" --title "$title" --notes "$notes" $extra_flag
+            fi
+          }
+
+          create_or_update_release "v2026.10.29" \
+            "Praxis Linux v2026.10.29 (Production Stable) - Genesis" \
+            "### 🚀 Praxis Linux v2026.10.29 (Production Stable)
+
+**Signature Highlights:**
+- **Windows 11 Gestures Engine:** Precision touchpad 3-finger swipe up (Task View / Win+Tab), 3-finger swipe down (Show Desktop / Win+D), and 4-finger Action Center.
+- **Responsive Full-Width Auto-Dock:** 12px responsive bottom edge hotzone, 35ms reveal dwell, and clean auto-hide debounce.
+- **Harmonized Wallpapers:** Signature \`deep-purple.png\` wallpaper preconfigured as default out of the box.
+- **Interactive OS Simulator:** Web-based simulation with tactile audio, window snapping, and AI terminal.
+- **Hardware Stack:** Linux 6.11-cachyos-bore kernel, NVIDIA 560+ CUDA drivers, BlueZ automated agent.
+- **Installer:** Non-destructive alongside-Windows dual-boot installer.
+
+**ISO Checksum (SHA-256):**
+\`\`\`
+0095d7abdac9700ce7e3346c7931bea6664f6397deae46757e01a15285866659  praxis-2026.10.29-x86_64.iso
+\`\`\`
+
+**Verify & Flash:**
+\`\`\`bash
+sha256sum -c praxis-2026.10.29-x86_64.iso.sha256
+bash iso/flash.sh praxis-2026.10.29-x86_64.iso /dev/sdX
+\`\`\`" \
+            ""
+
+          create_or_update_release "v2026.10" \
+            "Praxis Linux v2026.10 (Production Release)" \
+            "### 🚀 Praxis Linux v2026.10 (Production Release)
+
+**Highlights:**
+- Complete production image with Windows 11 precision gestures, responsive auto-dock, and 12 harmonized wallpapers.
+- Signature \`deep-purple.png\` wallpaper default.
+
+**ISO Checksum (SHA-256):**
+\`\`\`
+0095d7abdac9700ce7e3346c7931bea6664f6397deae46757e01a15285866659
+\`\`\`" \
+            ""
+
+          create_or_update_release "v2026.10.21" \
+            "Praxis Linux v2026.10.21 (Release Candidate 2)" \
+            "### 🛠️ Praxis Linux v2026.10.21 (Release Candidate 2)
+
+**Highlights:**
+- Automated BlueZ D-Bus Bluetooth keyboard agent for seamless PIN pairing during boot.
+- SwayNC software-drawn notification server preventing unnecessary NVIDIA GPU wakeups.
+- Dynamic glass blur shader integration in Quickshell.
+
+**ISO Checksum (SHA-256):**
+\`\`\`
+fb44b0a29904de5e7e833fe31992ff00fb61b510e6ef9efcf4905ffd3ad65710  praxis-2026.10.21-x86_64.iso
+\`\`\`" \
+            "--prerelease"
+
+          create_or_update_release "v2026.10.19" \
+            "Praxis Linux v2026.10.19 (First Live ISO Build)" \
+            "### 📦 Praxis Linux v2026.10.19 (First Live ISO Build)
+
+**Highlights:**
+- First bootable live USB image tested on real UEFI hardware.
+- Non-destructive alongside-Windows partition resizing logic.
+- Automated systemd sleep hooks for NVIDIA hybrid graphics.
+
+**ISO Checksum (SHA-256):**
+\`\`\`
+0a44b1aa1f2ba59bd29279e04872abf1a4e3a2b680e3c5937242c3689e86e693  praxis-2026.10.19-x86_64.iso
+\`\`\`" \
+            "--prerelease"
+
+          create_or_update_release "v2026.09" \
+            "Praxis Linux v2026.09 (Developer Preview)" \
+            "### 🧪 Praxis Linux v2026.09 (Developer Preview)
+
+**Highlights:**
+- Initial Quickshell desktop prototype.
+- Base Hyprland Wayland configuration.
+- Arch Linux bootstrap installer profile.
+
+**ISO Checksum (SHA-256):**
+\`\`\`
+a829140fb35905d4b85c189b65741b8a531cf547901511c58c06e12e12634e23
+\`\`\`" \
+            "--prerelease"
