@@ -1,14 +1,14 @@
 /**
  * Praxis Linux (AIOS) — Main Client Script
- * Handles Interactive Terminal, Copy to Clipboard, FAQ Accordions,
- * Mobile Navigation, and Smooth Interactivity.
+ * Handles Interactive Terminal, 3D Camera Controls, Architecture Tabs,
+ * Wallpaper Lightbox, Shortcuts Search Filter, Copy to Clipboard, and Mobile Navigation.
  */
 
 (function () {
   'use strict';
 
   // -------------------------------------------------------------------------
-  // Terminal Command Simulation Data
+  // 1. Terminal Command Simulation Data
   // -------------------------------------------------------------------------
   const terminalCommands = {
     diagnostics: {
@@ -56,9 +56,7 @@ Sources:
     }
   };
 
-  // -------------------------------------------------------------------------
   // Terminal Tab Switching
-  // -------------------------------------------------------------------------
   const tabBtns = document.querySelectorAll('.tab-btn');
   const terminalPromptCmd = document.getElementById('terminal-cmd-text');
   const terminalOutput = document.getElementById('terminal-output-text');
@@ -81,7 +79,119 @@ Sources:
   });
 
   // -------------------------------------------------------------------------
-  // Clipboard Copy Buttons with Visual Feedback
+  // 2. 3D WebGL Camera Controls
+  // -------------------------------------------------------------------------
+  const viewBtns = document.querySelectorAll('[data-view]');
+  viewBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      viewBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const view = btn.getAttribute('data-view');
+      if (view === 'spin') {
+        if (typeof window.togglePraxisAutoSpin === 'function') {
+          const isSpinning = window.togglePraxisAutoSpin();
+          btn.innerHTML = isSpinning ? '<span>Spinning ⚡</span>' : '<span>Auto-Spin</span>';
+        }
+      } else if (typeof window.setPraxis3DView === 'function') {
+        window.setPraxis3DView(view);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 3. Architecture Deep-Dive Tabs
+  // -------------------------------------------------------------------------
+  const archTabBtns = document.querySelectorAll('.arch-tab-btn');
+  const archPanels = document.querySelectorAll('.arch-panel');
+
+  archTabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      archTabBtns.forEach((b) => b.classList.remove('active'));
+      archPanels.forEach((p) => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const target = btn.getAttribute('data-arch-target');
+      const panel = document.getElementById(target);
+      if (panel) {
+        panel.classList.add('active');
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 4. Searchable Shortcuts Matrix
+  // -------------------------------------------------------------------------
+  const searchInput = document.getElementById('shortcut-search-input');
+  const catFilterBtns = document.querySelectorAll('.shortcut-cat-btn');
+  const shortcutRows = document.querySelectorAll('.shortcut-row');
+
+  let activeCategory = 'all';
+
+  function filterShortcuts() {
+    const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+    shortcutRows.forEach((row) => {
+      const cat = row.getAttribute('data-category') || '';
+      const text = row.textContent.toLowerCase();
+
+      const matchesCat = activeCategory === 'all' || cat === activeCategory;
+      const matchesQuery = query === '' || text.includes(query);
+
+      if (matchesCat && matchesQuery) {
+        row.style.display = 'grid';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', filterShortcuts);
+  }
+
+  catFilterBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      catFilterBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeCategory = btn.getAttribute('data-cat') || 'all';
+      filterShortcuts();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 5. Wallpaper Lightbox Preview
+  // -------------------------------------------------------------------------
+  const wallpaperCards = document.querySelectorAll('.wallpaper-card');
+  const modal = document.getElementById('wallpaper-modal');
+  const modalImg = document.getElementById('modal-wallpaper-img');
+  const modalTitle = document.getElementById('modal-wallpaper-title');
+  const modalClose = document.getElementById('modal-close-btn');
+
+  wallpaperCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      const src = card.getAttribute('data-full-img');
+      const title = card.getAttribute('data-wallpaper-title');
+      if (modal && modalImg && modalTitle) {
+        modalImg.src = src;
+        modalTitle.textContent = title;
+        modal.classList.add('open');
+      }
+    });
+  });
+
+  if (modalClose && modal) {
+    modalClose.addEventListener('click', () => {
+      modal.classList.remove('open');
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('open');
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // 6. Clipboard Copy Buttons with Visual Feedback
   // -------------------------------------------------------------------------
   const copyButtons = document.querySelectorAll('[data-copy]');
 
@@ -98,20 +208,19 @@ Sources:
           btn.innerHTML = originalText;
         }, 2200);
       } catch (err) {
-        // Fallback
         const textarea = document.createElement('textarea');
         textarea.value = textToCopy;
         document.body.appendChild(textarea);
         textarea.select();
         document.execCommand('copy');
         document.body.removeChild(textarea);
-        alert('Copied to clipboard: ' + textToCopy);
+        alert('Copied: ' + textToCopy);
       }
     });
   });
 
   // -------------------------------------------------------------------------
-  // FAQ Accordion
+  // 7. FAQ Accordion
   // -------------------------------------------------------------------------
   const faqItems = document.querySelectorAll('.faq-item');
 
@@ -129,7 +238,7 @@ Sources:
   });
 
   // -------------------------------------------------------------------------
-  // Mobile Menu Toggle
+  // 8. Mobile Menu Toggle
   // -------------------------------------------------------------------------
   const mobileBtn = document.querySelector('.mobile-menu-btn');
   const navLinks = document.querySelector('.nav-links');
