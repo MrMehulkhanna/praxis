@@ -859,8 +859,225 @@ Analyzing kernel sysfs and local project context...
       });
     }
 
+    // Double-click titlebar to maximize / restore
+    windows.forEach((win) => {
+      const titlebar = win.querySelector('.sim-win-titlebar');
+      if (titlebar) {
+        titlebar.addEventListener('dblclick', () => {
+          playUiSound('click');
+          win.classList.toggle('maximized');
+          bringToFront(win);
+        });
+      }
+    });
+
     // -----------------------------------------------------------------------
-    // 8. Fullscreen Mode
+    // 8. GUI AI Copilot Logic (Offline llama.cpp Simulation)
+    // -----------------------------------------------------------------------
+    const aiChatLog = document.getElementById('sim-ai-chat-log');
+    const aiInput = document.getElementById('sim-ai-input');
+    const aiSendBtn = document.getElementById('sim-ai-send-btn');
+    const aiMicBtn = document.getElementById('sim-ai-mic-btn');
+
+    const aiKnowledge = {
+      zram: `**ZRAM Memory Guard Architecture:**\nUnlike Windows 11 which swaps cold pages to a high-latency disk paging file (causing 3–15 second UI freezes and high disk queue length), Praxis Linux compresses memory pages in RAM using **zstd compression** at over 4.2 GB/sec.\n- **Pressure Stall Index (PSI):** Monitored every 100ms.\n- **Thrashing:** 0.00% swap thrash even with 100 browser tabs open.\n- **Result:** Constant 120Hz compositor refresh with zero stutter.`,
+
+      bluetooth: `**Automated BlueZ D-Bus Agent:**\nIn Praxis Linux, Bluetooth discovery bypasses the clunky Windows/GNOME PIN confirmation dropdown.\n- **MK4500 Auto-Pair:** Matches HID keyboard vendor profile and automatically sends fallback PIN \`491024\` through BlueZ D-Bus.\n- **Seat Mapping:** Automatically connects to Wayland input seat0 with ultra-low 4.8ms polling latency.`,
+
+      dualboot: `**Safe Dual-Boot Alongside Windows:**\nPraxis Linux is designed specifically for everyday laptop users who still need Windows for specific games or software.\n- **Non-Destructive:** Uses \`ntfsresize\` to carve out an unallocated slice (80GB recommended) without touching your Windows partition table.\n- **BitLocker Safe:** Leaves your Windows BitLocker TPM PCR registers intact.\n- **UEFI Dual-Boot:** Configures systemd-boot to detect \`bootmgfw.efi\` so you can switch between Windows 11 and Praxis Linux seamlessly with 1 key.`,
+
+      sensors: `**Hardware Sensor Diagnostics:**\n- **CPU:** Intel Core i7-14700HX @ 44.0°C (Fan: 1320 RPM - Silent Profile)\n- **GPU:** NVIDIA GeForce RTX 4060 Mobile @ 41.2°C (Fan: 0 RPM - Passive Idle)\n- **VRAM Offload:** 32/32 layers of Qwen-2.5-Coder allocated in dedicated VRAM.\n- **Battery:** 98% (Discharging @ 14.2W, 4h 12m remaining).`
+    };
+
+    window.askAiPrompt = function (query) {
+      if (!query || !query.trim()) return;
+      playUiSound('click');
+      const cleanQ = query.trim();
+
+      const aiWin = document.getElementById('sim-win-ai');
+      if (aiWin && (aiWin.classList.contains('closed') || aiWin.classList.contains('minimized'))) {
+        toggleAppWindow('ai');
+      }
+
+      const userMsg = document.createElement('div');
+      userMsg.className = 'ai-chat-msg user';
+      userMsg.innerHTML = `
+        <div class="ai-avatar">👤</div>
+        <div class="ai-bubble">${escapeHtml(cleanQ)}</div>
+      `;
+      if (aiChatLog) aiChatLog.appendChild(userMsg);
+
+      let answer = '';
+      const lower = cleanQ.toLowerCase();
+      if (lower.includes('zram') || lower.includes('freeze') || lower.includes('memory') || lower.includes('ram')) {
+        answer = aiKnowledge.zram;
+      } else if (lower.includes('bluetooth') || lower.includes('keyboard') || lower.includes('mk4500') || lower.includes('pair')) {
+        answer = aiKnowledge.bluetooth;
+      } else if (lower.includes('dual') || lower.includes('windows') || lower.includes('install') || lower.includes('boot')) {
+        answer = aiKnowledge.dualboot;
+      } else if (lower.includes('sensor') || lower.includes('thermal') || lower.includes('temp') || lower.includes('fan') || lower.includes('cpu') || lower.includes('gpu')) {
+        answer = aiKnowledge.sensors;
+      } else {
+        answer = `**Praxis Local Assistant:**\nI evaluated your query: "${cleanQ}" locally using Qwen-2.5-Coder-7B.\n- Kernel: 6.11.5-cachyos-bore with BORE (Burst-Oriented Response Enhancer) scheduling.\n- System Load: 0.12 • Compositor: Hyprland direct scanout @ 120 FPS.\n- Cloud Leakage: **0 Bytes**. All local models, configurations, and user data stay on this machine.`;
+      }
+
+      const botMsg = document.createElement('div');
+      botMsg.className = 'ai-chat-msg assistant';
+      botMsg.innerHTML = `
+        <div class="ai-avatar">🧠</div>
+        <div class="ai-bubble"><strong>Praxis Local Intelligence:</strong><p class="ai-stream-text"></p></div>
+      `;
+      if (aiChatLog) {
+        aiChatLog.appendChild(botMsg);
+        aiChatLog.scrollTop = aiChatLog.scrollHeight;
+      }
+
+      const streamTarget = botMsg.querySelector('.ai-stream-text');
+      let i = 0;
+      const chunks = answer.split(' ');
+      const streamTimer = setInterval(() => {
+        if (i < chunks.length) {
+          if (streamTarget) streamTarget.innerHTML += (i === 0 ? '' : ' ') + chunks[i];
+          if (aiChatLog) aiChatLog.scrollTop = aiChatLog.scrollHeight;
+          if (i % 3 === 0) playUiSound('type');
+          i++;
+        } else {
+          clearInterval(streamTimer);
+          playUiSound('focus');
+        }
+      }, 30);
+    };
+
+    if (aiInput) {
+      aiInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          window.askAiPrompt(aiInput.value);
+          aiInput.value = '';
+        }
+      });
+    }
+
+    if (aiSendBtn) {
+      aiSendBtn.addEventListener('click', () => {
+        if (aiInput) {
+          window.askAiPrompt(aiInput.value);
+          aiInput.value = '';
+        }
+      });
+    }
+
+    if (aiMicBtn) {
+      aiMicBtn.addEventListener('click', () => {
+        playUiSound('chime');
+        aiMicBtn.textContent = '🔴 Listening...';
+        aiMicBtn.style.color = '#f7768e';
+        notifySim('Whisper Audio: Recording local microphone buffer (Super+H)...');
+        setTimeout(() => {
+          aiMicBtn.textContent = '🎙️ Whisper';
+          aiMicBtn.style.color = '';
+          window.askAiPrompt('How does ZRAM prevent memory freeze?');
+        }, 1400);
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // 9. Dual Boot Installer Simulation
+    // -----------------------------------------------------------------------
+    window.simulateInstallProgress = function () {
+      playUiSound('click');
+      const pBar = document.getElementById('sim-install-progress-bar');
+      const pFill = document.getElementById('sim-progress-fill');
+      const pLabel = document.getElementById('sim-progress-label');
+      const runBtn = document.getElementById('sim-btn-run-install');
+      if (!pBar || !pFill || !pLabel) return;
+
+      pBar.style.display = 'flex';
+      if (runBtn) runBtn.disabled = true;
+
+      const steps = [
+        { pct: 25, text: 'Step 1/4: Safely analyzing Windows 11 NTFS partition...', stepId: 'step-1' },
+        { pct: 50, text: 'Step 2/4: Allocating 80 GB Btrfs subvolumes (@, @home)...', stepId: 'step-2' },
+        { pct: 75, text: 'Step 3/4: Configuring ZRAM zstd compression module...', stepId: 'step-3' },
+        { pct: 100, text: 'Step 4/4: Chaining systemd-boot with Windows Boot Manager!', stepId: 'step-4' }
+      ];
+
+      let cur = 0;
+      function nextStep() {
+        if (cur < steps.length) {
+          const s = steps[cur];
+          pFill.style.width = `${s.pct}%`;
+          pLabel.textContent = s.text;
+          document.querySelectorAll('.install-step').forEach(st => st.classList.remove('active'));
+          const activeStep = document.getElementById(s.stepId);
+          if (activeStep) activeStep.classList.add('active');
+          playUiSound('type');
+          cur++;
+          setTimeout(nextStep, 1000);
+        } else {
+          playUiSound('chime');
+          pLabel.textContent = '✔ Dual-Boot Ready! Windows & Praxis both safely configured.';
+          notifySim('Installation Simulation Complete: Windows files intact, Praxis ready.');
+          if (runBtn) {
+            runBtn.disabled = false;
+            runBtn.textContent = 'Installation Complete ✔';
+          }
+        }
+      }
+      nextStep();
+    };
+
+    // -----------------------------------------------------------------------
+    // 10. Right-Click Desktop Context Menu
+    // -----------------------------------------------------------------------
+    const ctxMenu = document.getElementById('sim-context-menu');
+    desktop.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('.sim-window-body') || e.target.closest('input')) return;
+      e.preventDefault();
+      playUiSound('click');
+      if (!ctxMenu) return;
+
+      const deskRect = desktop.getBoundingClientRect();
+      let x = e.clientX - deskRect.left;
+      let y = e.clientY - deskRect.top;
+
+      if (x + 220 > desktop.clientWidth) x = desktop.clientWidth - 225;
+      if (y + 260 > desktop.clientHeight) y = desktop.clientHeight - 265;
+
+      ctxMenu.style.left = `${x}px`;
+      ctxMenu.style.top = `${y}px`;
+      ctxMenu.style.display = 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (ctxMenu && !ctxMenu.contains(e.target)) {
+        ctxMenu.style.display = 'none';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 11. Hero & Navigation "Try Simulator" Launchers
+    // -----------------------------------------------------------------------
+    const simLaunchTriggers = document.querySelectorAll('.btn-try-sim, .btn-sim-hero, .viewport-sim-launch');
+    simLaunchTriggers.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const simSection = document.getElementById('simulator');
+        if (simSection) {
+          e.preventDefault();
+          simSection.scrollIntoView({ behavior: 'smooth' });
+          if (simWrapper) {
+            simWrapper.classList.remove('highlight-focus');
+            void simWrapper.offsetWidth;
+            simWrapper.classList.add('highlight-focus');
+          }
+          playUiSound('chime');
+          notifySim('Praxis Live Desktop active: All software environment is running!');
+          toggleAppWindow('ai');
+        }
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 12. Fullscreen Mode
     // -----------------------------------------------------------------------
     if (fullscreenBtn && simWrapper) {
       fullscreenBtn.addEventListener('click', () => {
@@ -873,7 +1090,7 @@ Analyzing kernel sysfs and local project context...
     }
 
     // -----------------------------------------------------------------------
-    // 9. Toast Notification Helper
+    // 13. Toast Notification Helper
     // -----------------------------------------------------------------------
     function notifySim(msg) {
       const toast = document.getElementById('sim-toast');
@@ -887,13 +1104,15 @@ Analyzing kernel sysfs and local project context...
     }
 
     // -----------------------------------------------------------------------
-    // 10. Global Keyboard Shortcuts in Simulator
+    // 14. Global Keyboard Shortcuts in Simulator
     // -----------------------------------------------------------------------
     window.addEventListener('keydown', (e) => {
-      // Check if mouse is hovering over simulator
       if (!simWrapper.matches(':hover') && !simWrapper.classList.contains('fullscreen-mode')) return;
 
-      if (e.key === 'i' && (e.metaKey || e.altKey)) {
+      if (e.key === ' ' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        toggleAppWindow('ai');
+      } else if (e.key === 'i' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         toggleAppWindow('terminal');
       } else if (e.key === 'e' && (e.metaKey || e.altKey)) {
@@ -908,9 +1127,13 @@ Analyzing kernel sysfs and local project context...
       } else if (e.key === 'g' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         setProfile(activeProfile === 'Game Mode' ? 'Normal' : 'Game Mode');
+      } else if (e.key === 'f' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        if (fullscreenBtn) fullscreenBtn.click();
       } else if (e.key === 'Escape') {
         if (appDrawer) appDrawer.classList.remove('open');
         if (standbyPanel) standbyPanel.classList.remove('open');
+        if (ctxMenu) ctxMenu.style.display = 'none';
       }
     });
 
