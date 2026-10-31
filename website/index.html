@@ -39,6 +39,7 @@
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/simulator.css">
 
   <!-- Schema.org JSON-LD Structured Data for Google Search Engine Optimization -->
   <script type="application/ld+json">
@@ -88,6 +89,7 @@
           <li><a href="#architecture" class="nav-link">Architecture</a></li>
           <li><a href="#comparison" class="nav-link">vs Windows 11</a></li>
           <li><a href="#desktop" class="nav-link">Desktop</a></li>
+          <li><a href="#simulator" class="nav-link">Live Simulator</a></li>
           <li><a href="#wallpapers" class="nav-link">Wallpapers</a></li>
           <li><a href="#shortcuts" class="nav-link">Shortcuts</a></li>
           <li><a href="#hardware" class="nav-link">Hardware</a></li>
@@ -641,79 +643,392 @@
     </div>
   </section>
 
+  <!-- Interactive WebBrowser OS Simulator -->
+  <section id="simulator">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-tag">LIVE INTERACTIVE SANDBOX</span>
+        <h2 class="section-title">Experience Praxis Linux in Your Browser</h2>
+        <p class="section-desc">
+          Test the buttery 120Hz Wayland glass shell, run offline AI diagnostics, and customize wallpapers directly online with zero installation.
+        </p>
+      </div>
+
+      <div class="simulator-toolbar">
+        <div class="sim-status-badge">
+          <span class="sim-pulse-dot"></span>
+          <span>Wayland Engine Active • 120Hz Springs • ZRAM Compressed</span>
+        </div>
+        <button id="sim-fullscreen-toggle" class="btn-fullscreen-toggle">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+          <span>Fullscreen Simulator</span>
+        </button>
+      </div>
+
+      <div id="simulator-wrapper">
+        <div id="sim-desktop">
+          <!-- Topbar -->
+          <div class="sim-topbar">
+            <div class="sim-topbar-left">
+              <img src="assets/praxis.svg" alt="Praxis Logo" class="sim-top-logo" id="sim-app-drawer-toggle" title="Application Launcher (Super)">
+              <div class="sim-workspaces">
+                <button class="sim-ws-btn active" data-ws="1">1: AI</button>
+                <button class="sim-ws-btn" data-ws="2">2: Code</button>
+                <button class="sim-ws-btn" data-ws="3">3: Web</button>
+                <button class="sim-ws-btn" data-ws="4">4: Media</button>
+              </div>
+              <span id="sim-active-app-title" class="sim-app-title-tag">aios-assistant ~ kitty</span>
+            </div>
+
+            <div class="sim-topbar-center" id="sim-top-clock">
+              Oct 31  15:52:00
+            </div>
+
+            <div class="sim-topbar-right">
+              <div class="sim-meter"><span>CPU:</span> <span id="sim-cpu-val">14%</span></div>
+              <div class="sim-meter"><span>VRAM:</span> <span id="sim-vram-val">2.3/8.0 GB</span></div>
+              <div class="sim-meter"><span>RAM:</span> <span id="sim-ram-val">4.1/32 GB</span></div>
+              <div class="sim-meter"><span>NET:</span> <span id="sim-net-val">12.8 MB/s</span></div>
+              <div class="sim-profile-pill-wrap">
+                <span id="sim-profile-pill" class="sim-profile-pill">Normal</span>
+                <div id="sim-profile-dropdown" class="sim-profile-dropdown">
+                  <div class="sim-profile-option" data-profile="Normal">⚡ Normal (Balanced)</div>
+                  <div class="sim-profile-option" data-profile="Game Mode">🎮 Game Mode (120Hz)</div>
+                  <div class="sim-profile-option" data-profile="Battery Saver">🔋 Battery Saver (OLED)</div>
+                  <div class="sim-profile-option" data-profile="AI Mode">🧠 AI Mode (GPU Yield)</div>
+                </div>
+              </div>
+              <button id="sim-standby-toggle" class="sim-btn-standby" title="Toggle StandBy Widget Board (Super+B)">⊞ Widgets</button>
+            </div>
+          </div>
+
+          <!-- Toast Notification -->
+          <div id="sim-toast">System Toast</div>
+
+          <!-- Window 1: Interactive AI Assistant Terminal (Super+I) -->
+          <div id="sim-win-terminal" class="sim-window active">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">aios-assistant — kitty (Super+I)</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-win-body">
+              <div class="sim-quick-cmds">
+                <span style="font-size: 0.74rem; color: #9ca8b8; align-self: center;">Quick Run:</span>
+                <button class="sim-quick-cmd" data-cmd="neofetch">neofetch</button>
+                <button class="sim-quick-cmd" data-cmd="aios status">aios status</button>
+                <button class="sim-quick-cmd" data-cmd="sensors">sensors</button>
+                <button class="sim-quick-cmd" data-cmd="bt-scan">bt-scan</button>
+                <button class="sim-quick-cmd" data-cmd="wifi-scan">wifi-scan</button>
+                <button class="sim-quick-cmd" data-cmd="help">help</button>
+              </div>
+              <div id="sim-term-log">
+                <div class="term-line output">
+                  <pre class="term-pre"><span style="color: #7dcfff; font-weight: bold;">Welcome to Praxis Linux AIOS (Wayland / Hyprland).</span>
+Local LLM Daemon: <span style="color: #8bd5a1;">Online (llama.cpp CUDA)</span> • Whisper Audio: <span style="color: #8bd5a1;">Ready</span>
+Type '<span style="color: #bb9af7;">help</span>' or '<span style="color: #bb9af7;">neofetch</span>' to begin, or ask a question directly.</pre>
+                </div>
+              </div>
+              <div class="sim-term-input-row">
+                <span class="term-prompt">mk@praxis:~$</span>
+                <input type="text" id="sim-term-input" placeholder="Type command (e.g. neofetch, aios chat why is my laptop hot)..." autocomplete="off" spellcheck="false">
+              </div>
+            </div>
+          </div>
+
+          <!-- Window 2: Wallpaper & Appearance Switcher -->
+          <div id="sim-win-wallpapers" class="sim-window">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Settings › Appearance &amp; Wallpapers</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-win-body">
+              <p style="font-size: 0.8rem; color: #9ca8b8; margin-bottom: 12px;">
+                Click any curated wallpaper to instantly preview it on the simulated desktop:
+              </p>
+              <div class="sim-wp-grid">
+                <div class="sim-wp-thumb active" data-wp="assets/wallpapers/deep-purple.png" data-title="Deep Purple (Praxis Velvet)">
+                  <img src="assets/wallpapers/deep-purple.png" alt="Deep Purple">
+                  <span class="sim-wp-label">Deep Purple</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/cosmic-nebula.jpg" data-title="Cosmic Nebula (Interstellar Violet)">
+                  <img src="assets/wallpapers/cosmic-nebula.jpg" alt="Cosmic Nebula">
+                  <span class="sim-wp-label">Cosmic Nebula</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/electric-aurora.jpg" data-title="Electric Aurora (Arctic Cyan)">
+                  <img src="assets/wallpapers/electric-aurora.jpg" alt="Electric Aurora">
+                  <span class="sim-wp-label">Electric Aurora</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/cyber-matrix.jpg" data-title="Cyber Matrix (Neural Vector)">
+                  <img src="assets/wallpapers/cyber-matrix.jpg" alt="Cyber Matrix">
+                  <span class="sim-wp-label">Cyber Matrix</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/midnight-waves.jpg" data-title="Midnight Waves (Oceanic Silk)">
+                  <img src="assets/wallpapers/midnight-waves.jpg" alt="Midnight Waves">
+                  <span class="sim-wp-label">Midnight Waves</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/abyssal-violet.jpg" data-title="Abyssal Violet (Liquid Silk)">
+                  <img src="assets/wallpapers/abyssal-violet.jpg" alt="Abyssal Violet">
+                  <span class="sim-wp-label">Abyssal Violet</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/charcoal-blue.png" data-title="Charcoal Blue (Tokyo Night)">
+                  <img src="assets/wallpapers/charcoal-blue.png" alt="Charcoal Blue">
+                  <span class="sim-wp-label">Charcoal Blue</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/prism-glass.jpg" data-title="Prism Glass (Frosted Facets)">
+                  <img src="assets/wallpapers/prism-glass.jpg" alt="Prism Glass">
+                  <span class="sim-wp-label">Prism Glass</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/forest-night.png" data-title="Forest Night (Obsidian Pine)">
+                  <img src="assets/wallpapers/forest-night.png" alt="Forest Night">
+                  <span class="sim-wp-label">Forest Night</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/contours.jpg" data-title="Contours (Minimalist Topo)">
+                  <img src="assets/wallpapers/contours.jpg" alt="Contours">
+                  <span class="sim-wp-label">Contours</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/midnight-horizon.jpg" data-title="Midnight Horizon (Electric Twilight)">
+                  <img src="assets/wallpapers/midnight-horizon.jpg" alt="Midnight Horizon">
+                  <span class="sim-wp-label">Midnight Horizon</span>
+                </div>
+                <div class="sim-wp-thumb" data-wp="assets/wallpapers/oled-black.jpg" data-title="OLED Black (Pure Dark)">
+                  <img src="assets/wallpapers/oled-black.jpg" alt="OLED Black">
+                  <span class="sim-wp-label">OLED Black</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Window 3: Control Center / Glass Tuner -->
+          <div id="sim-win-control" class="sim-window closed">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Praxis Control Center — Quickshell Glass</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-win-body">
+              <div class="sim-slider-row">
+                <div class="sim-slider-header">
+                  <span>Frosted Glass Transparency</span>
+                  <span id="val-glass-alpha" class="val">52%</span>
+                </div>
+                <input type="range" id="slider-glass-alpha" min="0.1" max="0.9" step="0.05" value="0.52">
+              </div>
+
+              <div class="sim-slider-row">
+                <div class="sim-slider-header">
+                  <span>Corner Radius</span>
+                  <span id="val-radius" class="val">16px</span>
+                </div>
+                <input type="range" id="slider-radius" min="8" max="24" step="2" value="16">
+              </div>
+
+              <div class="sim-toggle-row">
+                <span>Compositor Backdrop Blur</span>
+                <input type="checkbox" id="toggle-blur" checked style="accent-color: var(--sim-teal); cursor: pointer;">
+              </div>
+
+              <div class="sim-toggle-row">
+                <span>Dock Auto-Hide (16px Window Gap)</span>
+                <span style="color: #8bd5a1; font-weight: bold;">Enforced</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Window 4: Code Editor (Theme.qml) -->
+          <div id="sim-win-code" class="sim-window closed">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Theme.qml — Quickshell Visual Token Singleton</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-win-body" style="background: #080a0f; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6;">
+              <pre style="margin: 0; color: #edf2f7;"><span style="color: #bb9af7;">pragma</span> Singleton
+<span style="color: #7dcfff;">import</span> QtQuick
+<span style="color: #7dcfff;">import</span> Quickshell
+
+Singleton {
+    <span style="color: #7aa2f7;">readonly property color</span> bg:       <span style="color: #8bd5a1;">"#0b0d12"</span>
+    <span style="color: #7aa2f7;">readonly property color</span> surface:  <span style="color: #8bd5a1;">"#12161e"</span>
+    <span style="color: #7aa2f7;">readonly property color</span> blue:     <span style="color: #8bd5a1;">"#7aa2f7"</span>
+    <span style="color: #7aa2f7;">readonly property color</span> purple:   <span style="color: #8bd5a1;">"#bb9af7"</span>
+    <span style="color: #7aa2f7;">readonly property color</span> green:    <span style="color: #8bd5a1;">"#8bd5a1"</span>
+    <span style="color: #7aa2f7;">readonly property color</span> teal:     <span style="color: #8bd5a1;">"#7dcfff"</span>
+
+    <span style="color: #7aa2f7;">readonly property int</span>   dockWindowGap: <span style="color: #e8c77b;">16</span>
+}</pre>
+            </div>
+          </div>
+
+          <!-- StandBy Widget Panel (Slides in from right) -->
+          <div id="sim-standby-panel">
+            <div class="sim-widget-card">
+              <h4>System Clock &amp; Weather</h4>
+              <div class="sim-clock-widget">15:52</div>
+              <div style="text-align: center; color: #9ca8b8; font-size: 0.8rem; margin-top: 4px;">21°C • Clear Sky • New Delhi</div>
+            </div>
+
+            <div class="sim-widget-card">
+              <h4>Local LLM Token Engine</h4>
+              <div class="sim-ai-stat">Daemon: <strong>llama.cpp CUDA</strong></div>
+              <div class="sim-ai-stat">Speed: <strong>46.2 tok/sec</strong></div>
+              <div class="sim-ai-stat">Cloud Outbound: <strong style="color: #7dcfff;">0 Bytes (100% Offline)</strong></div>
+            </div>
+
+            <div class="sim-widget-card">
+              <h4>Fast Theme Toggles</h4>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button class="sim-quick-cmd" onclick="window.previewWallpaperInSimulator('assets/wallpapers/cosmic-nebula.jpg', 'Cosmic Nebula')">Nebula</button>
+                <button class="sim-quick-cmd" onclick="window.previewWallpaperInSimulator('assets/wallpapers/electric-aurora.jpg', 'Electric Aurora')">Aurora</button>
+                <button class="sim-quick-cmd" onclick="window.previewWallpaperInSimulator('assets/wallpapers/cyber-matrix.jpg', 'Cyber Matrix')">Matrix</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quickshell Bottom Dock -->
+          <div class="sim-dock">
+            <div class="sim-dock-icon running focused" data-app="terminal" title="Kitty Terminal / AI Assistant (Super+I)">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            </div>
+            <div class="sim-dock-icon running" data-app="wallpapers" title="Appearance &amp; Wallpaper Switcher">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            </div>
+            <div class="sim-dock-icon" data-app="control" title="Praxis Control Center">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+            </div>
+            <div class="sim-dock-icon" data-app="code" title="Theme.qml Code Editor">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Wallpapers & Aesthetics Showcase -->
   <section id="wallpapers">
     <div class="container">
       <div class="section-head">
         <span class="section-tag">AESTHETIC CRAFTSMANSHIP</span>
-        <h2 class="section-title">Original 4K Wallpapers &amp; Themes</h2>
+        <h2 class="section-title">Harmonized 4K Obsidian Wallpapers &amp; Themes</h2>
         <p class="section-desc">
-          Thirteen original stills and three seamless live wallpapers, decoded on the integrated GPU so your discrete graphics can sleep. Click any theme to preview.
+          Twelve curated, theme-consistent dark glassmorphic wallpapers precision-tuned to Praxis Linux's Tokyo Night obsidian palette (<code style="color: #7dcfff;">#0b0d12</code>, <code style="color: #bb9af7;">#bb9af7</code>, <code style="color: #7aa2f7;">#7aa2f7</code>). Click any card to preview full-screen or test live in the simulator above.
         </p>
       </div>
 
       <div class="wallpaper-grid">
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/aurora-still.jpg" data-wallpaper-title="Aurora Still (Signature Theme)">
-          <img src="assets/wallpapers/aurora-still.jpg" alt="Aurora Still" class="wallpaper-thumb" loading="lazy">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/deep-purple.png" data-wallpaper-title="Deep Purple (Praxis Signature Velvet)">
+          <img src="assets/wallpapers/deep-purple.png" alt="Deep Purple" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">Live / Still 4K</span>
-            <span class="wallpaper-name">Aurora Still</span>
+            <span class="wallpaper-tag">Signature Theme</span>
+            <span class="wallpaper-name">Deep Purple</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/midnight-waves.jpg" data-wallpaper-title="Midnight Waves (Deep Cyber)">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/cosmic-nebula.jpg" data-wallpaper-title="Cosmic Nebula (Interstellar Violet)">
+          <img src="assets/wallpapers/cosmic-nebula.jpg" alt="Cosmic Nebula" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Live Native 4K</span>
+            <span class="wallpaper-name">Cosmic Nebula</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/electric-aurora.jpg" data-wallpaper-title="Electric Aurora (Arctic Cyan Ribbons)">
+          <img src="assets/wallpapers/electric-aurora.jpg" alt="Electric Aurora" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Neon Polar Night</span>
+            <span class="wallpaper-name">Electric Aurora</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/cyber-matrix.jpg" data-wallpaper-title="Cyber Matrix (AIOS Neural Vectors)">
+          <img src="assets/wallpapers/cyber-matrix.jpg" alt="Cyber Matrix" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">Cybernetic Grid</span>
+            <span class="wallpaper-name">Cyber Matrix</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/midnight-waves.jpg" data-wallpaper-title="Midnight Waves (Oceanic Silk)">
           <img src="assets/wallpapers/midnight-waves.jpg" alt="Midnight Waves" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">OLED Pure Dark</span>
+            <span class="wallpaper-tag">Deep Cobalt</span>
             <span class="wallpaper-name">Midnight Waves</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/bloom.jpg" data-wallpaper-title="Bloom (Glassmorphic Glow)">
-          <img src="assets/wallpapers/bloom.jpg" alt="Bloom" class="wallpaper-thumb" loading="lazy">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/abyssal-violet.jpg" data-wallpaper-title="Abyssal Violet (Liquid Silk)">
+          <img src="assets/wallpapers/abyssal-violet.jpg" alt="Abyssal Violet" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">Vivid HDR</span>
-            <span class="wallpaper-name">Bloom</span>
+            <span class="wallpaper-tag">Liquid Glass</span>
+            <span class="wallpaper-name">Abyssal Violet</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/dunes.jpg" data-wallpaper-title="Dunes (Minimal Warm)">
-          <img src="assets/wallpapers/dunes.jpg" alt="Dunes" class="wallpaper-thumb" loading="lazy">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/charcoal-blue.png" data-wallpaper-title="Charcoal Blue (Tokyo Night Minimalist)">
+          <img src="assets/wallpapers/charcoal-blue.png" alt="Charcoal Blue" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">Minimalist</span>
-            <span class="wallpaper-name">Dunes</span>
+            <span class="wallpaper-tag">Minimalist Slate</span>
+            <span class="wallpaper-name">Charcoal Blue</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/glacier.jpg" data-wallpaper-title="Glacier (Cold Slate)">
-          <img src="assets/wallpapers/glacier.jpg" alt="Glacier" class="wallpaper-thumb" loading="lazy">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/prism-glass.jpg" data-wallpaper-title="Prism Glass (Frosted Facets)">
+          <img src="assets/wallpapers/prism-glass.jpg" alt="Prism Glass" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">High Altitude</span>
-            <span class="wallpaper-name">Glacier</span>
+            <span class="wallpaper-tag">Architectural Refraction</span>
+            <span class="wallpaper-name">Prism Glass</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/dusk-horizon.jpg" data-wallpaper-title="Dusk Horizon (Neon Twilight)">
-          <img src="assets/wallpapers/dusk-horizon.jpg" alt="Dusk Horizon" class="wallpaper-thumb" loading="lazy">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/forest-night.png" data-wallpaper-title="Forest Night (Obsidian Pine)">
+          <img src="assets/wallpapers/forest-night.png" alt="Forest Night" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">Ambient Glow</span>
-            <span class="wallpaper-name">Dusk Horizon</span>
+            <span class="wallpaper-tag">Nordic Cyber Lab</span>
+            <span class="wallpaper-name">Forest Night</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/contours.jpg" data-wallpaper-title="Contours (Abstract Topo)">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/contours.jpg" data-wallpaper-title="Contours (Topographic Charcoal)">
           <img src="assets/wallpapers/contours.jpg" alt="Contours" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">Topographic</span>
+            <span class="wallpaper-tag">Topographic Slate</span>
             <span class="wallpaper-name">Contours</span>
           </div>
         </div>
 
-        <div class="wallpaper-card" data-full-img="assets/wallpapers/ember.jpg" data-wallpaper-title="Ember (Dark Fire)">
-          <img src="assets/wallpapers/ember.jpg" alt="Ember" class="wallpaper-thumb" loading="lazy">
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/midnight-horizon.jpg" data-wallpaper-title="Midnight Horizon (Electric Twilight)">
+          <img src="assets/wallpapers/midnight-horizon.jpg" alt="Midnight Horizon" class="wallpaper-thumb" loading="lazy">
           <div class="wallpaper-overlay">
-            <span class="wallpaper-tag">Deep Contrast</span>
-            <span class="wallpaper-name">Ember</span>
+            <span class="wallpaper-tag">Distant Twilight</span>
+            <span class="wallpaper-name">Midnight Horizon</span>
+          </div>
+        </div>
+
+        <div class="wallpaper-card" data-full-img="assets/wallpapers/oled-black.jpg" data-wallpaper-title="OLED Black (Pure Dark 0W)">
+          <img src="assets/wallpapers/oled-black.jpg" alt="OLED Black" class="wallpaper-thumb" loading="lazy">
+          <div class="wallpaper-overlay">
+            <span class="wallpaper-tag">True Black OLED</span>
+            <span class="wallpaper-name">OLED Black</span>
           </div>
         </div>
       </div>
@@ -1129,5 +1444,7 @@
   <script src="js/three-scene.js"></script>
   <!-- Client Interactivity & UI Scripts -->
   <script src="js/main.js"></script>
+  <!-- Live WebBrowser OS Desktop Simulator -->
+  <script src="js/simulator.js"></script>
 </body>
 </html>
