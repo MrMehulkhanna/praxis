@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# praxis-pair-keyboard — Reliable pairing for Bluetooth Keyboards & MK4500
+# praxis-pair-keyboard — Reliable pairing for Bluetooth Keyboards
 # Handles PIN display, passkey confirmation, and automatic service authorization
 # ============================================================================
 set -euo pipefail
@@ -44,8 +44,8 @@ if [ -z "$TARGET_ADDR" ]; then
     # Scan for devices
     bluetoothctl --timeout 15 scan on >/dev/null 2>&1 || true
 
-    # Look for MK4500 or keyboard in discovered devices
-    MATCH=$(bluetoothctl devices | grep -iE "MK4500|Keyboard|Keychron|Rapoo|Zebronics|Portronics" | head -n 1 || true)
+    # Look for wireless keyboards in discovered devices
+    MATCH=$(bluetoothctl devices | grep -iE "Keyboard|Keychron|Logitech|Rapoo|Zebronics|Portronics" | head -n 1 || true)
     
     if [ -n "$MATCH" ]; then
         TARGET_ADDR=$(echo "$MATCH" | awk '{print $2}')
@@ -56,7 +56,7 @@ if [ -z "$TARGET_ADDR" ]; then
         echo "Here are all nearby devices discovered:"
         bluetoothctl devices
         echo
-        read -r -p "Enter the Bluetooth MAC address of your keyboard (e.g. 13:08:AC:00:13:53): " TARGET_ADDR
+        read -r -p "Enter the Bluetooth MAC address of your keyboard (e.g. 00:11:22:33:44:55): " TARGET_ADDR
     fi
 fi
 
