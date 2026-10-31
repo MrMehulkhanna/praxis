@@ -30,6 +30,131 @@
     let activeWorkspace = 1;
     let highestZ = 10;
     let activeWallpaper = 'assets/wallpapers/deep-purple.png';
+    let soundEnabled = true;
+
+    // -----------------------------------------------------------------------
+    // Tactile Web Audio API Synthesizer (Zero asset download required)
+    // -----------------------------------------------------------------------
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playUiSound(type) {
+      if (!soundEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        if (type === 'click') {
+          // Subtle, soft glass click (0.04s)
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(780, now);
+          osc.frequency.exponentialRampToValueAtTime(320, now + 0.04);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.04);
+        } else if (type === 'type') {
+          // Subtle mechanical key clack
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(280 + Math.random() * 80, now);
+          gain.gain.setValueAtTime(0.035, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.025);
+        } else if (type === 'focus') {
+          // Smooth acoustic bubble
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(560, now + 0.06);
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.06);
+        } else if (type === 'chime') {
+          // Dual harmonic bell chord
+          [587.33, 880].forEach((freq) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.28);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.28);
+          });
+        } else if (type === 'close') {
+          // Soft down-swoosh
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(320, now);
+          osc.frequency.exponentialRampToValueAtTime(140, now + 0.07);
+          gain.gain.setValueAtTime(0.05, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.07);
+        }
+      } catch (err) {
+        // Fail gracefully
+      }
+    }
+
+    // Sound toggle button wiring
+    const soundToggle = document.getElementById('sim-sound-toggle');
+    if (soundToggle) {
+      soundToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        soundEnabled = !soundEnabled;
+        if (soundEnabled) {
+          soundToggle.textContent = '🔊 Sound ON';
+          soundToggle.classList.remove('muted');
+          playUiSound('chime');
+          notifySim('Tactile UI Audio enabled.');
+        } else {
+          soundToggle.textContent = '🔇 Sound OFF';
+          soundToggle.classList.add('muted');
+          notifySim('Tactile UI Audio muted.');
+        }
+      });
+    }
+
+    // Welcome Card close
+    const welcomeCard = document.getElementById('sim-welcome-card');
+    const welcomeClose = document.getElementById('sim-welcome-close');
+    if (welcomeClose && welcomeCard) {
+      welcomeClose.addEventListener('click', () => {
+        playUiSound('click');
+        welcomeCard.classList.add('hidden');
+      });
+    }
 
     // -----------------------------------------------------------------------
     // 1. Live Clock & Dynamic Telemetry
@@ -171,6 +296,7 @@
       // Close
       if (closeBtn) {
         closeBtn.addEventListener('click', () => {
+          playUiSound('close');
           win.classList.add('closed');
           win.classList.remove('active');
           updateDockIndicators();
@@ -180,6 +306,7 @@
       // Minimize
       if (minBtn) {
         minBtn.addEventListener('click', () => {
+          playUiSound('close');
           win.classList.add('minimized');
           win.classList.remove('active');
           updateDockIndicators();
@@ -189,6 +316,7 @@
       // Maximize / Restore
       if (maxBtn) {
         maxBtn.addEventListener('click', () => {
+          playUiSound('click');
           win.classList.toggle('maximized');
           bringToFront(win);
         });
@@ -202,6 +330,8 @@
       win.classList.add('active');
       win.classList.remove('minimized');
       win.classList.remove('closed');
+
+      playUiSound('focus');
 
       // Update Topbar Active Title
       const titleSpan = win.querySelector('.sim-win-title');
@@ -228,6 +358,8 @@
       const targetWin = document.getElementById(`sim-win-${appName}`);
       if (!targetWin) return;
 
+      playUiSound('click');
+
       if (targetWin.classList.contains('closed') || targetWin.classList.contains('minimized')) {
         targetWin.classList.remove('closed');
         targetWin.classList.remove('minimized');
@@ -235,11 +367,13 @@
       } else if (targetWin.classList.contains('active')) {
         targetWin.classList.add('minimized');
         targetWin.classList.remove('active');
+        playUiSound('close');
       } else {
         bringToFront(targetWin);
       }
       updateDockIndicators();
     }
+    window.toggleAppWindow = toggleAppWindow;
 
     function updateDockIndicators() {
       dockItems.forEach((icon) => {
@@ -263,15 +397,53 @@
     if (appDrawerBtn && appDrawer) {
       appDrawerBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        playUiSound('click');
         appDrawer.classList.toggle('open');
       });
     }
+
+    // App Drawer Search & Item Click
+    const drawerSearch = document.getElementById('sim-drawer-input');
+    const drawerItems = document.querySelectorAll('.sim-drawer-item');
+
+    if (drawerSearch) {
+      drawerSearch.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        drawerItems.forEach((item) => {
+          const name = item.querySelector('.sim-drawer-name')?.textContent.toLowerCase() || '';
+          const sub = item.querySelector('.sim-drawer-sub')?.textContent.toLowerCase() || '';
+          if (!query || name.includes(query) || sub.includes(query)) {
+            item.style.display = 'flex';
+          } else {
+            item.style.display = 'none';
+          }
+        });
+      });
+    }
+
+    drawerItems.forEach((item) => {
+      item.addEventListener('click', () => {
+        const app = item.getAttribute('data-open');
+        if (app) {
+          toggleAppWindow(app);
+          if (appDrawer) appDrawer.classList.remove('open');
+        }
+      });
+    });
+
+    // Close app drawer on click outside
+    document.addEventListener('click', (e) => {
+      if (appDrawer && !appDrawer.contains(e.target) && e.target !== appDrawerBtn) {
+        appDrawer.classList.remove('open');
+      }
+    });
 
     // StandBy Widget Board Toggle (Super+B)
     const standbyBtn = document.getElementById('sim-standby-toggle');
     if (standbyBtn && standbyPanel) {
       standbyBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        playUiSound('click');
         standbyPanel.classList.toggle('open');
       });
     }
@@ -280,12 +452,223 @@
     const wsBtns = document.querySelectorAll('.sim-ws-btn');
     wsBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
+        playUiSound('chime');
         wsBtns.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         activeWorkspace = parseInt(btn.getAttribute('data-ws'), 10);
         notifySim(`Switched to Workspace ${activeWorkspace}`);
       });
     });
+
+    // -----------------------------------------------------------------------
+    // File Manager (Thunar) Logic
+    // -----------------------------------------------------------------------
+    const fileItemsMap = {
+      home: [
+        { name: 'Desktop', icon: '📁', meta: 'Directory • 3 items' },
+        { name: 'Documents', icon: '📁', meta: 'Directory • 6 items' },
+        { name: 'Wallpapers', icon: '🖼️', meta: 'Directory • 12 items' },
+        { name: 'Projects', icon: '⚡', meta: 'Directory • 14 repos' },
+        { name: '.bashrc', icon: '📄', meta: '3.2 KB • Shell' },
+        { name: '.zshrc', icon: '📄', meta: '4.8 KB • Shell' }
+      ],
+      wallpapers: [
+        { name: 'deep-purple.png', icon: '🖼️', meta: '4.2 MB • Wallpaper', wp: 'assets/wallpapers/deep-purple.png', title: 'Deep Purple' },
+        { name: 'cosmic-nebula.jpg', icon: '🖼️', meta: '5.1 MB • Wallpaper', wp: 'assets/wallpapers/cosmic-nebula.jpg', title: 'Cosmic Nebula' },
+        { name: 'electric-aurora.jpg', icon: '🖼️', meta: '3.8 MB • Wallpaper', wp: 'assets/wallpapers/electric-aurora.jpg', title: 'Electric Aurora' },
+        { name: 'cyber-matrix.jpg', icon: '🖼️', meta: '4.7 MB • Wallpaper', wp: 'assets/wallpapers/cyber-matrix.jpg', title: 'Cyber Matrix' },
+        { name: 'midnight-waves.jpg', icon: '🖼️', meta: '4.0 MB • Wallpaper', wp: 'assets/wallpapers/midnight-waves.jpg', title: 'Midnight Waves' },
+        { name: 'abyssal-violet.jpg', icon: '🖼️', meta: '3.9 MB • Wallpaper', wp: 'assets/wallpapers/abyssal-violet.jpg', title: 'Abyssal Violet' },
+        { name: 'prism-glass.jpg', icon: '🖼️', meta: '4.4 MB • Wallpaper', wp: 'assets/wallpapers/prism-glass.jpg', title: 'Prism Glass' },
+        { name: 'oled-black.jpg', icon: '🖼️', meta: '1.2 MB • Wallpaper', wp: 'assets/wallpapers/oled-black.jpg', title: 'OLED Black' }
+      ],
+      projects: [
+        { name: 'aios-daemon.py', icon: '🐍', meta: '14.2 KB • Python' },
+        { name: 'hyprland.conf', icon: '⚙️', meta: '8.4 KB • Wayland Config' },
+        { name: 'Theme.qml', icon: '🎨', meta: '2.1 KB • Quickshell QML' },
+        { name: 'audio-guard.py', icon: '🔊', meta: '5.6 KB • PipeWire Daemon' },
+        { name: 'build-iso.sh', icon: '📦', meta: '4.9 KB • Archiso Script' },
+        { name: 'test-runner.sh', icon: '🧪', meta: '3.1 KB • Gravitas Spec' }
+      ],
+      docs: [
+        { name: 'README.md', icon: '📄', meta: '5.9 KB • Distro Overview' },
+        { name: 'ARCHITECTURE.md', icon: '📐', meta: '12.4 KB • Spec Doc' },
+        { name: 'ISO_BUILD_GUIDE.md', icon: '💿', meta: '7.8 KB • Build Manual' },
+        { name: 'WAYLAND_SPECS.md', icon: '⚡', meta: '9.1 KB • Compositor Guide' }
+      ],
+      system: [
+        { name: '/boot', icon: '📁', meta: 'Kernel 6.11.5-bore' },
+        { name: '/etc/hypr', icon: '📁', meta: 'Compositor configs' },
+        { name: '/usr/share/quickshell', icon: '📁', meta: 'QML Glass Engine' },
+        { name: '/var/log/aios', icon: '📁', meta: 'Local SQLite Audit Log' }
+      ],
+      iso: [
+        { name: 'praxis-2026-x86_64.iso', icon: '💿', meta: '2.4 GB • Bootable Hybrid ISO' },
+        { name: 'sha256sums.txt', icon: '🔒', meta: '128 B • Cryptographic Hash' },
+        { name: 'grub.cfg', icon: '⚙️', meta: '1.4 KB • EFI GRUB Bootloader' }
+      ]
+    };
+
+    const sidebarItems = document.querySelectorAll('.sim-sidebar-item');
+    const filesGrid = document.getElementById('sim-files-grid');
+    const folderLabel = document.getElementById('sim-current-folder');
+    const fileCountLabel = document.getElementById('sim-files-count');
+
+    sidebarItems.forEach((item) => {
+      item.addEventListener('click', () => {
+        playUiSound('click');
+        const folder = item.getAttribute('data-folder');
+        sidebarItems.forEach((i) => i.classList.remove('active'));
+        item.classList.add('active');
+        renderFolder(folder);
+      });
+    });
+
+    function renderFolder(folder) {
+      if (folderLabel) folderLabel.textContent = folder;
+      const list = fileItemsMap[folder] || [];
+      if (fileCountLabel) fileCountLabel.textContent = `${list.length} items`;
+      if (!filesGrid) return;
+
+      filesGrid.innerHTML = '';
+      list.forEach((f) => {
+        const div = document.createElement('div');
+        div.className = 'sim-file-item';
+        div.innerHTML = `
+          <span class="sim-file-icon">${f.icon}</span>
+          <span class="sim-file-name">${escapeHtml(f.name)}</span>
+          <span class="sim-file-meta">${escapeHtml(f.meta)}</span>
+        `;
+        div.addEventListener('click', () => {
+          playUiSound('click');
+          if (f.wp) {
+            window.previewWallpaperInSimulator(f.wp, f.title);
+          } else {
+            window.simOpenFile(f.name);
+          }
+        });
+        filesGrid.appendChild(div);
+      });
+    }
+
+    window.simOpenFile = function (fileName) {
+      playUiSound('click');
+      notifySim(`Inspecting: ${fileName}`);
+      if (fileName.endsWith('.conf') || fileName.endsWith('.qml') || fileName.endsWith('.py') || fileName.endsWith('.md')) {
+        toggleAppWindow('code');
+      } else if (fileName.endsWith('.iso')) {
+        toggleAppWindow('browser');
+        window.loadBrowserPage('iso');
+      }
+    };
+
+    // -----------------------------------------------------------------------
+    // Web Browser (Chromium) Logic
+    // -----------------------------------------------------------------------
+    const browserPages = {
+      docs: {
+        url: 'https://praxis-os.org/docs',
+        html: `
+          <div class="sim-browser-page">
+            <div class="sim-b-hero">
+              <div class="sim-b-tag">OFFLINE-FIRST HYBRID LINUX DISTRO</div>
+              <h3>Praxis Linux Knowledge Base</h3>
+              <p>Welcome to the built-in offline documentation running locally inside Praxis OS. Explore architecture guides, AI pipeline specs, and Wayland compositor tuning.</p>
+            </div>
+            <div class="sim-b-grid">
+              <div class="sim-b-card">
+                <h4>Local AI Intelligence</h4>
+                <p>32-layer GGUF quantization offloaded directly onto RTX 4060 VRAM. Never sends your keystrokes or audio to the cloud.</p>
+              </div>
+              <div class="sim-b-card">
+                <h4>Hyprland 120Hz Springs</h4>
+                <p>Fluid physics gestures, dynamic dual-monitor hotplugging, and zero-tearing direct scanout Wayland compositor.</p>
+              </div>
+              <div class="sim-b-card">
+                <h4>Audio &amp; Bluetooth Guard</h4>
+                <p>Automated BlueZ D-Bus agent pairing, instant PipeWire profile switching, and zero crackle low-latency audio.</p>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      github: {
+        url: 'https://github.com/MrMehulkhanna/praxis',
+        html: `
+          <div class="sim-browser-page">
+            <div class="sim-b-hero">
+              <div class="sim-b-tag">OPEN SOURCE REPOSITORY</div>
+              <h3>MrMehulkhanna / praxis</h3>
+              <p>Next-generation Linux distribution blending local AI copiloting, Quickshell hardware-accelerated frosted glass, and automated hardware management.</p>
+            </div>
+            <div class="sim-b-grid">
+              <div class="sim-b-card">
+                <h4>Active Branch</h4>
+                <p><code style="color: #7dcfff;">main</code> • Continuous deployment enabled via GitHub Pages.</p>
+              </div>
+              <div class="sim-b-card">
+                <h4>Zero External CDNs</h4>
+                <p>100% self-contained assets, offline fonts, and local vector icons for strict privacy.</p>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      ai: {
+        url: 'http://localhost:8080/v1/models',
+        html: `
+          <div class="sim-browser-page">
+            <div class="sim-b-hero">
+              <div class="sim-b-tag">LOCAL TOKEN ENGINE</div>
+              <h3>llama.cpp CUDA Inference Gateway</h3>
+              <p>High-throughput local LLM server listening on loopback interface with hardware offloading.</p>
+            </div>
+            <div class="sim-b-grid">
+              <div class="sim-b-card">
+                <h4>Model Architecture</h4>
+                <p>Qwen-2.5-Coder-7B-Instruct (4-bit quantization, 32 GPU layers offloaded).</p>
+              </div>
+              <div class="sim-b-card">
+                <h4>Throughput &amp; Latency</h4>
+                <p>46.2 tokens/sec prompt evaluation • 12ms time-to-first-token • Zero internet required.</p>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      iso: {
+        url: 'https://praxis-os.org/download',
+        html: `
+          <div class="sim-browser-page">
+            <div class="sim-b-hero">
+              <div class="sim-b-tag">PRODUCTION RELEASE</div>
+              <h3>Praxis Linux v2026 Bootable Image</h3>
+              <p>Download the official hybrid ISO with CachyOS BORE kernel, NVIDIA CUDA drivers, and Quickshell desktop pre-installed.</p>
+            </div>
+            <div class="sim-b-grid">
+              <div class="sim-b-card">
+                <h4>Size &amp; Compatibility</h4>
+                <p>2.4 GB • UEFI &amp; Legacy BIOS • Ventoy / Rufus / dd compatible bootloader.</p>
+              </div>
+              <div class="sim-b-card">
+                <h4>Recommended Hardware</h4>
+                <p>Intel/AMD x86_64 CPU • 8GB+ RAM • NVIDIA RTX or AMD Radeon GPU for full AI acceleration.</p>
+              </div>
+            </div>
+          </div>
+        `
+      }
+    };
+
+    window.loadBrowserPage = function (pageKey) {
+      playUiSound('click');
+      const page = browserPages[pageKey];
+      if (!page) return;
+      const urlInput = document.getElementById('sim-browser-url');
+      const content = document.getElementById('sim-browser-content');
+      if (urlInput) urlInput.value = page.url;
+      if (content) content.innerHTML = page.html;
+    };
 
     // -----------------------------------------------------------------------
     // 5. Interactive Terminal Shell in Simulator
@@ -390,14 +773,18 @@ Analyzing kernel sysfs and local project context...
     if (termInput) {
       termInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
+          playUiSound('click');
           executeCommand(termInput.value);
           termInput.value = '';
+        } else if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt' && e.key !== 'Meta') {
+          playUiSound('type');
         }
       });
     }
 
     quickCmdBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
+        playUiSound('click');
         const cmd = btn.getAttribute('data-cmd');
         executeCommand(cmd);
       });
@@ -422,6 +809,7 @@ Analyzing kernel sysfs and local project context...
     function setDesktopWallpaper(src, title) {
       activeWallpaper = src;
       desktop.style.backgroundImage = `url('${src}')`;
+      playUiSound('chime');
       notifySim(`Wallpaper changed to: ${title || src}`);
     }
 
@@ -505,12 +893,18 @@ Analyzing kernel sysfs and local project context...
       // Check if mouse is hovering over simulator
       if (!simWrapper.matches(':hover') && !simWrapper.classList.contains('fullscreen-mode')) return;
 
-      if (e.key === 'b' && (e.metaKey || e.altKey)) {
-        e.preventDefault();
-        if (standbyPanel) standbyPanel.classList.toggle('open');
-      } else if (e.key === 'i' && (e.metaKey || e.altKey)) {
+      if (e.key === 'i' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         toggleAppWindow('terminal');
+      } else if (e.key === 'e' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        toggleAppWindow('files');
+      } else if (e.key === 'w' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        toggleAppWindow('wallpapers');
+      } else if (e.key === 'b' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        toggleAppWindow('browser');
       } else if (e.key === 'g' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         setProfile(activeProfile === 'Game Mode' ? 'Normal' : 'Game Mode');

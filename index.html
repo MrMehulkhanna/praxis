@@ -99,6 +99,10 @@
       </nav>
 
       <div class="nav-actions">
+        <a href="#simulator" class="btn-try-sim">
+          <span class="pulse-dot"></span>
+          <span>⚡ Try OS Simulator</span>
+        </a>
         <a href="https://github.com/MrMehulkhanna/praxis" target="_blank" rel="noopener noreferrer" class="btn-github">
           <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
@@ -152,6 +156,10 @@
         </div>
 
         <div class="hero-ctas">
+          <a href="#simulator" class="btn-sim-hero" id="hero-try-sim-btn">
+            <span class="pulse-dot"></span>
+            <span>⚡ Try Live OS Simulation (Online)</span>
+          </a>
           <a href="#download" class="btn-primary">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
@@ -159,7 +167,7 @@
             <span>Download Praxis ISO (1.9 GB)</span>
           </a>
           <a href="#comparison" class="btn-secondary">
-            <span>Why Switch from Windows</span>
+            <span>Why Switch</span>
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
             </svg>
@@ -177,7 +185,9 @@
         </div>
         <div id="canvas-container"></div>
         <div class="viewport-overlay">
-          <span class="viewport-pill">⚡ 3D LIVE HARDWARE PREVIEW</span>
+          <button class="viewport-sim-launch" onclick="document.getElementById('simulator').scrollIntoView({behavior:'smooth'})">
+            ▶ Test Drive OS on this Laptop
+          </button>
           <span class="interactive-hint">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
@@ -700,12 +710,33 @@
                   <div class="sim-profile-option" data-profile="AI Mode">🧠 AI Mode (GPU Yield)</div>
                 </div>
               </div>
+              <button id="sim-sound-toggle" class="sim-btn-standby" title="Toggle Tactile UI Sounds">🔊 Sound ON</button>
               <button id="sim-standby-toggle" class="sim-btn-standby" title="Toggle StandBy Widget Board (Super+B)">⊞ Widgets</button>
             </div>
           </div>
 
           <!-- Toast Notification -->
           <div id="sim-toast">System Toast</div>
+
+          <!-- Welcome Guided Tour Banner -->
+          <div id="sim-welcome-card" class="sim-welcome-card">
+            <div class="sim-welcome-header">
+              <span style="font-weight: 700; color: #7dcfff; display: flex; align-items: center; gap: 8px;">
+                <span class="sim-pulse-dot"></span> Live Praxis Desktop Environment (Wayland 120Hz)
+              </span>
+              <button id="sim-welcome-close" class="sim-welcome-close" title="Dismiss">✕</button>
+            </div>
+            <p style="font-size: 0.82rem; color: #cbd5e1; margin: 8px 0 12px; line-height: 1.5;">
+              You are experiencing an in-person, interactive session of Praxis Linux. Drag floating glass windows, test terminal diagnostics, explore files, and preview all 12 curated wallpapers live:
+            </p>
+            <div class="sim-welcome-actions">
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('terminal')">>_ Terminal (Super+I)</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('wallpapers')">🖼️ 12 Curated Wallpapers</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('files')">📁 File Manager</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('control')">⚙️ Glass Tuner</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('browser')">🌐 Web Browser</button>
+            </div>
+          </div>
 
           <!-- Window 1: Interactive AI Assistant Terminal (Super+I) -->
           <div id="sim-win-terminal" class="sim-window active">
@@ -879,6 +910,190 @@ Singleton {
             </div>
           </div>
 
+          <!-- Window 5: Thunar File Manager -->
+          <div id="sim-win-files" class="sim-window closed">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Thunar File Manager — /home/mk</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-files-body">
+              <div class="sim-files-sidebar">
+                <div class="sim-sidebar-title">PLACES</div>
+                <div class="sim-sidebar-item active" data-folder="home">🏠 Home (~/)</div>
+                <div class="sim-sidebar-item" data-folder="wallpapers">🖼️ Wallpapers</div>
+                <div class="sim-sidebar-item" data-folder="projects">⚡ Projects (~/aios)</div>
+                <div class="sim-sidebar-item" data-folder="docs">📄 Documents</div>
+                <div class="sim-sidebar-title" style="margin-top: 14px;">DEVICES</div>
+                <div class="sim-sidebar-item" data-folder="system">💾 Root NVMe (/dev/nvme0n1)</div>
+                <div class="sim-sidebar-item" data-folder="iso">💿 ISO Partition (16 GB)</div>
+              </div>
+              <div class="sim-files-content">
+                <div class="sim-files-breadcrumb">
+                  <span class="crumb-btn">home</span> /
+                  <span class="crumb-btn">mk</span> /
+                  <span id="sim-current-folder" style="color: #7dcfff;">wallpapers</span>
+                </div>
+                <div class="sim-files-grid" id="sim-files-grid">
+                  <div class="sim-file-item" onclick="window.previewWallpaperInSimulator('assets/wallpapers/deep-purple.png', 'Deep Purple')">
+                    <span class="sim-file-icon">🖼️</span>
+                    <span class="sim-file-name">deep-purple.png</span>
+                    <span class="sim-file-meta">4.2 MB • Wallpaper</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.previewWallpaperInSimulator('assets/wallpapers/cosmic-nebula.jpg', 'Cosmic Nebula')">
+                    <span class="sim-file-icon">🖼️</span>
+                    <span class="sim-file-name">cosmic-nebula.jpg</span>
+                    <span class="sim-file-meta">5.1 MB • Wallpaper</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.previewWallpaperInSimulator('assets/wallpapers/electric-aurora.jpg', 'Electric Aurora')">
+                    <span class="sim-file-icon">🖼️</span>
+                    <span class="sim-file-name">electric-aurora.jpg</span>
+                    <span class="sim-file-meta">3.8 MB • Wallpaper</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.previewWallpaperInSimulator('assets/wallpapers/cyber-matrix.jpg', 'Cyber Matrix')">
+                    <span class="sim-file-icon">🖼️</span>
+                    <span class="sim-file-name">cyber-matrix.jpg</span>
+                    <span class="sim-file-meta">4.7 MB • Wallpaper</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.simOpenFile('hyprland.conf')">
+                    <span class="sim-file-icon">⚙️</span>
+                    <span class="sim-file-name">hyprland.conf</span>
+                    <span class="sim-file-meta">8.4 KB • Config</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.simOpenFile('aios-daemon.py')">
+                    <span class="sim-file-icon">🐍</span>
+                    <span class="sim-file-name">aios-daemon.py</span>
+                    <span class="sim-file-meta">14.2 KB • Python</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.simOpenFile('praxis-2026.iso')">
+                    <span class="sim-file-icon">💿</span>
+                    <span class="sim-file-name">praxis-2026.iso</span>
+                    <span class="sim-file-meta">2.4 GB • Bootable ISO</span>
+                  </div>
+                  <div class="sim-file-item" onclick="window.simOpenFile('README.md')">
+                    <span class="sim-file-icon">📄</span>
+                    <span class="sim-file-name">README.md</span>
+                    <span class="sim-file-meta">5.9 KB • Markdown</span>
+                  </div>
+                </div>
+                <div class="sim-files-statusbar">
+                  <span id="sim-files-count">8 items</span>
+                  <span>Free space: 412.8 GB / 1.0 TB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Window 6: Web Browser (Chromium) -->
+          <div id="sim-win-browser" class="sim-window closed">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Chromium — Praxis OS Hub &amp; Live Docs</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-browser-chrome">
+              <div class="sim-browser-nav">
+                <button class="sim-browser-navbtn" title="Back">‹</button>
+                <button class="sim-browser-navbtn" title="Forward">›</button>
+                <button class="sim-browser-navbtn" title="Reload">↻</button>
+                <div class="sim-browser-urlbar">
+                  <span class="sim-ssl-badge">🔒</span>
+                  <input type="text" id="sim-browser-url" value="https://praxis-os.org/docs" readonly>
+                </div>
+              </div>
+              <div class="sim-browser-bookmarks">
+                <span class="sim-bookmark" onclick="window.loadBrowserPage('docs')">📖 Architecture Docs</span>
+                <span class="sim-bookmark" onclick="window.loadBrowserPage('github')">⭐ GitHub Repository</span>
+                <span class="sim-bookmark" onclick="window.loadBrowserPage('ai')">🧠 Local llama.cpp Engine</span>
+                <span class="sim-bookmark" onclick="window.loadBrowserPage('iso')">⚡ Download ISO</span>
+              </div>
+            </div>
+            <div class="sim-browser-viewport" id="sim-browser-content">
+              <div class="sim-browser-page">
+                <div class="sim-b-hero">
+                  <div class="sim-b-tag">OFFLINE-FIRST HYBRID LINUX DISTRO</div>
+                  <h3>Praxis Linux Knowledge Base</h3>
+                  <p>Welcome to the built-in offline documentation running locally inside Praxis OS. Explore architecture guides, AI pipeline specs, and Wayland compositor tuning.</p>
+                </div>
+                <div class="sim-b-grid">
+                  <div class="sim-b-card">
+                    <h4>Local AI Intelligence</h4>
+                    <p>32-layer GGUF quantization offloaded directly onto RTX 4060 VRAM. Never sends your keystrokes or audio to the cloud.</p>
+                  </div>
+                  <div class="sim-b-card">
+                    <h4>Hyprland 120Hz Springs</h4>
+                    <p>Fluid physics gestures, dynamic dual-monitor hotplugging, and zero-tearing direct scanout Wayland compositor.</p>
+                  </div>
+                  <div class="sim-b-card">
+                    <h4>Audio &amp; Bluetooth Guard</h4>
+                    <p>Automated BlueZ D-Bus agent pairing, instant PipeWire profile switching, and zero crackle low-latency audio.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Application Drawer (Launcher Popup: Super or Click Logo) -->
+          <div id="sim-app-drawer" class="sim-app-drawer">
+            <div class="sim-drawer-search">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input type="text" id="sim-drawer-input" placeholder="Type to search apps, files, settings (Super)...">
+            </div>
+            <div class="sim-drawer-category">APPLICATIONS &amp; TOOLS</div>
+            <div class="sim-drawer-grid">
+              <div class="sim-drawer-item" data-open="terminal">
+                <div class="sim-drawer-icon" style="color: #7dcfff;">>_</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Kitty Terminal</span>
+                  <span class="sim-drawer-sub">Local AI Shell (Super+I)</span>
+                </div>
+              </div>
+              <div class="sim-drawer-item" data-open="files">
+                <div class="sim-drawer-icon" style="color: #e8c77b;">📁</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Thunar Files</span>
+                  <span class="sim-drawer-sub">Explore NVMe storage</span>
+                </div>
+              </div>
+              <div class="sim-drawer-item" data-open="browser">
+                <div class="sim-drawer-icon" style="color: #7aa2f7;">🌐</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Chromium Browser</span>
+                  <span class="sim-drawer-sub">Hardware-accelerated web</span>
+                </div>
+              </div>
+              <div class="sim-drawer-item" data-open="wallpapers">
+                <div class="sim-drawer-icon" style="color: #bb9af7;">🖼️</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Appearance &amp; Wallpapers</span>
+                  <span class="sim-drawer-sub">12 Harmonized 4K themes</span>
+                </div>
+              </div>
+              <div class="sim-drawer-item" data-open="control">
+                <div class="sim-drawer-icon" style="color: #8bd5a1;">⚙️</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Praxis Control Center</span>
+                  <span class="sim-drawer-sub">Glass &amp; compositor tuning</span>
+                </div>
+              </div>
+              <div class="sim-drawer-item" data-open="code">
+                <div class="sim-drawer-icon" style="color: #f7768e;">{ }</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Theme.qml Editor</span>
+                  <span class="sim-drawer-sub">Inspect visual design tokens</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- StandBy Widget Panel (Slides in from right) -->
           <div id="sim-standby-panel">
             <div class="sim-widget-card">
@@ -908,6 +1123,12 @@ Singleton {
           <div class="sim-dock">
             <div class="sim-dock-icon running focused" data-app="terminal" title="Kitty Terminal / AI Assistant (Super+I)">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            </div>
+            <div class="sim-dock-icon" data-app="files" title="Thunar File Manager (Super+E)">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+            </div>
+            <div class="sim-dock-icon" data-app="browser" title="Chromium Web Browser">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
             </div>
             <div class="sim-dock-icon running" data-app="wallpapers" title="Appearance &amp; Wallpaper Switcher">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
