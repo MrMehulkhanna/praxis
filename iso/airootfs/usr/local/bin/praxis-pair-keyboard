@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# ============================================================================
+# praxis-pair-keyboard — Reliable pairing for Bluetooth Keyboards & MK4500
+# Handles PIN display, passkey confirmation, and automatic service authorization
+# ============================================================================
+set -euo pipefail
+
+TARGET_ADDR="${1:-}"
+
+# Ensure DND is off so notifications can be seen
+if command -v swaync-client >/dev/null 2>&1; then
+    swaync-client -df >/dev/null 2>&1 || true
+fi
+
+# Ensure bluetooth daemon & adapter power
+systemctl start bluetooth || true
+bluetoothctl power on >/dev/null 2>&1 || true
+
+# Start praxis-bluetooth-agent in background
+AGENT_PID=""
+cleanup() {
+    if [ -n "$AGENT_PID" ] && kill -0 "$AGENT_PID" 2>/dev/null; then
+        kill "$AGENT_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+python3 /usr/local/bin/praxis-bluetooth-agent &
+AGENT_PID=$!
+sleep 1
+
+# If no target address given, check known devices or scan
+if [ -z "$TARGET_ADDR" ]; then
+    echo "=========================================================="
+    echo "  Praxis Bluetooth Keyboard Pairing Assistant"
+    echo "=========================================================="
+    echo
+    echo "👉 Step 1: Ensure your keyboard is switched ON and in Bluetooth mode."
+    echo "👉 Step 2: Press and HOLD Fn + 1 (or Fn + 2 / Fn + C) for 3-5 SECONDS"
+    echo "           until the Bluetooth LED blinks rapidly."
+    echo
+    echo "Scanning for Bluetooth keyboards (15 seconds)..."
+
+    # Scan for devices
+    bluetoothctl --timeout 15 scan on >/dev/null 2>&1 || true
+
+    # Look for MK4500 or keyboard in discovered devices
+    MATCH=$(bluetoothctl devices | grep -iE "MK4500|Keyboard|Keychron|Rapoo|Zebronics|Portronics" | head -n 1 || true)
+    
+    if [ -n "$MATCH" ]; then
+        TARGET_ADDR=$(echo "$MATCH" | awk '{print $2}')
+        DEV_NAME=$(echo "$MATCH" | cut -d' ' -f3-)
+        echo "✔ Found keyboard: $DEV_NAME ($TARGET_ADDR)"
+    else
+        echo "No keyboard with a recognized name was found during the initial scan."
+        echo "Here are all nearby devices discovered:"
+        bluetoothctl devices
+        echo
+        read -r -p "Enter the Bluetooth MAC address of your keyboard (e.g. 13:08:AC:00:13:53): " TARGET_ADDR
+    fi
+fi
+
+if [ -z "$TARGET_ADDR" ]; then
+    echo "Error: No device address provided."
+    exit 1
+fi
+
+echo
+echo "Pairing with device: $TARGET_ADDR..."
+bluetoothctl trust "$TARGET_ADDR" >/dev/null 2>&1 || true
+
+# Remove old half-paired state if any
+bluetoothctl remove "$TARGET_ADDR" >/dev/null 2>&1 || true
+sleep 1
+
+echo "Initiating pairing handshake..."
+echo "NOTE: If a 6-digit PIN appears below, type it on your keyboard and press ENTER!"
+echo
+
+# Pair
+bluetoothctl pair "$TARGET_ADDR" || true
+sleep 1
+
+# Trust & Connect
+bluetoothctl trust "$TARGET_ADDR" || true
+echo "Connecting to $TARGET_ADDR..."
+bluetoothctl connect "$TARGET_ADDR" || true
+sleep 2
+
+# Verify
+INFO=$(bluetoothctl info "$TARGET_ADDR" 2>/dev/null || true)
+if echo "$INFO" | grep -q "Connected: yes"; then
+    echo
+    echo "=========================================================="
+    echo "  ✔ SUCCESS: Keyboard is now paired and connected!"
+    echo "=========================================================="
+    notify-send -u normal "Bluetooth Connected" "Your keyboard ($TARGET_ADDR) is connected and ready to use." 2>/dev/null || true
+    exit 0
+else
+    echo
+    echo "Status: Keyboard is paired/trusted, but not currently connected."
+    echo "If it is still in pairing mode, tap any key on the keyboard to wake it."
+    echo "Or run: bluetoothctl connect $TARGET_ADDR"
+    exit 1
+fi

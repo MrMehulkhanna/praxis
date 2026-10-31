@@ -22,6 +22,14 @@ CMD=${1:-usage}
 shift || true
 
 ensure_agent() {
+    if command -v swaync-client >/dev/null 2>&1; then
+        swaync-client -df >/dev/null 2>&1 || true
+    fi
+    if ! pgrep -f "praxis-bluetooth-agent" >/dev/null 2>&1; then
+        if [ -x /usr/local/bin/praxis-bluetooth-agent ]; then
+            python3 /usr/local/bin/praxis-bluetooth-agent >/dev/null 2>&1 &
+        fi
+    fi
     if ! pgrep -f "blueman-applet" >/dev/null 2>&1; then
         if command -v blueman-applet >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]; then
             nohup blueman-applet >/dev/null 2>&1 &
