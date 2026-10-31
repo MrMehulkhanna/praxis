@@ -718,6 +718,56 @@
           <!-- Toast Notification -->
           <div id="sim-toast">System Toast</div>
 
+          <!-- Desktop Context Menu (Right Click) -->
+          <div id="sim-context-menu" class="sim-context-menu">
+            <div class="sim-ctx-item" onclick="toggleAppWindow('ai')"><span class="sim-ctx-icon">🧠</span> Launch AI Copilot (Super+Space)</div>
+            <div class="sim-ctx-item" onclick="toggleAppWindow('terminal')"><span class="sim-ctx-icon">>_</span> Open Kitty Terminal (Super+I)</div>
+            <div class="sim-ctx-item" onclick="toggleAppWindow('files')"><span class="sim-ctx-icon">📁</span> Open File Manager (Super+E)</div>
+            <div class="sim-ctx-item" onclick="toggleAppWindow('browser')"><span class="sim-ctx-icon">🌐</span> Launch Chromium Web (Super+B)</div>
+            <div class="sim-ctx-divider"></div>
+            <div class="sim-ctx-item" onclick="toggleAppWindow('wallpapers')"><span class="sim-ctx-icon">🖼️</span> Change Desktop Wallpaper...</div>
+            <div class="sim-ctx-item" onclick="toggleAppWindow('control')"><span class="sim-ctx-icon">⚙️</span> Praxis Settings &amp; Glass...</div>
+            <div class="sim-ctx-divider"></div>
+            <div class="sim-ctx-item" onclick="toggleAppWindow('installer')"><span class="sim-ctx-icon">💿</span> Install Praxis OS...</div>
+            <div class="sim-ctx-item" onclick="document.getElementById('sim-fullscreen-toggle').click()"><span class="sim-ctx-icon">🗖</span> Fullscreen Experience (F)</div>
+          </div>
+
+          <!-- Desktop Application Shortcuts -->
+          <div class="sim-desktop-icons">
+            <div class="sim-desk-icon" onclick="toggleAppWindow('ai')">
+              <div class="desk-icon-glyph ai-glyph">🧠</div>
+              <span class="desk-icon-label">AI Copilot</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('terminal')">
+              <div class="desk-icon-glyph term-glyph">>_</div>
+              <span class="desk-icon-label">Kitty Terminal</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('files')">
+              <div class="desk-icon-glyph files-glyph">📁</div>
+              <span class="desk-icon-label">File Manager</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('browser')">
+              <div class="desk-icon-glyph web-glyph">🌐</div>
+              <span class="desk-icon-label">Chromium</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('wallpapers')">
+              <div class="desk-icon-glyph wp-glyph">🖼️</div>
+              <span class="desk-icon-label">Wallpapers</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('control')">
+              <div class="desk-icon-glyph settings-glyph">⚙️</div>
+              <span class="desk-icon-label">Control Center</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('code')">
+              <div class="desk-icon-glyph code-glyph">{ }</div>
+              <span class="desk-icon-label">Code Editor</span>
+            </div>
+            <div class="sim-desk-icon" onclick="toggleAppWindow('installer')">
+              <div class="desk-icon-glyph install-glyph">💿</div>
+              <span class="desk-icon-label">Install OS</span>
+            </div>
+          </div>
+
           <!-- Welcome Guided Tour Banner -->
           <div id="sim-welcome-card" class="sim-welcome-card">
             <div class="sim-welcome-header">
@@ -727,14 +777,116 @@
               <button id="sim-welcome-close" class="sim-welcome-close" title="Dismiss">✕</button>
             </div>
             <p style="font-size: 0.82rem; color: #cbd5e1; margin: 8px 0 12px; line-height: 1.5;">
-              You are experiencing an in-person, interactive session of Praxis Linux. Drag floating glass windows, test terminal diagnostics, explore files, and preview all 12 curated wallpapers live:
+              You are experiencing an in-person, interactive session of Praxis Linux. All software is fully operational — drag glass windows, chat with the offline AI, browse NVMe files, and test dual-boot:
             </p>
             <div class="sim-welcome-actions">
+              <button class="sim-welcome-btn primary-action" onclick="toggleAppWindow('ai')">🧠 Launch AI Copilot</button>
               <button class="sim-welcome-btn" onclick="toggleAppWindow('terminal')">>_ Terminal (Super+I)</button>
-              <button class="sim-welcome-btn" onclick="toggleAppWindow('wallpapers')">🖼️ 12 Curated Wallpapers</button>
               <button class="sim-welcome-btn" onclick="toggleAppWindow('files')">📁 File Manager</button>
-              <button class="sim-welcome-btn" onclick="toggleAppWindow('control')">⚙️ Glass Tuner</button>
               <button class="sim-welcome-btn" onclick="toggleAppWindow('browser')">🌐 Web Browser</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('wallpapers')">🖼️ 12 Wallpapers</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('control')">⚙️ Glass Tuner</button>
+              <button class="sim-welcome-btn" onclick="toggleAppWindow('installer')">💿 Dual-Boot Installer</button>
+            </div>
+          </div>
+
+          <!-- Window 0: Dedicated GUI AI Copilot -->
+          <div id="sim-win-ai" class="sim-window">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Praxis AI Copilot — Qwen 2.5 Coder 7B (Offline CUDA)</span>
+              <div class="sim-win-snap-tools">
+                <span class="sim-ai-pill">Zero Cloud Telemetry</span>
+              </div>
+            </div>
+            <div class="sim-ai-body">
+              <div class="sim-ai-header">
+                <div class="sim-ai-model-tag">
+                  <span class="sim-pulse-dot"></span>
+                  <span>Daemon: <strong>llama.cpp CUDA</strong> (46.2 tok/s • 32 GPU Layers)</span>
+                </div>
+                <div class="sim-ai-telemetry-badge">
+                  <span>🔒 100% Offline • 0 KB Cloud Outbound</span>
+                </div>
+              </div>
+              <div class="sim-ai-chat-log" id="sim-ai-chat-log">
+                <div class="ai-chat-msg assistant">
+                  <div class="ai-avatar">🧠</div>
+                  <div class="ai-bubble">
+                    <strong>Praxis Local Intelligence:</strong>
+                    <p>Welcome to Praxis Linux! I run 100% natively on your machine via llama.cpp CUDA offload. Keystrokes, audio, and code never leave your laptop. Click any question below or type your own to test my responses live:</p>
+                  </div>
+                </div>
+              </div>
+              <div class="sim-ai-suggestions">
+                <button class="sim-ai-chip" onclick="window.askAiPrompt('How does ZRAM prevent memory freeze?')">⚡ Why 0% freeze with ZRAM?</button>
+                <button class="sim-ai-chip" onclick="window.askAiPrompt('How do I pair my Bluetooth MK4500 keyboard?')">⌨️ Pair MK4500 Bluetooth</button>
+                <button class="sim-ai-chip" onclick="window.askAiPrompt('How does alongside-Windows dual boot work?')">🪟 Windows Dual-Boot safety</button>
+                <button class="sim-ai-chip" onclick="window.askAiPrompt('Check CPU and RTX 4060 GPU thermals')">🌡️ Sensor Thermals</button>
+              </div>
+              <div class="sim-ai-input-wrap">
+                <input type="text" id="sim-ai-input" placeholder="Ask local AI anything about Praxis Linux, coding, or hardware..." autocomplete="off">
+                <button id="sim-ai-mic-btn" class="sim-ai-mic-btn" title="Simulate Whisper Push-to-Talk (Super+H)">🎙️ Whisper</button>
+                <button id="sim-ai-send-btn" class="sim-ai-send-btn" title="Send Query">➤</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Window 7: Calamares-Style Dual Boot Installer -->
+          <div id="sim-win-installer" class="sim-window closed">
+            <div class="sim-win-titlebar">
+              <div class="sim-win-controls">
+                <button class="sim-win-btn close" title="Close Window"></button>
+                <button class="sim-win-btn min" title="Minimize Window"></button>
+                <button class="sim-win-btn max" title="Maximize Window"></button>
+              </div>
+              <span class="sim-win-title">Praxis Linux 2026 — Install Alongside Windows</span>
+              <div style="width: 40px;"></div>
+            </div>
+            <div class="sim-installer-body">
+              <div class="sim-installer-steps">
+                <div class="install-step active" id="step-1">1. Non-Destructive Plan</div>
+                <div class="install-step" id="step-2">2. Safe Partitioning</div>
+                <div class="install-step" id="step-3">3. ZRAM Engine</div>
+                <div class="install-step" id="step-4">4. Dual-Boot Ready</div>
+              </div>
+              <div class="sim-installer-card">
+                <h3 style="color: #7dcfff; margin-bottom: 6px;">Safe Dual-Boot Alongside Windows 10/11</h3>
+                <p style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 14px;">
+                  Praxis automates safe NTFS partition resizing and creates an isolated Btrfs subvolume. Your Windows installation, personal files, and BitLocker keys remain 100% untouched.
+                </p>
+                <div class="sim-partition-viz">
+                  <div class="part-box win">
+                    <span class="part-title">Windows 11 (C:)</span>
+                    <span class="part-size">432 GB (NTFS Intact)</span>
+                  </div>
+                  <div class="part-box praxis">
+                    <span class="part-title">Praxis Linux (/)</span>
+                    <span class="part-size">80 GB (Btrfs + ZRAM)</span>
+                  </div>
+                  <div class="part-box efi">
+                    <span class="part-title">EFI System</span>
+                    <span class="part-size">512 MB</span>
+                  </div>
+                </div>
+                <div class="sim-installer-safety">
+                  <div>✔ BitLocker encryption keys preserved in TPM</div>
+                  <div>✔ Windows Boot Manager safely preserved in NVMe NVRAM</div>
+                  <div>✔ Automated GRUB boot menu provides 1-key Windows / Praxis choice</div>
+                </div>
+                <div class="sim-installer-actions">
+                  <button class="sim-btn-try-os" onclick="toggleAppWindow('installer'); notifySim('Live Session Mode: All software environment is active!')">Keep Exploring Live Session</button>
+                  <button class="sim-btn-start-install" id="sim-btn-run-install" onclick="window.simulateInstallProgress()">Run Safe Dual-Boot Simulation</button>
+                </div>
+                <div id="sim-install-progress-bar" class="sim-progress-bar" style="display: none;">
+                  <div id="sim-progress-fill" class="sim-progress-fill"></div>
+                  <span id="sim-progress-label">Preparing btrfs subvolumes...</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1049,6 +1201,13 @@ Singleton {
             </div>
             <div class="sim-drawer-category">APPLICATIONS &amp; TOOLS</div>
             <div class="sim-drawer-grid">
+              <div class="sim-drawer-item" data-open="ai">
+                <div class="sim-drawer-icon" style="color: #7dcfff;">🧠</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Praxis AI Copilot</span>
+                  <span class="sim-drawer-sub">Offline llama.cpp CUDA (Super+Space)</span>
+                </div>
+              </div>
               <div class="sim-drawer-item" data-open="terminal">
                 <div class="sim-drawer-icon" style="color: #7dcfff;">>_</div>
                 <div class="sim-drawer-info">
@@ -1091,6 +1250,13 @@ Singleton {
                   <span class="sim-drawer-sub">Inspect visual design tokens</span>
                 </div>
               </div>
+              <div class="sim-drawer-item" data-open="installer">
+                <div class="sim-drawer-icon" style="color: #7dcfff;">💿</div>
+                <div class="sim-drawer-info">
+                  <span class="sim-drawer-name">Install Alongside Windows</span>
+                  <span class="sim-drawer-sub">Safe non-destructive dual boot</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1121,23 +1287,29 @@ Singleton {
 
           <!-- Quickshell Bottom Dock -->
           <div class="sim-dock">
-            <div class="sim-dock-icon running focused" data-app="terminal" title="Kitty Terminal / AI Assistant (Super+I)">
+            <div class="sim-dock-icon running" data-app="terminal" title="Kitty Terminal / AI Shell (Super+I)">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            </div>
+            <div class="sim-dock-icon running focused" data-app="ai" title="Praxis AI Copilot — Qwen 2.5 Coder (Super+Space)">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
             </div>
             <div class="sim-dock-icon" data-app="files" title="Thunar File Manager (Super+E)">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
             </div>
-            <div class="sim-dock-icon" data-app="browser" title="Chromium Web Browser">
+            <div class="sim-dock-icon" data-app="browser" title="Chromium Web Browser (Super+B)">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
             </div>
             <div class="sim-dock-icon running" data-app="wallpapers" title="Appearance &amp; Wallpaper Switcher">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
             </div>
-            <div class="sim-dock-icon" data-app="control" title="Praxis Control Center">
+            <div class="sim-dock-icon" data-app="control" title="Praxis Control Center (Super+C)">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
             </div>
             <div class="sim-dock-icon" data-app="code" title="Theme.qml Code Editor">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            </div>
+            <div class="sim-dock-icon" data-app="installer" title="Install Alongside Windows">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
             </div>
           </div>
         </div>
