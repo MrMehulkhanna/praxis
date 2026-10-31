@@ -260,6 +260,43 @@ Sources:
     });
   }
 
+  // -------------------------------------------------------------------------
+  // 9. Releases & Version Archive Filters & Changelogs
+  // -------------------------------------------------------------------------
+  const releaseFilterBtns = document.querySelectorAll('.release-filter-btn');
+  const releaseCards = document.querySelectorAll('.release-card');
+
+  releaseFilterBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      releaseFilterBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.getAttribute('data-filter');
+
+      releaseCards.forEach((card) => {
+        const cardType = card.getAttribute('data-type');
+        if (filter === 'all' || filter === cardType) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  const releaseNotesBtns = document.querySelectorAll('.release-notes-btn');
+  releaseNotesBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const content = btn.nextElementSibling;
+      if (!content) return;
+      content.classList.toggle('open');
+      const icon = btn.querySelector('svg');
+      if (icon) {
+        icon.style.transform = content.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+        icon.style.transition = 'transform 0.2s ease';
+      }
+    });
+  });
+
   // Initial load
   updateTerminal('diagnostics');
 })();

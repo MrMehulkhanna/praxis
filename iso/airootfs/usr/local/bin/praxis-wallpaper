@@ -77,7 +77,7 @@ save_state() {
 
 default_still() {
     local f
-    for f in "$WP_DIR/aurora-still.jpg" "$WP_DIR/deep-purple.png" "$WP_DIR"/*.jpg "$WP_DIR"/*.png "$WP_DIR"/*.jpeg "$WP_DIR"/*.webp; do
+    for f in "$WP_DIR/deep-purple.png" "$WP_DIR/cosmic-nebula.jpg" "$WP_DIR/electric-aurora.jpg" "$WP_DIR/cyber-matrix.jpg" "$WP_DIR/aurora-still.jpg" "$WP_DIR"/*.png "$WP_DIR"/*.jpg "$WP_DIR"/*.jpeg "$WP_DIR"/*.webp; do
         [ -f "$f" ] && { echo "$f"; return; }
     done
 }

@@ -14,6 +14,8 @@ PanelWindow {
     screen: modelData
 
     anchors.bottom: true
+    anchors.left: true
+    anchors.right: true
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "quickshell"
@@ -42,7 +44,7 @@ PanelWindow {
     readonly property bool pointerOn: dockHover.hovered || edgeHover.hovered
     readonly property bool wantHidden:
         !Settings.dockVisible ||
-        (Settings.dockAutoHide && activeWindowCount > 0 && !pointerOn && Shell.overlay !== "launcher") || hideForFullscreen
+        (Settings.dockAutoHide && !pointerOn && Shell.overlay !== "launcher") || hideForFullscreen
     property bool hidden: false
     onWantHiddenChanged: {
         if (hideForFullscreen) {
@@ -60,8 +62,8 @@ PanelWindow {
         }
     }
     Component.onCompleted: hidden = wantHidden
-    Timer { id: hideDebounce; interval: 600; onTriggered: dock.hidden = dock.wantHidden }
-    Timer { id: revealDwell;  interval: 120; onTriggered: if (!dock.wantHidden) dock.hidden = false }
+    Timer { id: hideDebounce; interval: 400; onTriggered: dock.hidden = dock.wantHidden }
+    Timer { id: revealDwell;  interval: 35;  onTriggered: if (!dock.wantHidden) dock.hidden = false }
 
     readonly property int  iconSize: Theme.dockIcon
     readonly property int  padding: 8
@@ -75,12 +77,11 @@ PanelWindow {
         ? 0
         : iconSize + padding * 2 + Theme.dockMargin + windowGap + Settings.dockOffset
 
-    // Only the dock itself (and, while hidden, a 3 px strip at the screen edge)
-    // takes the mouse; the rest of this window lets clicks through to the apps
-    // underneath. Before, a ~100 px tall invisible area swallowed them.
+    // Only the dock itself (and, while hidden, a responsive full-width strip at the screen edge)
+    // takes the mouse; the rest of this window lets clicks through to the apps underneath.
     mask: Region {
         item: Settings.dockVisible ? glass : null
-        Region { item: Settings.dockVisible ? edge : null }
+        Region { item: (Settings.dockVisible && dock.hidden) ? edge : null }
     }
 
     // ── model: favourites first, then running apps not already pinned ──
@@ -128,11 +129,13 @@ PanelWindow {
         return out
     }
 
-    // reveal strip: the bottom 3 px of the screen under the dock
+    // reveal strip: full-width 12 px bottom hot zone across monitor
     Item {
         id: edge
-        anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
-        width: glass.width; height: 3
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 12
         enabled: !dock.hideForFullscreen
         HoverHandler { id: edgeHover; enabled: !dock.hideForFullscreen }
     }

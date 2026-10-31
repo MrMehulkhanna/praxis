@@ -57,7 +57,7 @@ Singleton {
             property real   animations: 1.0            // 0 = off, 1 = normal, 1.5 = slow & dramatic
             property bool   blur: true
             property int    dockIconSize: 44
-            property bool   dockAutoHide: false
+            property bool   dockAutoHide: true
             // when true, dock hides while a workspace has a fullscreen window
             property bool   dockHideOnFullscreen: true
             property bool   dockVisible: true          // false = dock fully hidden (saves bottom space on laptop)

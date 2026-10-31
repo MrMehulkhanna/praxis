@@ -314,7 +314,7 @@ hl.config({
     },
 })
 
--- 3-finger swipe up → workspace overview; down → app launcher
+-- 3-finger swipe up → workspace overview (Windows Win+Tab); down → Show Desktop (Windows Win+D)
 hl.gesture({
     fingers = 3,
     direction = "up",
@@ -326,17 +326,31 @@ hl.gesture({
     fingers = 3,
     direction = "down",
     action = function()
-        hl.dispatch(hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"))
+        hl.dispatch(hl.dsp.exec_cmd("praxis-win show-desktop"))
     end
 })
 
--- 4-finger swipe down → Voice typing (dictate into active window)
+-- 4-finger swipe up → Action / Notification Center (Windows Win+A); down → Voice typing (Windows Win+H)
+hl.gesture({
+    fingers = 4,
+    direction = "up",
+    action = function()
+        hl.dispatch(hl.dsp.exec_cmd("quickshell ipc call shell toggle cc"))
+    end
+})
 hl.gesture({
     fingers = 4,
     direction = "down",
     action = function()
         hl.dispatch(hl.dsp.exec_cmd("praxis-dictate"))
     end
+})
+
+-- 4-finger horizontal swipe → switch virtual desktop
+hl.gesture({
+    fingers = 4,
+    direction = "horizontal",
+    action = "workspace"
 })
 
 
@@ -363,6 +377,8 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager), { description = "Apps: 
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }), { description = "Windows: Float / tile window" })
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu), { description = "Apps: App menu" })
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"), { description = "System: Lock screen" })  -- lock screen (|| guard: never stack lockers)
+-- Super+D → Show Desktop (toggle minimize/reveal wallpaper, as on Windows)
+hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("praxis-win show-desktop"), { description = "Windows: Show desktop (toggle all windows)" })
 -- Super+Tab → workspace overview (grid of all 12); rofi window switcher moved to Super+Shift+Tab
 hl.bind(mainMod .. " + TAB",         hl.dsp.exec_cmd("quickshell ipc call shell toggle ws"), { description = "Workspaces: Overview of all workspaces" })
 hl.bind(mainMod .. " + SHIFT + TAB", hl.dsp.exec_cmd("rofi -show window"), { description = "Windows: Switch between windows" })

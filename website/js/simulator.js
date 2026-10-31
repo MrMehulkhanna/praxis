@@ -247,10 +247,12 @@
       win.addEventListener('mousedown', () => bringToFront(win));
       win.addEventListener('touchstart', () => bringToFront(win), { passive: true });
 
-      // Dragging logic
+      // Dragging logic with Windows 11 Snap Assist
       if (titlebar) {
         let isDragging = false;
         let startX, startY, startLeft, startTop;
+        let currentSnap = null;
+        const snapPreview = document.getElementById('sim-snap-preview');
 
         titlebar.addEventListener('mousedown', (e) => {
           if (e.target.closest('.sim-win-controls')) return;
@@ -280,12 +282,77 @@
             win.style.right = 'auto';
             win.style.bottom = 'auto';
             win.style.transform = 'none';
+
+            // Windows 11 Edge Snapping detection
+            const mouseX = e.clientX - deskRect.left;
+            const mouseY = e.clientY - deskRect.top;
+
+            if (mouseY <= 42) {
+              currentSnap = 'max';
+              if (snapPreview) {
+                snapPreview.style.top = '38px';
+                snapPreview.style.left = '8px';
+                snapPreview.style.width = `${deskW - 16}px`;
+                snapPreview.style.height = `${deskH - 46}px`;
+                snapPreview.classList.add('visible');
+              }
+            } else if (mouseX <= 24) {
+              currentSnap = 'left';
+              if (snapPreview) {
+                snapPreview.style.top = '38px';
+                snapPreview.style.left = '8px';
+                snapPreview.style.width = `${(deskW / 2) - 12}px`;
+                snapPreview.style.height = `${deskH - 46}px`;
+                snapPreview.classList.add('visible');
+              }
+            } else if (mouseX >= deskW - 24) {
+              currentSnap = 'right';
+              if (snapPreview) {
+                snapPreview.style.top = '38px';
+                snapPreview.style.left = `${(deskW / 2) + 4}px`;
+                snapPreview.style.width = `${(deskW / 2) - 12}px`;
+                snapPreview.style.height = `${deskH - 46}px`;
+                snapPreview.classList.add('visible');
+              }
+            } else {
+              currentSnap = null;
+              if (snapPreview) snapPreview.classList.remove('visible');
+            }
           }
 
           function onMouseUp() {
             isDragging = false;
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
+
+            if (snapPreview) snapPreview.classList.remove('visible');
+
+            if (currentSnap === 'max') {
+              win.classList.add('maximized');
+              win.style.left = '';
+              win.style.top = '';
+              win.style.width = '';
+              win.style.height = '';
+              playUiSound('click');
+              showSimToast('🗖 Window Maximized (Windows Snap)');
+            } else if (currentSnap === 'left') {
+              win.classList.remove('maximized');
+              win.style.left = '8px';
+              win.style.top = '38px';
+              win.style.width = `${(desktop.clientWidth / 2) - 12}px`;
+              win.style.height = `${desktop.clientHeight - 46}px`;
+              playUiSound('click');
+              showSimToast('🗗 Snapped to Left Half (Win+←)');
+            } else if (currentSnap === 'right') {
+              win.classList.remove('maximized');
+              win.style.left = `${(desktop.clientWidth / 2) + 4}px`;
+              win.style.top = '38px';
+              win.style.width = `${(desktop.clientWidth / 2) - 12}px`;
+              win.style.height = `${desktop.clientHeight - 46}px`;
+              playUiSound('click');
+              showSimToast('🗗 Snapped to Right Half (Win+→)');
+            }
+            currentSnap = null;
           }
 
           window.addEventListener('mousemove', onMouseMove);
@@ -391,6 +458,147 @@
         }
       });
     }
+
+    // -----------------------------------------------------------------------
+    // 4B. Auto-Dock & Windows 11 Show Desktop & Snapping
+    // -----------------------------------------------------------------------
+    const dockEl = document.getElementById('sim-dock');
+    const dockRevealZone = document.getElementById('sim-dock-reveal-zone');
+    const dockToggleBtn = document.getElementById('sim-dock-toggle-btn');
+    const showDesktopBtn = document.getElementById('sim-show-desktop-btn');
+    let autoDockEnabled = true;
+    let dockHideTimer = null;
+
+    function revealDock() {
+      if (dockHideTimer) clearTimeout(dockHideTimer);
+      if (dockEl) dockEl.classList.remove('dock-hidden');
+    }
+
+    function scheduleDockHide() {
+      if (!autoDockEnabled) return;
+      if (dockHideTimer) clearTimeout(dockHideTimer);
+      dockHideTimer = setTimeout(() => {
+        if (dockEl && autoDockEnabled && !dockEl.matches(':hover')) {
+          dockEl.classList.add('dock-hidden');
+        }
+      }, 450);
+    }
+
+    if (dockEl) {
+      dockEl.addEventListener('mouseenter', revealDock);
+      dockEl.addEventListener('mouseleave', () => {
+        if (autoDockEnabled) scheduleDockHide();
+      });
+    }
+
+    if (dockRevealZone) {
+      dockRevealZone.addEventListener('mouseenter', revealDock);
+      dockRevealZone.addEventListener('mousemove', revealDock);
+    }
+
+    desktop.addEventListener('mousemove', (e) => {
+      if (!autoDockEnabled) return;
+      const deskRect = desktop.getBoundingClientRect();
+      const mouseYFromBottom = deskRect.bottom - e.clientY;
+      if (mouseYFromBottom <= 35) {
+        revealDock();
+      } else {
+        if (dockEl && !dockEl.matches(':hover')) {
+          scheduleDockHide();
+        }
+      }
+    });
+
+    if (dockToggleBtn) {
+      dockToggleBtn.addEventListener('click', () => {
+        autoDockEnabled = !autoDockEnabled;
+        if (autoDockEnabled) {
+          dockToggleBtn.classList.remove('off');
+          dockToggleBtn.textContent = '⚡ Auto-Dock: ON';
+          showSimToast('⚡ Auto-Dock Enabled (hides when mouse moves away)');
+          scheduleDockHide();
+        } else {
+          dockToggleBtn.classList.add('off');
+          dockToggleBtn.textContent = '⚡ Auto-Dock: OFF';
+          revealDock();
+          showSimToast('⚡ Auto-Dock Disabled (dock stays visible)');
+        }
+        playUiSound('click');
+      });
+    }
+
+    // Windows 11 Show Desktop (Win+D)
+    let lastMinimizedByShowDesktop = [];
+    function toggleShowDesktop() {
+      const visibleWins = Array.from(windows).filter(w => !w.classList.contains('closed') && !w.classList.contains('minimized'));
+      if (visibleWins.length > 0) {
+        lastMinimizedByShowDesktop = visibleWins;
+        visibleWins.forEach(w => {
+          w.classList.add('minimized');
+          w.classList.remove('active');
+        });
+        playUiSound('close');
+        showSimToast('🖥️ Show Desktop (Win+D)');
+      } else if (lastMinimizedByShowDesktop.length > 0) {
+        lastMinimizedByShowDesktop.forEach(w => {
+          w.classList.remove('minimized');
+        });
+        if (lastMinimizedByShowDesktop[0]) bringToFront(lastMinimizedByShowDesktop[0]);
+        lastMinimizedByShowDesktop = [];
+        playUiSound('click');
+        showSimToast('🖥️ Windows Restored');
+      }
+      updateDockIndicators();
+    }
+    window.toggleShowDesktop = toggleShowDesktop;
+
+    if (showDesktopBtn) {
+      showDesktopBtn.addEventListener('click', toggleShowDesktop);
+    }
+
+    // Windows 11 Snapping via keyboard shortcuts (Win+Arrows)
+    function snapActiveWindow(action) {
+      const activeWin = Array.from(windows).find(w => w.classList.contains('active') && !w.classList.contains('closed') && !w.classList.contains('minimized'));
+      if (!activeWin) return;
+      const deskW = desktop.clientWidth;
+      const deskH = desktop.clientHeight;
+
+      if (action === 'max') {
+        activeWin.classList.toggle('maximized');
+        activeWin.style.left = '';
+        activeWin.style.top = '';
+        activeWin.style.width = '';
+        activeWin.style.height = '';
+        playUiSound('click');
+        showSimToast(activeWin.classList.contains('maximized') ? '🗖 Window Maximized (Win+↑)' : 'Window Restored');
+      } else if (action === 'left') {
+        activeWin.classList.remove('maximized');
+        activeWin.style.left = '8px';
+        activeWin.style.top = '38px';
+        activeWin.style.width = `${(deskW / 2) - 12}px`;
+        activeWin.style.height = `${deskH - 46}px`;
+        playUiSound('click');
+        showSimToast('🗗 Snapped to Left Half (Win+←)');
+      } else if (action === 'right') {
+        activeWin.classList.remove('maximized');
+        activeWin.style.left = `${(deskW / 2) + 4}px`;
+        activeWin.style.top = '38px';
+        activeWin.style.width = `${(deskW / 2) - 12}px`;
+        activeWin.style.height = `${deskH - 46}px`;
+        playUiSound('click');
+        showSimToast('🗗 Snapped to Right Half (Win+→)');
+      } else if (action === 'restore') {
+        if (activeWin.classList.contains('maximized')) {
+          activeWin.classList.remove('maximized');
+        } else {
+          activeWin.classList.add('minimized');
+          activeWin.classList.remove('active');
+        }
+        playUiSound('close');
+        updateDockIndicators();
+      }
+    }
+    window.snapActiveWindow = snapActiveWindow;
 
     // App Drawer Toggle
     const appDrawerBtn = document.getElementById('sim-app-drawer-toggle');
@@ -1104,12 +1312,32 @@ Analyzing kernel sysfs and local project context...
     }
 
     // -----------------------------------------------------------------------
-    // 14. Global Keyboard Shortcuts in Simulator
+    // 14. Global Keyboard Shortcuts in Simulator (Windows 11 Gestures & Keybinds)
     // -----------------------------------------------------------------------
     window.addEventListener('keydown', (e) => {
       if (!simWrapper.matches(':hover') && !simWrapper.classList.contains('fullscreen-mode')) return;
 
-      if (e.key === ' ' && (e.metaKey || e.altKey)) {
+      if ((e.key === 'd' || e.key === 'D') && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        toggleShowDesktop();
+      } else if (e.key === 'Tab' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        if (standbyPanel) standbyPanel.classList.toggle('open');
+        playUiSound('click');
+        showSimToast('⊞ Standby Overview (Win+Tab)');
+      } else if (e.key === 'ArrowLeft' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        snapActiveWindow('left');
+      } else if (e.key === 'ArrowRight' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        snapActiveWindow('right');
+      } else if (e.key === 'ArrowUp' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        snapActiveWindow('max');
+      } else if (e.key === 'ArrowDown' && (e.metaKey || e.altKey)) {
+        e.preventDefault();
+        snapActiveWindow('restore');
+      } else if (e.key === ' ' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         toggleAppWindow('ai');
       } else if (e.key === 'i' && (e.metaKey || e.altKey)) {

@@ -7,6 +7,7 @@
   praxis-win snap restore           back into the tiling layout
   praxis-win layout                 next layout: tiles → master + stack →
                                     3 columns (master in the middle) → tiles
+  praxis-win show-desktop           toggle special workspace to reveal clean desktop (Win+D)
 
 A snapped window floats at the exact spot, inside the space the bar and the
 dock leave free, with the same gap as tiled windows.
@@ -86,12 +87,19 @@ def next_layout():
         notify("Tiles")
 
 
+def show_desktop():
+    # Toggle special:desktop to reveal clean desktop wallpaper like Windows Win+D
+    dispatch('hl.dsp.workspace.toggle_special("desktop")')
+
+
 def main(argv):
     if len(argv) >= 2 and argv[0] == "snap" and argv[1] in (
             "left", "right", "left3", "mid3", "right3", "max", "restore"):
         snap(argv[1])
     elif argv[:1] == ["layout"]:
         next_layout()
+    elif argv[:1] == ["show-desktop"]:
+        show_desktop()
     else:
         print(__doc__.strip(), file=sys.stderr)
         return 2

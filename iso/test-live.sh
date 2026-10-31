@@ -175,7 +175,7 @@ EXTRA_CMDLINE=console=ttyS0,115200"
     check "the live USB's sudo rule did not come along" guest '! test -e /etc/sudoers.d/praxis-live'
     check "keyboard layout de for Hyprland"  guest 'grep -q "\"de\"" /home/alex/.config/hypr/praxis-local.lua'
     check "desktop config in alex's home"    guest 'test -f /home/alex/.config/quickshell/shell.qml && test -f /home/alex/.config/hypr/hyprland.lua'
-    check "wallpapers in alex's home"        guest 'ls /home/alex/.local/share/wallpapers/*.jpg | grep -q aurora-still'
+    check "wallpapers in alex's home"        guest 'ls /home/alex/.local/share/wallpapers/ | grep -E "(deep-purple|aurora-still)"'
     failed=$(guest 'for i in $(seq 60); do s=$(systemctl is-system-running); case $s in running|degraded) break;; esac; sleep 2; done; systemctl --failed --no-legend --plain | cut -d" " -f1' | paste -sd' ')
     [ -z "$failed" ] && ok "no failed units on the installed system" || bad "failed units: $failed"
     sleep 25

@@ -21,11 +21,35 @@ if [ ! -e "$HOME_DIR/.bash_profile" ]; then
 fi
 
 # Live dock: the installer first, then the everyday apps.
-install -d "$HOME_DIR/.config/quickshell"
+install -d "$HOME_DIR/.config/quickshell" "$HOME_DIR/.config/praxis" "$HOME_DIR/.config/hypr"
 if [ ! -e "$HOME_DIR/.config/quickshell/settings.json" ]; then
     cat > "$HOME_DIR/.config/quickshell/settings.json" <<'EOF'
 {
-    "dockFavorites": ["praxis-install", "firefox", "kitty", "thunar"]
+    "dockFavorites": ["praxis-install", "firefox", "kitty", "thunar"],
+    "dockAutoHide": true,
+    "wallpaper": "deep-purple.png"
+}
+EOF
+fi
+
+# Preconfigure default signature wallpaper state for hyprpaper & live session
+if [ ! -e "$HOME_DIR/.config/praxis/wallpaper.state" ]; then
+    cat > "$HOME_DIR/.config/praxis/wallpaper.state" <<EOF
+mode=still
+still=$HOME_DIR/.local/share/wallpapers/deep-purple.png
+live=
+EOF
+fi
+
+if [ ! -e "$HOME_DIR/.config/hypr/hyprpaper.conf" ]; then
+    cat > "$HOME_DIR/.config/hypr/hyprpaper.conf" <<EOF
+splash = false
+ipc = true
+
+wallpaper {
+    monitor =
+    path = $HOME_DIR/.local/share/wallpapers/deep-purple.png
+    fit_mode = cover
 }
 EOF
 fi
