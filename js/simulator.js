@@ -929,8 +929,8 @@
   ● Fan 2 (GPU): 0 RPM (Passive Idle Curve)`,
 
       'bt-scan': `[praxis-bt] Automated BlueZ D-Bus Agent scanning (30s cycle)...
-  [DISCOVERY] MAC: 4C:87:5D:81:42:10 — "Bluetooth Keyboard MK4500"
-  [AGENT] Device matches known keyboard layout; prompting automated PIN 491024
+  [DISCOVERY] Device: "Bluetooth Wireless Keyboard"
+  [AGENT] BlueZ Agent handling automated PIN/passkey pairing handshake
   [SUCCESS] Device paired, trusted, and mapped to Wayland input seat0.
   Latency: 4.8ms | Battery: 94%`,
 
@@ -1090,7 +1090,7 @@ Analyzing kernel sysfs and local project context...
     const aiKnowledge = {
       zram: `**ZRAM Memory Guard Architecture:**\nUnlike Windows 11 which swaps cold pages to a high-latency disk paging file (causing 3–15 second UI freezes and high disk queue length), Praxis Linux compresses memory pages in RAM using **zstd compression** at over 4.2 GB/sec.\n- **Pressure Stall Index (PSI):** Monitored every 100ms.\n- **Thrashing:** 0.00% swap thrash even with 100 browser tabs open.\n- **Result:** Constant 120Hz compositor refresh with zero stutter.`,
 
-      bluetooth: `**Automated BlueZ D-Bus Agent:**\nIn Praxis Linux, Bluetooth discovery bypasses the clunky Windows/GNOME PIN confirmation dropdown.\n- **MK4500 Auto-Pair:** Matches HID keyboard vendor profile and automatically sends fallback PIN \`491024\` through BlueZ D-Bus.\n- **Seat Mapping:** Automatically connects to Wayland input seat0 with ultra-low 4.8ms polling latency.`,
+      bluetooth: `**Automated BlueZ D-Bus Agent:**\nIn Praxis Linux, Bluetooth discovery bypasses the clunky Windows/GNOME PIN confirmation dropdown.\n- **Auto-Pair Handshake:** Matches standard HID keyboard vendor profiles and automatically processes passkey/PIN prompts through BlueZ D-Bus.\n- **Seat Mapping:** Automatically connects to Wayland input seat0 with ultra-low 4.8ms polling latency.`,
 
       dualboot: `**Safe Dual-Boot Alongside Windows:**\nPraxis Linux is designed specifically for everyday laptop users who still need Windows for specific games or software.\n- **Non-Destructive:** Uses \`ntfsresize\` to carve out an unallocated slice (80GB recommended) without touching your Windows partition table.\n- **BitLocker Safe:** Leaves your Windows BitLocker TPM PCR registers intact.\n- **UEFI Dual-Boot:** Configures systemd-boot to detect \`bootmgfw.efi\` so you can switch between Windows 11 and Praxis Linux seamlessly with 1 key.`,
 
@@ -1119,7 +1119,7 @@ Analyzing kernel sysfs and local project context...
       const lower = cleanQ.toLowerCase();
       if (lower.includes('zram') || lower.includes('freeze') || lower.includes('memory') || lower.includes('ram')) {
         answer = aiKnowledge.zram;
-      } else if (lower.includes('bluetooth') || lower.includes('keyboard') || lower.includes('mk4500') || lower.includes('pair')) {
+      } else if (lower.includes('bluetooth') || lower.includes('keyboard') || lower.includes('pair')) {
         answer = aiKnowledge.bluetooth;
       } else if (lower.includes('dual') || lower.includes('windows') || lower.includes('install') || lower.includes('boot')) {
         answer = aiKnowledge.dualboot;
