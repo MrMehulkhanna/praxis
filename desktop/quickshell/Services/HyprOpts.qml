@@ -16,11 +16,70 @@ Singleton {
     property real activeOpacity: 1.0
     property string hyprVersion: ""
 
+    // Touchpad & Pointer controls
+    property real touchpadSensitivity: 0.0
+    property real touchpadScrollFactor: 1.0
+    property bool touchpadNaturalScroll: false
+    property bool touchpadTapToClick: true
+    property bool touchpadTapAndDrag: true
+    property var  touchpadsList: []
+
     readonly property var _names: ["general:gaps_in", "general:gaps_out", "general:border_size",
                                    "decoration:rounding", "decoration:blur:enabled", "animations:enabled",
                                    "decoration:active_opacity"]
 
-    function refresh() { if (!probe.running) probe.running = true }
+    function refresh() {
+        if (!probe.running) probe.running = true
+        if (!touchpadProbe.running) touchpadProbe.running = true
+    }
+
+    Process {
+        id: touchpadProbe
+        command: ["praxis-touchpad", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const d = JSON.parse(this.text)
+                    if (d.sensitivity !== undefined) root.touchpadSensitivity = d.sensitivity
+                    if (d.scroll_factor !== undefined) root.touchpadScrollFactor = d.scroll_factor
+                    if (d.natural_scroll !== undefined) root.touchpadNaturalScroll = !!d.natural_scroll
+                    if (d.tap_to_click !== undefined) root.touchpadTapToClick = !!d.tap_to_click
+                    if (d.tap_and_drag !== undefined) root.touchpadTapAndDrag = !!d.tap_and_drag
+                    if (d.touchpads) root.touchpadsList = d.touchpads
+                } catch (e) {}
+            }
+        }
+    }
+    Timer { id: refreshTouchpadsLater; interval: 400; onTriggered: if (!touchpadProbe.running) touchpadProbe.running = true }
+
+    function setTouchpadSensitivity(v) {
+        root.touchpadSensitivity = v
+        Quickshell.execDetached(["praxis-touchpad", "set-sensitivity", v.toFixed(2)])
+    }
+    function setTouchpadScrollFactor(v) {
+        root.touchpadScrollFactor = v
+        Quickshell.execDetached(["praxis-touchpad", "set-scroll-factor", v.toFixed(2)])
+    }
+    function setTouchpadNaturalScroll(v) {
+        root.touchpadNaturalScroll = v
+        Quickshell.execDetached(["praxis-touchpad", "set-natural-scroll", v ? "true" : "false"])
+    }
+    function setTouchpadTapToClick(v) {
+        root.touchpadTapToClick = v
+        Quickshell.execDetached(["praxis-touchpad", "set-tap-to-click", v ? "true" : "false"])
+    }
+    function setTouchpadTapAndDrag(v) {
+        root.touchpadTapAndDrag = v
+        Quickshell.execDetached(["praxis-touchpad", "set-tap-and-drag", v ? "true" : "false"])
+    }
+    function setDeviceSensitivity(devName, v) {
+        Quickshell.execDetached(["praxis-touchpad", "set-device", devName, v.toFixed(2)])
+        refreshTouchpadsLater.start()
+    }
+    function resetDevice(devName) {
+        Quickshell.execDetached(["praxis-touchpad", "reset-device", devName])
+        refreshTouchpadsLater.start()
+    }
 
     Process {
         id: probe

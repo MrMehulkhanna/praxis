@@ -166,6 +166,10 @@ Canvas {
             break
         case "refresh":
             arc(ctx, 12, 12, 7.5, -P * 0.15, P * 1.55); poly(ctx, [[8.5, 3.5], [12.2, 5.6], [10.2, 9.3]], false); break
+        case "touchpad":
+            rr(ctx, 3, 4.5, 18, 15, 2.5); ctx.stroke(); line(ctx, 3, 14, 21, 14); line(ctx, 12, 14, 12, 19.5); break
+        case "mouse":
+            rr(ctx, 6.5, 3.5, 11, 17, 5); ctx.stroke(); line(ctx, 12, 3.5, 12, 9.5); break
         case "monitor":
             rr(ctx, 3, 4.5, 18, 12.5, 2); ctx.stroke(); line(ctx, 8.5, 20.5, 15.5, 20.5); line(ctx, 12, 17, 12, 20.5); break
         case "image":

@@ -32,8 +32,13 @@ Singleton {
     property alias clock24h:       s.clock24h
     property alias showSeconds:    s.showSeconds
     property alias sleepTimeout:   s.sleepTimeout   // minutes before auto-sleep; 0 = never
-    property alias touchGestures:  s.touchGestures  // 3-finger swipe for workspace switching
-    property alias dockOffset:     s.dockOffset     // px to raise dock above bottom edge (0 = default)
+    property alias touchGestures:         s.touchGestures         // 3-finger swipe for workspace switching
+    property alias dockOffset:            s.dockOffset            // px to raise dock above bottom edge (0 = default)
+    property alias touchpadSensitivity:   s.touchpadSensitivity   // -1.0 to 1.0 (0 = default 1:1 speed)
+    property alias touchpadScrollFactor:  s.touchpadScrollFactor  // 0.2 to 2.0 (1.0 = default)
+    property alias touchpadNaturalScroll: s.touchpadNaturalScroll // true = reverse / natural scrolling
+    property alias touchpadTapToClick:    s.touchpadTapToClick    // true = tap to click
+    property alias touchpadTapAndDrag:    s.touchpadTapAndDrag    // true = tap and drag
 
     // true once settings.json has been read (or found missing): services that
     // act on a saved choice at startup wait for this instead of racing the load
@@ -63,7 +68,7 @@ Singleton {
             property bool   dockVisible: true          // false = dock fully hidden (saves bottom space on laptop)
             property bool   ambientEnabled: true       // 3 drifting glow orbs on the background
             property bool   dockAllScreens: false
-            property list<string> dockFavorites: [
+            property var dockFavorites: [
                 "firefox", "kitty", "thunar"
             ]
             property string barStats: "auto"           // auto | on | off
@@ -76,6 +81,11 @@ Singleton {
             property int    sleepTimeout: 20           // minutes before auto-sleep; 0 = never
             property bool   touchGestures: true        // 3-finger swipe for workspace switching
             property int    dockOffset: 0              // px to raise dock above bottom edge (0 = flush)
+            property real   touchpadSensitivity: 0.0   // -1.0 to 1.0 (0 = default raw speed)
+            property real   touchpadScrollFactor: 1.0  // 0.2 to 2.0 (1.0 = standard speed)
+            property bool   touchpadNaturalScroll: false // natural scrolling
+            property bool   touchpadTapToClick: true   // tap to click
+            property bool   touchpadTapAndDrag: true   // tap and drag
         }
     }
 

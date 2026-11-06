@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""
+praxis-touchpad — Touchpad & Pointer Sensitivity Manager for Praxis OS / Hyprland.
+
+Controls and persists pointer speed, scroll speed, natural scrolling,
+tap-to-click, and per-device touchpad tuning across sessions and reboots.
+"""
+
+import sys
+import os
+import json
+import re
+import subprocess
+from pathlib import Path
+
+CONFIG_PATH = Path.home() / ".config" / "hypr" / "praxis-local.lua"
+SETTINGS_PATH = Path.home() / ".config" / "quickshell" / "settings.json"
+
+def ensure_hypr_env():
+    """Ensure HYPRLAND_INSTANCE_SIGNATURE is set for hyprctl."""
+    if "HYPRLAND_INSTANCE_SIGNATURE" not in os.environ:
+        uid = os.getuid()
+        runtime_dir = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+        hypr_dir = Path(runtime_dir) / "hypr"
+        if hypr_dir.is_dir():
+            try:
+                entries = sorted(
+                    [p for p in hypr_dir.iterdir() if p.is_dir()],
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True
+                )
+                if entries:
+                    os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = entries[0].name
+            except Exception:
+                pass
+
+def hyprctl_eval(cmd: str) -> bool:
+    """Execute hyprctl eval <cmd>."""
+    ensure_hypr_env()
+    try:
+        res = subprocess.run(
+            ["hyprctl", "eval", cmd],
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+        return res.returncode == 0 and "ok" in res.stdout.lower()
+    except Exception:
+        return False
+
+def hyprctl_get_devices() -> dict:
+    """Get connected devices from hyprctl -j devices."""
+    ensure_hypr_env()
+    try:
+        res = subprocess.run(
+            ["hyprctl", "-j", "devices"],
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return json.loads(res.stdout)
+    except Exception:
+        pass
+    return {}
+
+def format_device_display_name(name: str) -> str:
+    """Convert raw input device identifier into a clean, human-readable label."""
+    low = name.lower()
+    if "touchpad" in low or "trackpad" in low:
+        if low.startswith("asue") or "asus" in low:
+            return "ASUS Precision Touchpad"
+        elif "synaptics" in low or "syna" in low:
+            return "Synaptics Precision Touchpad"
+        elif "elan" in low:
+            return "ELAN Precision Touchpad"
+        elif "apple" in low or "magic" in low:
+            return "Apple Magic Trackpad"
+        elif "dell" in low:
+            return "Dell Precision Touchpad"
+        elif "lenovo" in low or "thinkpad" in low:
+            return "ThinkPad TrackPoint / Touchpad"
+        else:
+            clean = re.sub(r'^[a-z0-9]+:[0-9]+-[0-9a-f]+:[0-9a-f]+-', '', name)
+            clean = clean.replace("-", " ").replace("_", " ").title()
+            return f"Touchpad ({clean})"
+    elif "mouse" in low:
+        clean = re.sub(r'^[a-z0-9]+:[0-9]+-[0-9a-f]+:[0-9a-f]+-', '', name)
+        clean = clean.replace("-", " ").replace("_", " ").title()
+        return f"Mouse ({clean})"
+    elif "virtual" in low or "ydotool" in low:
+        return "Virtual Pointer Device"
+    return name.replace("-", " ").replace("_", " ").title()
+
+def read_local_config() -> dict:
+    """Parse ~/.config/hypr/praxis-local.lua for existing touchpad configurations."""
+    state = {
+        "sensitivity": 0.0,
+        "scroll_factor": 1.0,
+        "natural_scroll": False,
+        "tap_to_click": True,
+        "tap_and_drag": True,
+        "devices": {}
+    }
+    if not CONFIG_PATH.is_file():
+        return state
+
+    try:
+        content = CONFIG_PATH.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            line = line.strip()
+            if "-- praxis-touchpad-global" in line:
+                m_sens = re.search(r'sensitivity\s*=\s*([-\d.]+)', line)
+                if m_sens:
+                    state["sensitivity"] = float(m_sens.group(1))
+                m_scroll = re.search(r'scroll_factor\s*=\s*([-\d.]+)', line)
+                if m_scroll:
+                    state["scroll_factor"] = float(m_scroll.group(1))
+                m_nat = re.search(r'natural_scroll\s*=\s*(true|false)', line)
+                if m_nat:
+                    state["natural_scroll"] = (m_nat.group(1) == "true")
+                m_tap = re.search(r'tap_to_click\s*=\s*(true|false)', line)
+                if m_tap:
+                    state["tap_to_click"] = (m_tap.group(1) == "true")
+                m_drag = re.search(r'tap_and_drag\s*=\s*(true|false)', line)
+                if m_drag:
+                    state["tap_and_drag"] = (m_drag.group(1) == "true")
+            elif "-- praxis-touchpad-device" in line:
+                m_dev = re.search(r'name\s*=\s*"([^"]+)"', line)
+                m_sens = re.search(r'sensitivity\s*=\s*([-\d.]+)', line)
+                if m_dev and m_sens:
+                    state["devices"][m_dev.group(1)] = float(m_sens.group(1))
+    except Exception:
+        pass
+
+    return state
+
+def write_local_config(state: dict):
+    """Update ~/.config/hypr/praxis-local.lua atomically preserving other config lines."""
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    existing_lines = []
+    if CONFIG_PATH.is_file():
+        try:
+            existing_lines = CONFIG_PATH.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            existing_lines = []
+
+    # Filter out existing touchpad lines
+    filtered = [
+        l for l in existing_lines
+        if not ("-- praxis-touchpad-global" in l or "-- praxis-touchpad-device" in l)
+    ]
+
+    # Append updated global touchpad configuration
+    sens = round(float(state.get("sensitivity", 0.0)), 2)
+    scroll = round(float(state.get("scroll_factor", 1.0)), 2)
+    nat = "true" if state.get("natural_scroll", False) else "false"
+    tap = "true" if state.get("tap_to_click", True) else "false"
+    drag = "true" if state.get("tap_and_drag", True) else "false"
+
+    global_line = (
+        f'hl.config({{ input = {{ sensitivity = {sens}, '
+        f'touchpad = {{ scroll_factor = {scroll}, natural_scroll = {nat}, '
+        f'tap_to_click = {tap}, tap_and_drag = {drag} }} }} }})  -- praxis-touchpad-global'
+    )
+    filtered.append(global_line)
+
+    # Append per-device touchpad configurations
+    for dev_name, dev_sens in state.get("devices", {}).items():
+        dev_sens_val = round(float(dev_sens), 2)
+        dev_line = f'hl.device({{ name = "{dev_name}", sensitivity = {dev_sens_val} }})  -- praxis-touchpad-device'
+        filtered.append(dev_line)
+
+    tmp_path = CONFIG_PATH.with_suffix(".tmp")
+    tmp_path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+    tmp_path.replace(CONFIG_PATH)
+
+def get_full_status() -> dict:
+    """Return full status including detected touchpads and pointer devices."""
+    saved = read_local_config()
+    devices_data = hyprctl_get_devices()
+    mice_raw = devices_data.get("mice", [])
+
+    touchpads = []
+    all_devices = []
+
+    for m in mice_raw:
+        name = m.get("name", "")
+        low = name.lower()
+        is_touchpad = "touchpad" in low or "trackpad" in low or "synaptics" in low or "elan" in low
+        is_virtual = "virtual" in low or "ydotool" in low
+
+        dev_info = {
+            "name": name,
+            "address": m.get("address", ""),
+            "displayName": format_device_display_name(name),
+            "isTouchpad": is_touchpad,
+            "isVirtual": is_virtual,
+            "defaultSpeed": m.get("defaultSpeed", 0.0),
+            "sensitivity": saved.get("devices", {}).get(name, saved.get("sensitivity", 0.0)),
+            "hasOverride": name in saved.get("devices", {})
+        }
+        all_devices.append(dev_info)
+        if is_touchpad:
+            touchpads.append(dev_info)
+
+    # If no physical touchpad detected, synthesize default touchpad entry so GUI always shows control
+    if not touchpads:
+        touchpads.append({
+            "name": "system-touchpad",
+            "address": "default",
+            "displayName": "Precision Touchpad (System)",
+            "isTouchpad": True,
+            "isVirtual": False,
+            "defaultSpeed": 0.0,
+            "sensitivity": saved.get("sensitivity", 0.0),
+            "hasOverride": False
+        })
+
+    return {
+        "sensitivity": saved.get("sensitivity", 0.0),
+        "scroll_factor": saved.get("scroll_factor", 1.0),
+        "natural_scroll": saved.get("natural_scroll", False),
+        "tap_to_click": saved.get("tap_to_click", True),
+        "tap_and_drag": saved.get("tap_and_drag", True),
+        "touchpads": touchpads,
+        "all_devices": all_devices
+    }
+
+def apply_global(state: dict):
+    """Apply global touchpad config to running Hyprland instance."""
+    sens = round(float(state.get("sensitivity", 0.0)), 2)
+    scroll = round(float(state.get("scroll_factor", 1.0)), 2)
+    nat = "true" if state.get("natural_scroll", False) else "false"
+    tap = "true" if state.get("tap_to_click", True) else "false"
+    drag = "true" if state.get("tap_and_drag", True) else "false"
+
+    cmd = (
+        f'hl.config({{ input = {{ sensitivity = {sens}, '
+        f'touchpad = {{ scroll_factor = {scroll}, natural_scroll = {nat}, '
+        f'tap_to_click = {tap}, tap_and_drag = {drag} }} }} }})'
+    )
+    hyprctl_eval(cmd)
+
+def main():
+    args = sys.argv[1:]
+    action = args[0] if args else "status"
+
+    if action in ("status", "json"):
+        status = get_full_status()
+        print(json.dumps(status, indent=2))
+        return
+
+    if action == "list":
+        status = get_full_status()
+        print("Detected Touchpads & Pointer Devices:")
+        for t in status["touchpads"]:
+            sens = t["sensitivity"]
+            over = " (device override)" if t["hasOverride"] else " (global)"
+            print(f"  • {t['displayName']} [{t['name']}]: sensitivity {sens:+.2f}{over}")
+        return
+
+    state = read_local_config()
+
+    if action == "set-sensitivity":
+        if len(args) < 2:
+            sys.exit("Usage: praxis-touchpad set-sensitivity <val (-1.0 to 1.0)>")
+        val = max(-1.0, min(1.0, float(args[1])))
+        state["sensitivity"] = val
+        apply_global(state)
+        write_local_config(state)
+        print(f"Global sensitivity set to {val:+.2f}")
+
+    elif action == "set-scroll-factor":
+        if len(args) < 2:
+            sys.exit("Usage: praxis-touchpad set-scroll-factor <val (0.2 to 2.0)>")
+        val = max(0.2, min(2.0, float(args[1])))
+        state["scroll_factor"] = val
+        apply_global(state)
+        write_local_config(state)
+        print(f"Touchpad scroll factor set to {val:.2f}")
+
+    elif action == "set-natural-scroll":
+        if len(args) < 2:
+            sys.exit("Usage: praxis-touchpad set-natural-scroll <0|1|true|false>")
+        val = args[1].lower() in ("1", "true", "yes", "on")
+        state["natural_scroll"] = val
+        apply_global(state)
+        write_local_config(state)
+        print(f"Natural scroll set to {val}")
+
+    elif action == "set-tap-to-click":
+        if len(args) < 2:
+            sys.exit("Usage: praxis-touchpad set-tap-to-click <0|1|true|false>")
+        val = args[1].lower() in ("1", "true", "yes", "on")
+        state["tap_to_click"] = val
+        apply_global(state)
+        write_local_config(state)
+        print(f"Tap-to-click set to {val}")
+
+    elif action == "set-tap-and-drag":
+        if len(args) < 2:
+            sys.exit("Usage: praxis-touchpad set-tap-and-drag <0|1|true|false>")
+        val = args[1].lower() in ("1", "true", "yes", "on")
+        state["tap_and_drag"] = val
+        apply_global(state)
+        write_local_config(state)
+        print(f"Tap-and-drag set to {val}")
+
+    elif action == "set-device":
+        if len(args) < 3:
+            sys.exit("Usage: praxis-touchpad set-device <device-name> <sensitivity (-1.0 to 1.0)>")
+        dev_name = args[1]
+        val = max(-1.0, min(1.0, float(args[2])))
+        if "devices" not in state:
+            state["devices"] = {}
+        state["devices"][dev_name] = val
+        hyprctl_eval(f'hl.device({{ name = "{dev_name}", sensitivity = {val} }})')
+        write_local_config(state)
+        print(f"Device '{dev_name}' sensitivity set to {val:+.2f}")
+
+    elif action == "reset-device":
+        if len(args) < 2:
+            sys.exit("Usage: praxis-touchpad reset-device <device-name>")
+        dev_name = args[1]
+        if "devices" in state and dev_name in state["devices"]:
+            del state["devices"][dev_name]
+        global_sens = state.get("sensitivity", 0.0)
+        hyprctl_eval(f'hl.device({{ name = "{dev_name}", sensitivity = {global_sens} }})')
+        write_local_config(state)
+        print(f"Device '{dev_name}' reset to global sensitivity ({global_sens:+.2f})")
+
+    elif action == "sync":
+        apply_global(state)
+        for dev_name, dev_sens in state.get("devices", {}).items():
+            hyprctl_eval(f'hl.device({{ name = "{dev_name}", sensitivity = {dev_sens} }})')
+        print("Applied and synchronized touchpad configuration to Hyprland")
+
+    else:
+        sys.exit(f"Unknown action: {action}. Valid actions: status, list, set-sensitivity, set-scroll-factor, set-natural-scroll, set-tap-to-click, set-tap-and-drag, set-device, reset-device, sync")
+
+if __name__ == "__main__":
+    main()

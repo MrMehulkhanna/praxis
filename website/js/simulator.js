@@ -1067,6 +1067,54 @@ Analyzing kernel sysfs and local project context...
       });
     }
 
+    // Touchpad & Pointer Sensitivity Controls
+    const touchpadSensSlider = document.getElementById('slider-touchpad-sens');
+    const scrollFactorSlider = document.getElementById('slider-scroll-factor');
+    const naturalScrollToggle = document.getElementById('toggle-natural-scroll');
+    const tapToClickToggle = document.getElementById('toggle-tap-to-click');
+    const touchGesturesToggle = document.getElementById('toggle-touch-gestures');
+
+    if (touchpadSensSlider) {
+      touchpadSensSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        const pct = Math.round(val * 100);
+        const txt = pct === 0 ? '0% (Normal)' : (pct > 0 ? `+${pct}% (Fast)` : `${pct}% (Slow)`);
+        const label = document.getElementById('val-touchpad-sens');
+        if (label) label.textContent = txt;
+        notifySim(`⚡ Touchpad Sensitivity: ${txt}`);
+      });
+    }
+
+    if (scrollFactorSlider) {
+      scrollFactorSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value).toFixed(1);
+        const label = document.getElementById('val-scroll-factor');
+        if (label) label.textContent = `${val}x`;
+        notifySim(`📜 Touchpad Scroll Factor: ${val}x`);
+      });
+    }
+
+    if (naturalScrollToggle) {
+      naturalScrollToggle.addEventListener('change', (e) => {
+        const status = e.target.checked ? 'Enabled (Natural)' : 'Disabled (Standard)';
+        notifySim(`🔄 Natural Scrolling: ${status}`);
+      });
+    }
+
+    if (tapToClickToggle) {
+      tapToClickToggle.addEventListener('change', (e) => {
+        const status = e.target.checked ? 'Enabled' : 'Disabled';
+        notifySim(`👆 Tap to Click: ${status}`);
+      });
+    }
+
+    if (touchGesturesToggle) {
+      touchGesturesToggle.addEventListener('change', (e) => {
+        const status = e.target.checked ? 'Enabled (3 & 4 Fingers)' : 'Disabled';
+        notifySim(`🖐️ Multi-Finger Swipes: ${status}`);
+      });
+    }
+
     // Double-click titlebar to maximize / restore
     windows.forEach((win) => {
       const titlebar = win.querySelector('.sim-win-titlebar');

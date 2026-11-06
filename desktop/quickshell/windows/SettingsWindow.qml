@@ -16,13 +16,14 @@ OverlayWindow {
 
     property string wifiPskFor: ""
     readonly property var sections: [
-        { id: "General",     icon: "info" },
-        { id: "Date & Time", icon: "clock" },
-        { id: "Appearance",  icon: "eye" },
-        { id: "Dock",        icon: "dock" },
-        { id: "Display",     icon: "monitor" },
-        { id: "Windows",     icon: "layers" },
-        { id: "Shortcuts",   icon: "keyboard" },
+        { id: "General",          icon: "info" },
+        { id: "Date & Time",      icon: "clock" },
+        { id: "Appearance",       icon: "eye" },
+        { id: "Dock",             icon: "dock" },
+        { id: "Display",          icon: "monitor" },
+        { id: "Touchpad & Mouse", icon: "touchpad" },
+        { id: "Windows",          icon: "layers" },
+        { id: "Shortcuts",        icon: "keyboard" },
         { id: "Network",     icon: "wifi" },
         { id: "Bluetooth",   icon: "bluetooth" },
         { id: "Audio",       icon: "volume-high" },
@@ -169,7 +170,7 @@ OverlayWindow {
                     sourceComponent: {
                         switch (Shell.settingsSection) {
                             case "General": return general; case "Date & Time": return dateTime; case "Appearance": return appearance; case "Dock": return dockSec
-                            case "Display": return display; case "Windows": return windowsSec; case "Shortcuts": return keyboard
+                            case "Display": return display; case "Touchpad & Mouse": return touchpadSec; case "Windows": return windowsSec; case "Shortcuts": return keyboard
                             case "Network": return network; case "Bluetooth": return bluetooth; case "Audio": return audio
                             case "Power": return powerSec; case "Wallpaper": return wallpaper; case "Profiles": return profiles
                             case "AI": return ai; case "Health": return health; default: return general
@@ -585,6 +586,157 @@ OverlayWindow {
                 }
             }
             Text { text: "A new mode or scale shows at once and goes back by itself after 15 seconds unless you press Keep — so a mode a monitor can't show never leaves it dark. Kept settings are saved for this computer and come back after a restart."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap }
+        }
+    }
+
+    // ═══════════════ TOUCHPAD & MOUSE ═══════════════
+    Component {
+        id: touchpadSec
+        Column {
+            spacing: 0
+            H { text: "POINTER SPEED & SENSITIVITY" }
+            SettingRow {
+                label: "Touchpad sensitivity"
+                description: "Cursor speed across the desktop (-100% slow to +100% fast)"
+                Slider {
+                    width: 220; icon: "touchpad"
+                    value: Math.max(0, Math.min(1, (HyprOpts.touchpadSensitivity + 1.0) / 2.0))
+                    valueText: {
+                        const pct = Math.round(HyprOpts.touchpadSensitivity * 100)
+                        return pct === 0 ? "Default (0%)" : (pct > 0 ? "+" + pct + "%" : pct + "%")
+                    }
+                    onMoved: v => {
+                        const s = (v * 2.0) - 1.0
+                        HyprOpts.setTouchpadSensitivity(s)
+                        Settings.touchpadSensitivity = s
+                    }
+                }
+            }
+            SettingRow {
+                label: "Scroll speed factor"
+                description: "Two-finger scroll speed (0.2x to 2.0x)"
+                Slider {
+                    width: 220; icon: "sliders"
+                    value: Math.max(0, Math.min(1, (HyprOpts.touchpadScrollFactor - 0.2) / 1.8))
+                    valueText: HyprOpts.touchpadScrollFactor.toFixed(1) + "x"
+                    onMoved: v => {
+                        const f = 0.2 + (v * 1.8)
+                        HyprOpts.setTouchpadScrollFactor(f)
+                        Settings.touchpadScrollFactor = f
+                    }
+                }
+            }
+
+            H { text: "GESTURES & BEHAVIOR" }
+            SettingRow {
+                label: "Natural scrolling"
+                description: "Content tracks fingers directly (Windows & macOS natural direction)"
+                Toggle {
+                    checked: HyprOpts.touchpadNaturalScroll
+                    onToggled: v => {
+                        HyprOpts.setTouchpadNaturalScroll(v)
+                        Settings.touchpadNaturalScroll = v
+                    }
+                }
+            }
+            SettingRow {
+                label: "Tap to click"
+                description: "Tap with 1 finger to click, 2 fingers for right-click context menu"
+                Toggle {
+                    checked: HyprOpts.touchpadTapToClick
+                    onToggled: v => {
+                        HyprOpts.setTouchpadTapToClick(v)
+                        Settings.touchpadTapToClick = v
+                    }
+                }
+            }
+            SettingRow {
+                label: "Tap and drag"
+                description: "Double tap and hold to drag windows or select text without physical click"
+                Toggle {
+                    checked: HyprOpts.touchpadTapAndDrag
+                    onToggled: v => {
+                        HyprOpts.setTouchpadTapAndDrag(v)
+                        Settings.touchpadTapAndDrag = v
+                    }
+                }
+            }
+            SettingRow {
+                label: "Multi-finger swipe gestures"
+                description: "3-finger horizontal swipe to switch workspaces, 4 fingers for Action Center"
+                Toggle {
+                    checked: Settings.touchGestures
+                    onToggled: v => {
+                        Settings.touchGestures = v
+                        Quickshell.execDetached(["hyprctl", "eval", `hl.config({ gestures = { workspace_swipe = ${v ? "true" : "false"} } })`])
+                    }
+                }
+            }
+
+            H { text: "ALL DETECTED TOUCHPADS & HARDWARE DEVICES" }
+            Text {
+                text: "Fine-tune individual sensitivity overrides for each detected touchpad or pointing device."
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap; bottomPadding: 8
+            }
+            Repeater {
+                model: HyprOpts.touchpadsList
+                Card {
+                    required property var modelData
+                    height: devInnerCol.implicitHeight + 20
+                    Column {
+                        id: devInnerCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                        spacing: 8
+                        Row {
+                            width: parent.width
+                            spacing: 10
+                            Icon { name: "touchpad"; size: 18; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                            Column {
+                                width: Math.max(120, devInnerCol.width - 140)
+                                spacing: 2
+                                Text { text: modelData.displayName; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.DemiBold }
+                                Text {
+                                    text: modelData.name + (modelData.hasOverride ? " · Custom Device Override" : " · Following Global Speed")
+                                    color: modelData.hasOverride ? Theme.accent : Theme.muted
+                                    font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
+                                    elide: Text.ElideRight; width: parent.width
+                                }
+                            }
+                            Btn {
+                                visible: !!modelData.hasOverride
+                                icon: "refresh"; label: "Reset"
+                                anchors.verticalCenter: parent.verticalCenter
+                                onClicked: HyprOpts.resetDevice(modelData.name)
+                            }
+                        }
+                        SettingRow {
+                            label: "Device sensitivity"
+                            description: "Custom pointer speed specifically for this hardware unit"
+                            Slider {
+                                width: 220; icon: "sliders"
+                                value: Math.max(0, Math.min(1, (modelData.sensitivity + 1.0) / 2.0))
+                                valueText: {
+                                    const pct = Math.round(modelData.sensitivity * 100)
+                                    return pct === 0 ? "0%" : (pct > 0 ? "+" + pct + "%" : pct + "%")
+                                }
+                                onMoved: v => {
+                                    const devSens = (v * 2.0) - 1.0
+                                    HyprOpts.setDeviceSensitivity(modelData.name, devSens)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Text {
+                visible: HyprOpts.touchpadsList.length === 0
+                text: "No external hardware touchpads detected. Global settings apply to all pointer inputs."
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontSm; topPadding: 8
+            }
+            Text {
+                text: "Touchpad sensitivity changes take effect immediately in Hyprland and persist in ~/.config/hypr/praxis-local.lua across reboots."
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap; topPadding: 12
+            }
         }
     }
 
