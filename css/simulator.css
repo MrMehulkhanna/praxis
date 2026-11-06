@@ -526,8 +526,9 @@
 /* Control Center Window */
 #sim-win-control {
   width: 440px;
-  height: 380px;
-  top: 130px;
+  height: 520px;
+  max-height: 85vh;
+  top: 100px;
   left: 320px;
 }
 

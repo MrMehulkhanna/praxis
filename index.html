@@ -1035,6 +1035,53 @@ Type '<span style="color: #bb9af7;">help</span>' or '<span style="color: #bb9af7
                 <span>Dock Auto-Hide (16px Window Gap)</span>
                 <span style="color: #8bd5a1; font-weight: bold;">Enforced</span>
               </div>
+
+              <!-- Touchpad & Pointer Sensitivity Controls -->
+              <div style="margin: 16px 0 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sim-teal); font-weight: 600;">
+                Touchpad &amp; Pointer Speed
+              </div>
+
+              <div class="sim-slider-row">
+                <div class="sim-slider-header">
+                  <span>Touchpad Sensitivity</span>
+                  <span id="val-touchpad-sens" class="val">0% (Normal)</span>
+                </div>
+                <input type="range" id="slider-touchpad-sens" min="-1" max="1" step="0.05" value="0">
+              </div>
+
+              <div class="sim-slider-row">
+                <div class="sim-slider-header">
+                  <span>Scroll Speed Factor</span>
+                  <span id="val-scroll-factor" class="val">1.0x</span>
+                </div>
+                <input type="range" id="slider-scroll-factor" min="0.2" max="2.0" step="0.1" value="1.0">
+              </div>
+
+              <div class="sim-toggle-row">
+                <span>Natural Scrolling</span>
+                <input type="checkbox" id="toggle-natural-scroll" style="accent-color: var(--sim-teal); cursor: pointer;">
+              </div>
+
+              <div class="sim-toggle-row">
+                <span>Tap to Click</span>
+                <input type="checkbox" id="toggle-tap-to-click" checked style="accent-color: var(--sim-teal); cursor: pointer;">
+              </div>
+
+              <div class="sim-toggle-row">
+                <span>Multi-Finger Swipes (3 &amp; 4 Fingers)</span>
+                <input type="checkbox" id="toggle-touch-gestures" checked style="accent-color: var(--sim-teal); cursor: pointer;">
+              </div>
+
+              <div style="margin-top: 12px; padding: 8px 10px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 8px; font-size: 0.72rem; color: #a0aec0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                  <span style="font-weight: 600; color: #e2e8f0;">Detected Touchpads:</span>
+                  <span style="color: var(--sim-teal); font-size: 0.68rem; font-family: var(--font-mono);">hyprctl devices</span>
+                </div>
+                <div style="font-family: var(--font-mono); font-size: 0.68rem; color: #94a3b8; line-height: 1.5;">
+                  • ASUS Precision Touchpad (Active · 0.00)<br>
+                  • Synaptics / Generic Touchpad (Active · 0.00)
+                </div>
+              </div>
             </div>
           </div>
 
