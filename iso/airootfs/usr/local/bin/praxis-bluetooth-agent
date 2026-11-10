@@ -8,6 +8,7 @@ notification daemons or desktop applets that may be hidden by Do Not Disturb.
 import sys
 import os
 import signal
+import subprocess
 import dbus
 import dbus.service
 import dbus.mainloop.glib
@@ -30,7 +31,7 @@ class BluetoothAgent(dbus.service.Object):
         print(f"  KEYBOARD PAIRING PIN: {pincode}")
         print(f"  Type {pincode} on your keyboard and press ENTER!")
         print(f"=======================================================\n", flush=True)
-        os.system(f'notify-send -u critical "Bluetooth Keyboard PIN" "Type <b>{pincode}</b> on your keyboard and press Enter" 2>/dev/null || true')
+        subprocess.run(["notify-send", "-u", "critical", "Bluetooth Keyboard PIN", f"Type <b>{pincode}</b> on your keyboard and press Enter"], stderr=subprocess.DEVNULL, check=False)
 
     @dbus.service.method("org.bluez.Agent1", in_signature="ouq", out_signature="")
     def DisplayPasskey(self, device, passkey, entered):
@@ -39,7 +40,7 @@ class BluetoothAgent(dbus.service.Object):
         print(f"  KEYBOARD PAIRING PASSKEY: {key}")
         print(f"  Type {key} on your keyboard and press ENTER!")
         print(f"=======================================================\n", flush=True)
-        os.system(f'notify-send -u critical "Bluetooth Passkey" "Type <b>{key}</b> on your keyboard and press Enter" 2>/dev/null || true')
+        subprocess.run(["notify-send", "-u", "critical", "Bluetooth Passkey", f"Type <b>{key}</b> on your keyboard and press Enter"], stderr=subprocess.DEVNULL, check=False)
 
     @dbus.service.method("org.bluez.Agent1", in_signature="ou", out_signature="")
     def RequestConfirmation(self, device, passkey):
