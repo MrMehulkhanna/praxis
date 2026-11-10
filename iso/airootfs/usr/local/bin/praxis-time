@@ -11,6 +11,7 @@
 # ============================================================================
 set -euo pipefail
 
+valid_tz() { [[ "$1" =~ ^[A-Za-z0-9_+/-]+$ ]] && [[ "$1" != *..* ]] && [ -f "/usr/share/zoneinfo/$1" ]; }
 cmd="${1:-status}"
 
 case "$cmd" in
@@ -19,8 +20,8 @@ case "$cmd" in
         ;;
     auto)
         echo "==> Auto-detecting timezone from network location..."
-        tz=$(curl -fsm 4 https://ipapi.co/timezone 2>/dev/null || curl -fsm 4 http://worldtimeapi.org/api/ip 2>/dev/null | sed -n 's/.*"timezone":"\([^"]*\)".*/\1/p' || true)
-        if [ -n "$tz" ] && [ -f "/usr/share/zoneinfo/$tz" ]; then
+        tz=$(curl -fsm 4 https://ipapi.co/timezone 2>/dev/null || curl -fsm 4 https://worldtimeapi.org/api/ip 2>/dev/null | sed -n 's/.*"timezone":"\([^"]*\)".*/\1/p' || true)
+        if [ -n "$tz" ] && valid_tz "$tz"; then
             echo "    Detected location: $tz"
             sudo timedatectl set-timezone "$tz"
             echo "    ✓ Timezone updated to $tz"
@@ -40,7 +41,7 @@ case "$cmd" in
     set)
         [ -n "${2:-}" ] || { echo "Usage: praxis-time set <timezone> (e.g. Asia/Kolkata)"; exit 1; }
         tz="$2"
-        [ -f "/usr/share/zoneinfo/$tz" ] || { echo "Error: Timezone '$tz' not found in /usr/share/zoneinfo/"; exit 1; }
+        valid_tz "$tz" || { echo "Error: Invalid or unknown timezone '$tz'"; exit 1; }
         sudo timedatectl set-timezone "$tz"
         sudo timedatectl set-ntp true
         sudo systemctl restart systemd-timesyncd 2>/dev/null || true
