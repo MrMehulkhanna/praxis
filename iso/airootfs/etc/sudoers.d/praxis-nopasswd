@@ -1,3 +1,2 @@
 # Allow passwordless execution of Praxis system updates and time synchronization
-%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
-ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/local/bin/praxis-restart-shell
