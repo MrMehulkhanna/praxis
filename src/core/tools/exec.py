@@ -67,7 +67,7 @@ async def propose(request: str, adapter, model: str, classify, jid: str | None =
     from core.gateway.iface import Request as GReq
     greq = GReq(
         system="You are a precise Linux command generator.",
-        messages=[{"role": "user", "content": PROMPT.replace("{request}", request)}],
+        messages=[{"role": "user", "content": PROMPT + request}],
         model=model, max_tokens=120, temperature=0.1,
     )
     parts = []
