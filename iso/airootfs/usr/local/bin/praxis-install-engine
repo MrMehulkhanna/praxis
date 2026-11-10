@@ -405,8 +405,12 @@ ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
 if [ "$RTC" = local ]; then printf '0.0 0 0.0\n0\nLOCAL\n' >/etc/adjtime; else printf '0.0 0 0.0\n0\nUTC\n' >/etc/adjtime; fi
 # (a test run on a developer's machine must not set that machine's clock)
 [ "${PLAN_TEST:-}" = 1 ] || hwclock --systohc $([ "$RTC" = local ] && echo --localtime) 2>/dev/null || true
-sed -i "s/^#\(en_US.UTF-8 UTF-8\)/\1/" /etc/locale.gen
-sed -i "s/^#\(${LOCALE//./\\.} \)/\1/" /etc/locale.gen
+sed -i "s/^#\s*\(en_US\.UTF-8 UTF-8\)/\1/" /etc/locale.gen
+if [ -n "${LOCALE:-}" ]; then
+    ESC_LOC=$(printf "%s" "$LOCALE" | sed "s/[.[\*^$]/\\&/g")
+    sed -i "s/^#\s*\(${ESC_LOC}[[:space:]].*\)/\1/" /etc/locale.gen
+fi
+grep -q "^en_US\.UTF-8 UTF-8" /etc/locale.gen || echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
 locale-gen >/dev/null
 echo "LANG=$LOCALE" >/etc/locale.conf
 KM="us"
@@ -419,17 +423,17 @@ printf '127.0.0.1  localhost\n::1        localhost\n127.0.1.1  %s.localdomain  %
 
 # portable initramfs (still boots if the drive moves to another PC)
 sed -i 's/ autodetect//' /etc/mkinitcpio.conf
-sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci uas usb_storage btrfs ext4)/' /etc/mkinitcpio.conf
+sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci sd_mod uas usb_storage mmc_block sdhci sdhci_pci sdhci_acpi virtio_blk virtio_scsi virtio_pci btrfs ext4)/' /etc/mkinitcpio.conf
 mkinitcpio -P >/dev/null
 
 useradd -m -G wheel,video,audio,input,network,storage,users -c "$FULLNAME" -s /bin/bash "$USERNAME"
-usermod -p "$PASSWORD_HASH" -U "$USERNAME" 2>/dev/null || true
 if [ -n "$PASSWORD_HASH" ]; then
-    usermod -p "$PASSWORD_HASH" root 2>/dev/null || true
-    sed -i "s|^root:[*!]*:|root:$PASSWORD_HASH:|" /etc/shadow 2>/dev/null || true
+    printf "%s:%s\nroot:%s\n" "$USERNAME" "$PASSWORD_HASH" "$PASSWORD_HASH" | chpasswd -e 2>/dev/null || {
+        usermod -p "$PASSWORD_HASH" -U "$USERNAME" 2>/dev/null || true
+        usermod -p "$PASSWORD_HASH" root 2>/dev/null || true
+    }
 else
-    passwd -d root 2>/dev/null || true
-    sed -i 's|^root:[*!]*:|root::|' /etc/shadow 2>/dev/null || true
+    passwd -l root 2>/dev/null || true
 fi
 passwd -u "$USERNAME" 2>/dev/null || true
 passwd -u root 2>/dev/null || true
@@ -457,8 +461,7 @@ echo '%wheel ALL=(ALL:ALL) ALL' >/etc/sudoers.d/10-wheel
 chmod 440 /etc/sudoers.d/10-wheel
 cat << 'EOF' > /etc/sudoers.d/praxis-nopasswd
 # Allow passwordless execution of Praxis system updates and time synchronization
-%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
-ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/local/bin/praxis-restart-shell
 EOF
 chmod 0440 /etc/sudoers.d/praxis-nopasswd
 cp -aT /etc/skel "/home/$USERNAME"
@@ -509,7 +512,7 @@ sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/defa
 grep -q '^GRUB_DISABLE_OS_PROBER=' /etc/default/grub || echo 'GRUB_DISABLE_OS_PROBER=false' >>/etc/default/grub
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
 sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Praxis"/' /etc/default/grub
-BOOT_PARAMS="rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1 acpi_backlight=native"
+BOOT_PARAMS="rootdelay=3 systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"
 if pacman -Q nvidia-utils >/dev/null 2>&1; then
     BOOT_PARAMS="$BOOT_PARAMS nvidia_drm.modeset=1 nvidia_drm.fbdev=1"
 fi
@@ -517,7 +520,8 @@ fi
 sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 $BOOT_PARAMS\"|" /etc/default/grub
 # (a test run on a developer's machine must not add boot entries to that machine's firmware)
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --recheck \
-    $([ "${PLAN_TEST:-}" = 1 ] && echo --no-nvram) >/dev/null
+    $([ "${PLAN_TEST:-}" = 1 ] && echo --no-nvram) >/dev/null || \
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Praxis --no-nvram --removable >/dev/null
 # keep Praxis bootable without the firmware menu: fallback loader, first in
 # BootOrder, and the same check at every startup (HP/Acer firmware reorders)
 PRAXIS_NO_NVRAM=$([ "${PLAN_TEST:-}" = 1 ] && echo 1) /usr/local/bin/praxis-bootfix --install
