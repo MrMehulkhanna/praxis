@@ -96,7 +96,7 @@ check "dock entry opens the graphical installer" grep -q '^Exec=/usr/local/bin/p
 check "graphical installer launcher is executable" test -x "$AIRO/usr/local/bin/praxis-installer"
 
 section "live session"
-check "installer app entry is valid"      desktop-file-validate "$AIRO/usr/share/applications/praxis-install.desktop"
+check "installer app entry is valid"      bash -c "if command -v desktop-file-validate >/dev/null 2>&1; then desktop-file-validate '$AIRO/usr/share/applications/praxis-install.desktop'; else grep -q '^\[Desktop Entry\]' '$AIRO/usr/share/applications/praxis-install.desktop' && grep -q '^Exec=/usr/local/bin/praxis-installer' '$AIRO/usr/share/applications/praxis-install.desktop' && grep -q '^Type=Application' '$AIRO/usr/share/applications/praxis-install.desktop'; fi"
 check "live user setup only on live media" grep -q "ConditionPathExists=/run/archiso" "$AIRO/etc/systemd/system/praxis-live-setup.service"
 check "live setup service is enabled"      test -L "$AIRO/etc/systemd/system/multi-user.target.wants/praxis-live-setup.service"
 check "autologin targets 'praxis'"         grep -q -- "--autologin praxis" "$AIRO/etc/systemd/system/getty@tty1.service.d/autologin.conf"
