@@ -143,7 +143,7 @@ def check_memory():
         missing.append("compressed swap (zram)")
     if not oom:
         missing.append("an early out-of-memory guard (earlyoom)")
-    if zram and swappiness and int(swappiness) < 100:
+    if zram and swappiness and swappiness.strip().lstrip("-").isdigit() and int(swappiness.strip()) < 100:
         missing.append(f"zram tuning (swappiness is {swappiness})")
     if missing:
         cmds = []

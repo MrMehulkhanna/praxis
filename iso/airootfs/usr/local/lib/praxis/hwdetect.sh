@@ -7,7 +7,7 @@
 praxis_ucode() {
     case "$1" in
         GenuineIntel) echo "intel-ucode" ;;
-        AuthenticAMD) echo "amd-ucode" ;;
+        AuthenticAMD|HygonGenuine) echo "amd-ucode" ;;
     esac
 }
 
@@ -24,6 +24,7 @@ praxis_gpu_pkgs() {
 
     grep -qiE '\[8086:[0-9a-f]{4}\]' <<<"$gpus" && pkgs+=(mesa vulkan-intel intel-media-driver)
     grep -qiE '\[1002:[0-9a-f]{4}\]' <<<"$gpus" && pkgs+=(mesa vulkan-radeon xf86-video-amdgpu)
+    grep -qiE '\[(1af4|1b36|1234|15ad|80ee|1414):[0-9a-f]{4}\]' <<<"$gpus" && pkgs+=(mesa vulkan-virtio vulkan-swrast)
 
     # (no NVIDIA GPU is the normal case: grep finding nothing must not count as a
     # failure for a caller running under `set -eE` with an ERR trap — the
