@@ -23,7 +23,9 @@ else
 fi
 [ -n "$ISO" ] && [ -f "$ISO" ] || die "no ISO found — build one with iso/build.sh or pass its path"
 
-rootdisk=/dev/$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" | head -1)
+rootsrc=$(findmnt -no SOURCE /)
+rootsrc=${rootsrc%%\[*}
+rootdisk=/dev/$(lsblk -no PKNAME "$rootsrc" 2>/dev/null | head -1)
 if [ -z "$TARGET" ]; then
     mapfile -t cands < <(lsblk -dpno NAME,SIZE,TRAN,TYPE | awk -v rd="$rootdisk" '$3=="usb" && $4=="disk" && $2!="0B" && $1!=rd {print $1}')
     [ "${#cands[@]}" -eq 1 ] || die "found ${#cands[@]} USB disks (${cands[*]:-none}) — pass the device explicitly"
