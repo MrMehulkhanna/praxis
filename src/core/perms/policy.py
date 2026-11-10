@@ -41,7 +41,6 @@ AUTO = [
     r"^(firefox|chromium|google-chrome-stable|brave|kitty|alacritty|foot|thunar|nautilus|dolphin|code|antigravity|pavucontrol|blueman-manager|nm-connection-editor|rofi|grim|swaync-client|hyprlock|hyprpicker|wl-copy|wl-paste)\b",
     r"^(ls|cat|head|tail|grep|rg|find|fd|wc|du|df|free|uptime|date|cal|whoami|hostname|uname|lscpu|lsblk|lsusb|lspci|ip\s+(a|addr|link|route)|ss|nvidia-smi|sensors|top\s+-bn1|ps|pgrep|which|echo|printf|env|printenv|systemctl\s+(--user\s+)?(status|list-units|is-active)|journalctl|nmcli\s+(d|dev|device|c|con|connection|g|general|r|radio)\s+(show|status|list|wifi\s+list)|bluetoothctl\s+(devices|info|show|paired-devices))\b",
     r"^(git\s+(status|log|diff|branch|show|remote|stash\s+list))\b",
-    r"^(python3?|node)\s+-c\s",
     r"^(curl|wget)\s+-[sSfL]*\s*https?://127\.0\.0\.1",
 ]
 
@@ -50,6 +49,8 @@ def classify(cmd: str) -> tuple[str, str]:
     c = cmd.strip()
     if not c:
         return "forbidden", "empty command"
+    if re.search(r"`|\$\(|<\(|>\(", c):
+        return "confirm", "contains subshell or process substitution — needs your confirmation"
     for pat, why in FORBIDDEN:
         if re.search(pat, c, re.IGNORECASE):
             return "forbidden", why
