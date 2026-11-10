@@ -58,7 +58,7 @@ LOADER="$ESP/EFI/Praxis/grubx64.efi"
 # 3. fallback loader: what firmware boots when it has no (usable) entry
 FB="$ESP/EFI/BOOT/BOOTX64.EFI"
 IS_HP=0
-if grep -qiE 'HP|Hewlett-Packard' /sys/class/dmi/id/sys_vendor 2>/dev/null; then
+if grep -qiE 'HP|Hewlett-Packard|Acer|Packard Bell|Gateway|Micro-Star|MSI|ASUSTeK|LENOVO|Dell|Gigabyte' /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/board_vendor 2>/dev/null; then
     IS_HP=1
 fi
 
@@ -88,9 +88,10 @@ command -v efibootmgr >/dev/null || { say "efibootmgr is missing"; exit 0; }
 num() { efibootmgr 2>/dev/null | awk -v IGNORECASE=1 '/^Boot[0-9A-F]{4}\*? +Praxis([ \t]|$)/ { n = substr($1, 5, 4); print n; exit }'; }
 N=$(num)
 if [ -z "$N" ]; then
-    SRC=$(findmnt -no SOURCE "$ESP")
-    DISK=/dev/$(lsblk -no PKNAME "$SRC" | head -1)
-    PART=$(cat "/sys/class/block/$(basename "$SRC")/partition" 2>/dev/null)
+    SRC=$(findmnt -no SOURCE "$ESP" | sed 's/\[.*\]//')
+    PK=$(lsblk -no PKNAME "$SRC" 2>/dev/null | head -1)
+    DISK=${PK:+/dev/$PK}
+    PART=$(cat "/sys/class/block/$(basename "$SRC")/partition" 2>/dev/null || lsblk -no PARTN "$SRC" 2>/dev/null | head -1)
     if [ "$MODE" = check ]; then say "the Praxis firmware entry is missing"
     elif [ -b "$DISK" ] && [ -n "$PART" ]; then
         efibootmgr -q -c -d "$DISK" -p "$PART" -L Praxis -l '\EFI\Praxis\grubx64.efi' && say "re-created the Praxis firmware entry"
