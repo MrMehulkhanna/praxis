@@ -437,9 +437,25 @@
   // Animation Loop
   // -------------------------------------------------------------------------
   let clock = new THREE.Clock();
+  let isHeroVisible = true;
+  let isPageVisible = !document.hidden;
+
+  if (IntersectionObserver in window) {
+    const heroObs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        isHeroVisible = entry.isIntersecting;
+      });
+    }, { threshold: 0.05 });
+    heroObs.observe(container);
+  }
+
+  document.addEventListener(visibilitychange, () => {
+    isPageVisible = !document.hidden;
+  });
 
   function animate() {
     requestAnimationFrame(animate);
+    if (!isHeroVisible || !isPageVisible) return;
 
     const elapsed = clock.getElapsedTime();
 

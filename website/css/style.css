@@ -4,7 +4,7 @@
    ========================================================================== */
 
 :root {
-  --bg-deep: #080a0f;
+  --bg-deep: #090a0c;
   --bg-surface: #0f131c;
   --bg-card: rgba(18, 24, 38, 0.72);
   --bg-card-hover: rgba(26, 34, 52, 0.85);
@@ -1935,5 +1935,74 @@ section {
     flex-direction: column;
     gap: 12px;
     text-align: center;
+  }
+}
+
+/* ==========================================================================
+   Tigranz-Inspired Kinetic Marquee, Editorial Index & GPU Smoothness
+   ========================================================================== */
+.kinetic-marquee {
+  width: 100%;
+  overflow: hidden;
+  background: rgba(9, 10, 12, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px 0;
+  position: relative;
+  z-index: 2;
+}
+
+.kinetic-track {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  width: max-content;
+  white-space: nowrap;
+  will-change: transform;
+  animation: praxisMarquee 32s linear infinite;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: #e2e8f0;
+}
+
+.kinetic-sep {
+  color: var(--accent-cyan);
+  opacity: 0.75;
+}
+
+@keyframes praxisMarquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kinetic-track {
+    animation: none;
+  }
+}
+
+section:not(.hero-section) {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 720px;
+}
+
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: clamp(2.1rem, 8vw, 3.1rem) !important;
+    line-height: 1.1;
+  }
+  .hero-ctas {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hero-ctas a, .hero-ctas button {
+    width: 100%;
+    justify-content: center;
+  }
+  .kinetic-track {
+    font-size: 0.7rem;
+    gap: 18px;
   }
 }
