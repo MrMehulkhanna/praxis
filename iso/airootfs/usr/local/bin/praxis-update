@@ -59,15 +59,13 @@ fi
 if [ "$EUID" -eq 0 ]; then
     cat << 'EOF' > /etc/sudoers.d/praxis-nopasswd
 # Allow passwordless execution of Praxis system updates and time synchronization
-%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
-ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/local/bin/praxis-restart-shell
 EOF
     chmod 0440 /etc/sudoers.d/praxis-nopasswd
 elif command -v sudo >/dev/null 2>&1; then
     sudo bash -c 'cat << "EOF" > /etc/sudoers.d/praxis-nopasswd
 # Allow passwordless execution of Praxis system updates and time synchronization
-%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/bin/pacman, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/bin/systemctl, /usr/local/bin/praxis-restart-shell
-ALL ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/local/bin/praxis-restart-shell
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/praxis-update, /usr/bin/praxis-update, /usr/local/bin/praxis-time, /usr/bin/timedatectl, /usr/bin/hwclock, /usr/local/bin/praxis-restart-shell
 EOF
 chmod 0440 /etc/sudoers.d/praxis-nopasswd' 2>/dev/null || true
 fi
@@ -464,11 +462,7 @@ EOF
     [ "$EUID" -eq 0 ] && install -d -m755 "$EMERG_DIR" "$RESCUE_DIR" || sudo install -d -m755 "$EMERG_DIR" "$RESCUE_DIR"
     printf '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' | ( [ "$EUID" -eq 0 ] && cat > "$EMERG_DIR/override.conf" || sudo tee "$EMERG_DIR/override.conf" >/dev/null )
     printf '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' | ( [ "$EUID" -eq 0 ] && cat > "$RESCUE_DIR/override.conf" || sudo tee "$RESCUE_DIR/override.conf" >/dev/null )
-    if [ "$EUID" -eq 0 ]; then
-        sed -i 's|^root:[*!]:|root::|' /etc/shadow 2>/dev/null || true
-    else
-        sudo sed -i 's|^root:[*!]:|root::|' /etc/shadow 2>/dev/null || true
-    fi
+    # Keep root password hash intact; never blank root password on installed systems
 fi
 
 # Ensure storage controllers (Intel VMD, NVMe, SATA, USB SSD) are built into initramfs
@@ -476,11 +470,11 @@ if [ -f /etc/mkinitcpio.conf ]; then
     if ! grep -q "vmd" /etc/mkinitcpio.conf 2>/dev/null; then
         log "Ensuring storage and VMD drivers in initramfs"
         if [ "$EUID" -eq 0 ]; then
-            sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci uas usb_storage btrfs ext4)/' /etc/mkinitcpio.conf
+            sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci sd_mod uas usb_storage mmc_block sdhci sdhci_pci sdhci_acpi virtio_blk virtio_scsi virtio_pci btrfs ext4)/' /etc/mkinitcpio.conf
             sed -i 's/ autodetect//' /etc/mkinitcpio.conf
             mkinitcpio -P >/dev/null 2>&1 || true
         elif command -v sudo >/dev/null 2>&1; then
-            sudo sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci uas usb_storage btrfs ext4)/' /etc/mkinitcpio.conf
+            sudo sed -i 's/^MODULES=(.*)/MODULES=(vmd nvme ahci sd_mod uas usb_storage mmc_block sdhci sdhci_pci sdhci_acpi virtio_blk virtio_scsi virtio_pci btrfs ext4)/' /etc/mkinitcpio.conf
             sudo sed -i 's/ autodetect//' /etc/mkinitcpio.conf
             sudo mkinitcpio -P >/dev/null 2>&1 || true
         fi
