@@ -46,7 +46,8 @@ praxis_copy_assets() {
         cp -a "$f" "$root/usr/local/bin/"
     done
 
-    for f in /usr/local/lib/praxis \
+    for f in /usr/local/libexec/aios-hardware \
+             /usr/local/lib/praxis \
              /usr/local/share/aios \
              /usr/lib/praxis \
              /usr/lib/tmpfiles.d/praxis.conf \

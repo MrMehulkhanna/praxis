@@ -151,6 +151,7 @@ log "6/6  permissions + mkarchiso"
     (cd "$ISO_DIR/airootfs" && find . -type f -perm -u+x -printf '  ["/%P"]="0:0:755"\n')
     echo '  ["/etc/sudoers.d/praxis-live"]="0:0:440"'
     echo '  ["/etc/sudoers.d/praxis-nopasswd"]="0:0:440"'
+    echo '  ["/usr/local/libexec/aios-hardware"]="0:0:755"'
     echo ")"
 } >> "$PROFILE/profiledef.sh"
 bash -n "$PROFILE/profiledef.sh" || die "generated profiledef.sh is invalid"

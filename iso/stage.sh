@@ -28,6 +28,7 @@ git -C "$REPO" ls-files -z -- . ':!iso' ':!.github' ':!tests' ':!desktop/wallpap
     ':!push' ':!docs/*.sh' ':!*HANDOFF*' ':!AGENTS.md' ':!GEMINI.md' \
     | rsync -a --from0 --files-from=- "$REPO/" "$DEST/opt/aios/"
 install -Dm644 "$REPO/requirements.txt" "$DEST/usr/local/share/aios/aios-requirements.txt"
+install -Dm755 "$REPO/tools/aios-hardware" "$DEST/usr/local/libexec/aios-hardware"
 if [ -n "$AURREPO" ]; then
     install -d "$DEST/opt/praxis-repo"
     cp -a "$AURREPO/." "$DEST/opt/praxis-repo/"
