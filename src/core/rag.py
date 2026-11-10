@@ -95,6 +95,18 @@ def load_file(path: pathlib.Path) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Ingest
 
+MAX_FILE_BYTES = 16 * 1024 * 1024
+_FORBIDDEN_PREFIXES = ('/etc', '/proc', '/sys', '/dev', '/root', '/run', '/boot')
+_FORBIDDEN_PARTS = {'.ssh', '.gnupg', '.git', '.aws', '.kube'}
+
+def _is_safe_ingest_path(p: pathlib.Path) -> bool:
+    s = str(p)
+    if any(s == pref or s.startswith(pref + '/') for pref in _FORBIDDEN_PREFIXES):
+        return False
+    if any(part in _FORBIDDEN_PARTS for part in p.parts):
+        return False
+    return True
+
 def ingest_path(
     path: str | pathlib.Path,
     project_id: Optional[str] = None,
@@ -105,6 +117,8 @@ def ingest_path(
     p = pathlib.Path(path).expanduser().resolve()
     if not p.exists():
         raise FileNotFoundError(p)
+    if not _is_safe_ingest_path(p):
+        raise PermissionError(f'refusing to ingest sensitive system or credential path: {p}')
 
     files: list[pathlib.Path]
     if p.is_dir():
@@ -119,7 +133,13 @@ def ingest_path(
     c = db.conn()
 
     for f in files:
+        if not _is_safe_ingest_path(f):
+            skipped.append(f'{f}: skipped sensitive path')
+            continue
         try:
+            if f.stat().st_size > MAX_FILE_BYTES:
+                skipped.append(f'{f}: exceeds 16 MiB limit')
+                continue
             title, body = load_file(f)
         except Exception as e:
             skipped.append(f"{f}: {e}")

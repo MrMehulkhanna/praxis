@@ -210,10 +210,17 @@ async def hw_set(p: HwSet):
 class Wav(BaseModel):
     path: str
 
+MAX_AUDIO_BYTES = 50 * 1024 * 1024
+
 @app.post("/api/voice/transcribe")
 async def voice_transcribe(w: Wav):
-    if not os.path.exists(w.path):
+    rp = os.path.realpath(w.path)
+    if any(rp.startswith(p) for p in ("/etc/", "/proc/", "/sys/", "/dev/", "/root/")):
+        raise HTTPException(403, "forbidden path")
+    if not os.path.isfile(rp):
         raise HTTPException(404, "no such file")
+    if os.path.getsize(rp) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "audio file exceeds 50 MiB limit")
     t0 = time.time()
     text = await stt.transcribe(w.path)
     activity.emit(None, "voice", f"heard: {text[:80]}" if text else "heard nothing", ms=int((time.time() - t0) * 1000))
