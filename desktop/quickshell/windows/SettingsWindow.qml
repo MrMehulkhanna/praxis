@@ -38,12 +38,12 @@ OverlayWindow {
     property var hw: ({})
     Process {
         id: hwProbe
-        command: ["curl", "-sf", "-m", "3", Aios.base + "/api/hardware"]
+        command: ["curl", "-sf", "-m", "3", "-H", Aios.authHeader, Aios.base + "/api/hardware"]
         stdout: StdioCollector { onStreamFinished: { try { win.hw = JSON.parse(this.text) } catch (e) {} } }
     }
     Timer { interval: 4000; running: win.open && Shell.settingsSection === "Power"; repeat: true; triggeredOnStart: true; onTriggered: if (!hwProbe.running) hwProbe.running = true }
     function hwSet(what, value) {
-        hwSetProc.command = ["curl", "-sf", "-m", "150", "-X", "POST", Aios.base + "/api/hardware/set", "-H", "Content-Type: application/json",
+        hwSetProc.command = ["curl", "-sf", "-m", "150", "-H", Aios.authHeader, "-X", "POST", Aios.base + "/api/hardware/set", "-H", "Content-Type: application/json",
                              "-d", JSON.stringify({ what, value })]
         hwSetProc.running = true
     }

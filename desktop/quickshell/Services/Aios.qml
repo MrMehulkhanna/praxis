@@ -11,6 +11,22 @@ Singleton {
 
     readonly property string base: "http://127.0.0.1:8778"
 
+    // ── backend auth ───────────────────────────────────────────────────
+    // The API refuses anything without this token (src/core/auth.py). It is
+    // a 0600 file, so being able to read it is the whole handshake.
+    property string token: ""
+    readonly property string authHeader: "Authorization: Bearer " + token
+    // for the `bash -c` pipelines below, where the value is interpolated
+    readonly property string curlAuth: '-H "Authorization: Bearer ' + token + '"'
+
+    FileView {
+        path: (Quickshell.env("AIOS_HOME") || (Quickshell.env("HOME") + "/aios")) + "/config/aios.token"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.token = text().trim()
+        onLoadFailed: root.token = ""
+    }
+
     property bool   online: false
     property string loadedModel: ""
     property string selectedModel: ""
@@ -59,7 +75,7 @@ Singleton {
     Process {
         id: statusProc
         command: ["bash", "-c",
-            `curl -sf -m 3 ${root.base}/api/status && echo && curl -sf -m 3 ${root.base}/api/models && echo && curl -sf -m 3 ${root.base}/api/settings && echo && curl -sf -m 3 ${root.base}/api/providers`]
+            `curl -sf -m 3 ${root.curlAuth} ${root.base}/api/status && echo && curl -sf -m 3 ${root.curlAuth} ${root.base}/api/models && echo && curl -sf -m 3 ${root.curlAuth} ${root.base}/api/settings && echo && curl -sf -m 3 ${root.curlAuth} ${root.base}/api/providers`]
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = this.text.trim().split("\n").filter(l => l.trim())
@@ -87,7 +103,7 @@ Singleton {
 
     // ── settings ───────────────────────────────────────────────────────
     function patch(obj) {
-        settingsProc.command = ["curl", "-sf", "-m", "5", "-X", "POST", root.base + "/api/settings",
+        settingsProc.command = ["curl", "-sf", "-m", "5", "-H", root.authHeader, "-X", "POST", root.base + "/api/settings",
                                 "-H", "Content-Type: application/json", "-d", JSON.stringify(obj)]
         settingsProc.running = true
     }
@@ -96,7 +112,7 @@ Singleton {
     function setThinking(on)  { patch({ thinking: !!on }) }
     function setCloudFor(list) { patch({ prefer_cloud_for: list }) }
     function unload() {
-        Quickshell.execDetached(["curl", "-sf", "-m", "5", "-X", "POST", root.base + "/api/unload"])
+        Quickshell.execDetached(["curl", "-sf", "-m", "5", "-H", root.authHeader, "-X", "POST", root.base + "/api/unload"])
         root.refresh()
     }
     function downloadModel(id) {
@@ -126,7 +142,7 @@ Singleton {
     // Stop a running AI job: the backend cancels the generation, which also
     // stops the model server from computing (frees the GPU at once).
     function cancelJob(id) {
-        if (id) Quickshell.execDetached(["curl", "-s", "-m", "5", "-X", "POST", root.base + "/api/jobs/" + id + "/cancel"])
+        if (id) Quickshell.execDetached(["curl", "-s", "-m", "5", "-H", root.authHeader, "-X", "POST", root.base + "/api/jobs/" + id + "/cancel"])
     }
     function stopAnswer() {
         if (!streaming) return
@@ -155,7 +171,7 @@ Singleton {
         _aiIndex = messages.count - 1
         streaming = true
         const prompt = extra ? (msg || "Look at the attached file(s).") + "\n\n" + extra : msg
-        chatProc.command = ["curl", "-sN", "-X", "POST", root.base + "/api/ask",
+        chatProc.command = ["curl", "-sN", "-H", root.authHeader, "-X", "POST", root.base + "/api/ask",
                             "-H", "Content-Type: application/json",
                             "-d", JSON.stringify({ message: prompt, conversation_id: conversationId, model: "auto", images: imgs })]
         chatProc.running = true
@@ -174,7 +190,7 @@ Singleton {
     }
     Process {
         id: forgetProc
-        command: ["curl", "-sf", "--max-time", "10", "-X", "POST", root.base + "/api/memory/forget",
+        command: ["curl", "-sf", "--max-time", "10", "-H", root.authHeader, "-X", "POST", root.base + "/api/memory/forget",
                   "-H", "Content-Type: application/json", "-d", "{\"scope\":\"conversations\"}"]
         onExited: code => Notifs.notify(code === 0 ? "Memory cleared" : "Memory not cleared",
                                         code === 0 ? "Stored conversations were forgotten."
@@ -232,7 +248,7 @@ Singleton {
         controlBusy = true
         pending = null
         addMessage("user", "! " + req, "")
-        proposeProc.command = ["curl", "-s", "-m", "180", "-X", "POST", root.base + "/api/tool/propose",
+        proposeProc.command = ["curl", "-s", "-m", "180", "-H", root.authHeader, "-X", "POST", root.base + "/api/tool/propose",
                                "-H", "Content-Type: application/json", "-d", JSON.stringify({ request: req })]
         proposeProc.running = true
     }
@@ -255,7 +271,7 @@ Singleton {
     }
     function confirmPending() {
         if (!pending) return
-        execProc.command = ["curl", "-s", "-m", "60", "-X", "POST", root.base + "/api/tool/exec",
+        execProc.command = ["curl", "-s", "-m", "60", "-H", root.authHeader, "-X", "POST", root.base + "/api/tool/exec",
                             "-H", "Content-Type: application/json", "-d", JSON.stringify({ token: pending.token })]
         execProc.running = true
         addMessage("sys", "…", "$ " + pending.cmd)
@@ -263,7 +279,7 @@ Singleton {
     }
     function cancelPending() {
         if (!pending) return
-        Quickshell.execDetached(["curl", "-s", "-X", "POST", root.base + "/api/tool/cancel",
+        Quickshell.execDetached(["curl", "-s", "-H", root.authHeader, "-X", "POST", root.base + "/api/tool/cancel",
                                  "-H", "Content-Type: application/json", "-d", JSON.stringify({ token: pending.token })])
         addMessage("sys", "Cancelled.", "$ " + pending.cmd)
         pending = null
