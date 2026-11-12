@@ -238,7 +238,28 @@ def on_battery():
     return any(read(b + "/status") == "Discharging" for b in glob.glob("/sys/class/power_supply/BAT*"))
 
 
+FIX_LID = ("install -d -m755 /etc/systemd/logind.conf.d && printf '[Login]\\nHandleLidSwitch=suspend\\nHandleLidSwitchExternalPower=suspend\\nHandleLidSwitchDocked=ignore\\nHandlePowerKey=poweroff\\nHandleSuspendKey=suspend\\n' >/etc/systemd/logind.conf.d/10-praxis.conf && systemctl restart systemd-logind")
+
 def check_power():
+    # Lid handling. The live ISO carries 10-praxis.conf in airootfs, but
+    # airootfs is the live session only, so installs before PRX-PWR-024 never
+    # received it and sat awake in a bag with the lid shut.
+    if not LIVE:
+        conf = read("/etc/systemd/logind.conf.d/10-praxis.conf")
+        if not conf:
+            add("lid", "Power", "fail", "Closing the lid does nothing",
+                "/etc/systemd/logind.conf.d/10-praxis.conf is missing, so the laptop stays awake "
+                "with the lid shut and drains the battery.",
+                "Install the Praxis lid and power-key rules", FIX_LID, root=True)
+        elif not re.search(r"^\s*HandleLidSwitch\s*=\s*suspend", conf, re.M):
+            add("lid", "Power", "warn", "The lid is not set to suspend",
+                "10-praxis.conf exists but HandleLidSwitch is not 'suspend'.",
+                "Review /etc/systemd/logind.conf.d/10-praxis.conf")
+        if sh(["pgrep", "-x", "hypridle"])[0] != 0:
+            add("hypridle", "Power", "warn", "Idle management is not running",
+                "Without hypridle the screen never dims, locks or sleeps on its own.",
+                "Start it", "hypridle & disown")
+
     bats = glob.glob("/sys/class/power_supply/BAT*")
     if not bats:
         return
