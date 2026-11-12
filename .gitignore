@@ -1,5 +1,6 @@
 # ── secrets & personal data — never commit ──────────────────────────────
 config/aios.env
+config/aios.token
 *.env
 !*.env.example
 *.key
