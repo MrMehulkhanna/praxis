@@ -492,6 +492,20 @@ fi
 
 for s in $SERVICES $EXTRA_SERVICES; do systemctl enable "$s" 2>/dev/null || echo "note: could not enable $s"; done
 systemctl enable docker.socket 2>/dev/null || true
+
+# Lid, power key and idle handling. The live ISO carries this in
+# airootfs/etc, but airootfs is the live session only — it is never copied
+# into the installed system, so every install until now shipped with
+# systemd's defaults and did nothing when the lid closed.
+install -d -m755 /etc/systemd/logind.conf.d
+cat >/etc/systemd/logind.conf.d/10-praxis.conf <<'LIDCONF'
+[Login]
+HandleLidSwitch=suspend
+HandleLidSwitchExternalPower=suspend
+HandleLidSwitchDocked=ignore
+HandlePowerKey=poweroff
+HandleSuspendKey=suspend
+LIDCONF
 # NVIDIA suspend/resume & backlight handling
 if pacman -Q nvidia-utils >/dev/null 2>&1; then
     systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
