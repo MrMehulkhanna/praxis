@@ -4,6 +4,7 @@
 # volume set (restored) and PC-control tier checks that answer 'n'.
 set -uo pipefail
 BASE=http://127.0.0.1:8778
+AUTH="Authorization: Bearer $(cat "${AIOS_HOME:-$HOME/aios}/config/aios.token" 2>/dev/null)"
 REPORT=~/aios/docs/selftest-report.md
 PASS=0; FAIL=0; SKIP=0
 : > /tmp/selftest.log
@@ -15,20 +16,20 @@ sk(){ SKIP=$((SKIP+1)); say "  ~ $1 (skip: ${2:-})"; row "$1" "skip" "${2:-}"; }
 : > /tmp/selftest.rows
 
 jqget(){ python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
-post(){ curl -s -m "${3:-180}" -X POST "$BASE$1" -H 'Content-Type: application/json' -d "$2"; }
+post(){ curl -s -m "${3:-180}" -H "$AUTH" -X POST "$BASE$1" -H 'Content-Type: application/json' -d "$2"; }
 
 say "\n=== 1. backend & endpoints ==="
-S=$(curl -s -m5 $BASE/api/status)
+S=$(curl -s -m5 -H "$AUTH" $BASE/api/status)
 [ -n "$S" ] && ok "backend /api/status" "$(echo "$S" | jqget "d['objects']") memory objs" || { no "backend down" "start aios.service"; exit 1; }
-[ -n "$(curl -s -m5 $BASE/v1/models | jqget "len(d['data'])")" ] && ok "/v1/models (OpenAI)" || no "/v1/models"
-[ -n "$(curl -s -m5 $BASE/api/hardware | jqget "d['cpu']['usage']")" ] && ok "/api/hardware" || no "/api/hardware"
-[ -n "$(curl -s -m5 "$BASE/api/providers" | jqget "len(d)")" ] && ok "/api/providers" || no "/api/providers"
+[ -n "$(curl -s -m5 -H "$AUTH" $BASE/v1/models | jqget "len(d['data'])")" ] && ok "/v1/models (OpenAI)" || no "/v1/models"
+[ -n "$(curl -s -m5 -H "$AUTH" $BASE/api/hardware | jqget "d['cpu']['usage']")" ] && ok "/api/hardware" || no "/api/hardware"
+[ -n "$(curl -s -m5 -H "$AUTH" "$BASE/api/providers" | jqget "len(d)")" ] && ok "/api/providers" || no "/api/providers"
 
 say "\n=== 2. routing decisions ==="
 declare -A EXPECT=( ["fix this python traceback"]=debug ["why is my gpu not detected"]=sysadmin \
   ["write a binary search in rust"]=code ["compare rest vs grpc tradeoffs"]=reasoning ["hello there"]=general )
 for q in "${!EXPECT[@]}"; do
-  got=$(curl -s -m5 "$BASE/api/route?text=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$q")" | jqget "d['task']")
+  got=$(curl -s -m5 -H "$AUTH" "$BASE/api/route?text=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$q")" | jqget "d['task']")
   [ "$got" = "${EXPECT[$q]}" ] && ok "route: '${q:0:28}' → $got" || no "route '${q:0:24}'" "got $got want ${EXPECT[$q]}"
 done
 
@@ -83,7 +84,7 @@ if [ -f /tmp/blur-check.png ]; then
 import base64,json,urllib.request
 b=base64.b64encode(open("/tmp/blur-check.png","rb").read()).decode()
 p={"model":"aios-vision","max_tokens":50,"messages":[{"role":"user","content":[{"type":"text","text":"One word: is there a menu or panel visible? yes or no"},{"type":"image_url","image_url":{"url":"data:image/png;base64,"+b}}]}]}
-r=urllib.request.Request("http://127.0.0.1:8778/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"})
+r=urllib.request.Request("http://127.0.0.1:8778/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+__import__("pathlib").Path(__import__("os").environ.get("AIOS_HOME",__import__("pathlib").Path.home()/"aios"),"config","aios.token").read_text().strip()})
 try:
   import socket; socket.setdefaulttimeout(200)
   print(json.load(urllib.request.urlopen(r))["choices"][0]["message"]["content"][:40])
@@ -111,7 +112,7 @@ desk task add "selftest task" >/dev/null 2>&1 && desk >/dev/null 2>&1 && ok "des
 sqlite3 ~/.local/share/desk/desk.db "DELETE FROM tasks WHERE text='selftest task';" 2>/dev/null
 
 say "\n=== 9. hardware readout ==="
-H=$(curl -s -m5 $BASE/api/hardware)
+H=$(curl -s -m5 -H "$AUTH" $BASE/api/hardware)
 gpu=$(echo "$H" | jqget "d['gpu'].get('name','?')")
 oled=$(echo "$H" | jqget "d.get('temps',{})")
 [ -n "$gpu" ] && ok "hardware: GPU=$gpu" || no "hardware GPU"
@@ -127,7 +128,7 @@ oled=$(echo "$H" | jqget "d.get('temps',{})")
   cat /tmp/selftest.rows
   echo
   echo "## Measured model speed (this machine)"
-  curl -s $BASE/api/models | python3 -c "
+  curl -s -H "$AUTH" $BASE/api/models | python3 -c "
 import json,sys
 for m in json.load(sys.stdin):
     me=m.get('measured') or {}

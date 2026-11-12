@@ -114,9 +114,24 @@ def pick_llm():
     # sends more than 8k tokens. Kept for big-GPU machines.
     # The Praxis gateway loads/unloads the model and applies the budget gate;
     # it doesn't forward response_format, so ask for the JSON in the prompt instead
-    return (ChatOpenAI(model="auto", base_url="http://127.0.0.1:8778/v1", api_key="praxis",
+    return (ChatOpenAI(model="auto", base_url="http://127.0.0.1:8778/v1", api_key=_praxis_token() or "praxis",
                        add_schema_to_system_prompt=True, dont_force_structured_output=True),
             None, "local model (slow and less reliable — add a free key for better results)", False)
+
+
+def _praxis_token() -> str:
+    """The local API's token doubles as the OpenAI-compatible API key."""
+    import pathlib as _p
+    t = os.environ.get("AIOS_TOKEN", "").strip()
+    if t:
+        return t
+    for f in (_p.Path(os.environ.get("AIOS_HOME", _p.Path.home() / "aios")) / "config" / "aios.token",
+              _p.Path("/etc/praxis/aios.token")):
+        try:
+            return f.read_text().strip()
+        except OSError:
+            pass
+    return ""
 
 
 # ── the task ────────────────────────────────────────────────────────────

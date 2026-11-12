@@ -280,7 +280,8 @@ def check_ai():
         _, log, _ = sh(["journalctl", "--user", "-u", "aios.service", "-n", "5", "--no-pager", "-o", "cat"])
         add("ai", "AI", "fail", "The AI backend has crashed", log[-400:], "Restart it", "systemctl --user restart aios.service")
         return
-    rc, out, _ = sh(["curl", "-sf", "-m", "3", "http://127.0.0.1:8778/api/status"])
+    rc, out, _ = sh(["curl", "-sf", "-m", "3", "-H", "Authorization: Bearer " + _praxis_token(),
+                     "http://127.0.0.1:8778/api/status"])
     if rc != 0:
         add("ai", "AI", "warn", f"The AI backend is not answering (service: {state})", "", "Start it", "systemctl --user restart aios.service")
         return

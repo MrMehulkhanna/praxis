@@ -160,7 +160,8 @@ saver_on() {   # [auto]
         set_refresh "$panel" low
     fi
     [ "$(kv "$SAVER" wallpaper)" = live ] && have praxis-wallpaper && praxis-wallpaper suspend >/dev/null 2>&1
-    curl -s -m 3 -X POST http://127.0.0.1:8778/api/unload >/dev/null 2>&1
+    curl -s -m 3 -H "Authorization: Bearer $(cat "${AIOS_HOME:-$HOME/aios}/config/aios.token" 2>/dev/null)" \
+         -X POST http://127.0.0.1:8778/api/unload >/dev/null 2>&1
     [ "${1:-}" = auto ] || note "Battery saver on" "Power-saver profile, 60 Hz screen, still wallpaper." battery-low
 }
 saver_off() {   # [auto]
