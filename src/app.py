@@ -22,6 +22,11 @@ LOCAL: LlamaAdapter | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global LOCAL
+    # Create the token before anything can ask for it. Generating it lazily on
+    # the first request meant a freshly booted machine had no token file, so
+    # the shell, the CLI and voice all got 401s and the desktop looked offline
+    # until someone happened to open the browser UI.
+    auth.token()
     db.conn()
     LOCAL = LlamaAdapter()
     providers.init(LOCAL)
