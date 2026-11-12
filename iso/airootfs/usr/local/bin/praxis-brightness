@@ -31,7 +31,7 @@ pick_device() {
         [ -e "$b/brightness" ] || continue
         name=${b##*/}; type=$(cat "$b/type" 2>/dev/null); score=1
         case "$name" in
-            *wmi_ec*|nvidia_wmi_ec_backlight)
+            *wmi_ec*)                      # covers nvidia_wmi_ec_backlight
                 score=25 ;;
             *)
                 case "$type" in
