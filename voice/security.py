@@ -120,7 +120,8 @@ def _h_open_app(m, manifest):
     return f"Opening {spoken}"
 
 def _h_unload_model(m, manifest):
-    _run(["curl", "-sX", "POST", "http://127.0.0.1:8778/api/unload"])
+    _run(["curl", "-sX", "POST", "-H", "Authorization: Bearer " + _praxis_token(),
+          "http://127.0.0.1:8778/api/unload"])
     return "Model unloaded, VRAM freed"
 
 def _h_lock_screen(m, manifest):
@@ -151,10 +152,30 @@ def _h_help(m, manifest):
 # ── backend-backed handlers (all read-only or allow-listed setters) ─────
 import urllib.request as _ur
 
+# ── backend auth ────────────────────────────────────────────────────────
+# The API requires a token (see ~/aios/src/core/auth.py). It lives in a
+# 0600 file that only this user can read, so reading it is the whole
+# handshake — no prompt, no config.
+def _praxis_token() -> str:
+    import os as _o, pathlib as _p
+    t = _o.environ.get("AIOS_TOKEN", "").strip()
+    if t:
+        return t
+    for f in (_p.Path(_o.environ.get("AIOS_HOME", _p.Path.home() / "aios")) / "config" / "aios.token",
+              _p.Path("/etc/praxis/aios.token")):
+        try:
+            return f.read_text().strip()
+        except OSError:
+            pass
+    return ""
+
+_AUTH = {"Authorization": "Bearer " + _praxis_token()}
+
+
 def _api(path, data=None, timeout=8):
     body = json.dumps(data).encode() if data is not None else None
     req = _ur.Request("http://127.0.0.1:8778" + path, data=body,
-                      headers={"Content-Type": "application/json"} if body else {})
+                      headers={**_AUTH, "Content-Type": "application/json"} if body else dict(_AUTH))
     with _ur.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 

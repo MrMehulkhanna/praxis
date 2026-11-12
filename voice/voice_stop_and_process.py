@@ -23,6 +23,26 @@ WAV = "/tmp/aios-voice.wav"
 PIDFILE = "/tmp/aios-voice.pid"
 AIOS_URL = "http://127.0.0.1:8778/api/agent"   # agent: gathers evidence for system questions
 STT_URL  = "http://127.0.0.1:8778/api/voice/transcribe"
+
+# ── backend auth ────────────────────────────────────────────────────────
+# The API requires a token (see ~/aios/src/core/auth.py). It lives in a
+# 0600 file that only this user can read, so reading it is the whole
+# handshake — no prompt, no config.
+def _praxis_token() -> str:
+    import os as _o, pathlib as _p
+    t = _o.environ.get("AIOS_TOKEN", "").strip()
+    if t:
+        return t
+    for f in (_p.Path(_o.environ.get("AIOS_HOME", _p.Path.home() / "aios")) / "config" / "aios.token",
+              _p.Path("/etc/praxis/aios.token")):
+        try:
+            return f.read_text().strip()
+        except OSError:
+            pass
+    return ""
+
+_AUTH = {"Authorization": "Bearer " + _praxis_token()}
+
 DEFAULT_MODEL = "auto"   # server resolves to the one model selected everywhere
 
 def stop_recording():
@@ -40,7 +60,7 @@ def transcribe(path: str) -> str:
     # warm whisper inside the backend (no per-utterance model load); local fallback if it is down
     try:
         req = urllib.request.Request(STT_URL, data=json.dumps({"path": path}).encode(),
-                                     headers={"Content-Type": "application/json"})
+                                     headers={**_AUTH, "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             return json.loads(resp.read()).get("text", "").strip()
     except Exception:
@@ -56,7 +76,7 @@ def ask_aios(question: str, model: str = DEFAULT_MODEL) -> str:
         "model": model,
     }).encode()
     req = urllib.request.Request(
-        AIOS_URL, data=body, headers={"Content-Type": "application/json"},
+        AIOS_URL, data=body, headers={**_AUTH, "Content-Type": "application/json"},
     )
     out = []
     try:

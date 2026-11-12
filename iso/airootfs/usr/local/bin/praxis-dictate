@@ -18,6 +18,26 @@ import json, os, re, shutil, signal, subprocess, sys, time, urllib.request
 RUN = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "praxis")
 STATE, PIDF, WAV = (os.path.join(RUN, n) for n in ("dictate.state", "dictate.pid", "dictate.wav"))
 API = "http://127.0.0.1:8778"
+
+# ── backend auth ────────────────────────────────────────────────────────
+# The API requires a token (see ~/aios/src/core/auth.py). It lives in a
+# 0600 file that only this user can read, so reading it is the whole
+# handshake — no prompt, no config.
+def _praxis_token() -> str:
+    import os as _o, pathlib as _p
+    t = _o.environ.get("AIOS_TOKEN", "").strip()
+    if t:
+        return t
+    for f in (_p.Path(_o.environ.get("AIOS_HOME", _p.Path.home() / "aios")) / "config" / "aios.token",
+              _p.Path("/etc/praxis/aios.token")):
+        try:
+            return f.read_text().strip()
+        except OSError:
+            pass
+    return ""
+
+_AUTH = {"Authorization": "Bearer " + _praxis_token()}
+
 VENV_PY = os.path.expanduser("~/aios/.venv/bin/python3")
 MAX_S = int(os.environ.get("PRAXIS_DICTATE_MAX", "60"))
 WHISPER = os.environ.get("AIOS_WHISPER_MODEL", "base")
@@ -142,7 +162,7 @@ def transcribe():
         return ""
     try:                                           # warm Whisper inside the backend
         req = urllib.request.Request(f"{API}/api/voice/transcribe", data=json.dumps({"path": WAV}).encode(),
-                                     headers={"Content-Type": "application/json"})
+                                     headers={**_AUTH, "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=90) as r:
             return json.loads(r.read()).get("text", "").strip()
     except Exception:
@@ -205,7 +225,7 @@ def ask_command(spoken):
         ],
     }
     req = urllib.request.Request(f"{API}/v1/chat/completions", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={**_AUTH, "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as r:
         out = json.loads(r.read())["choices"][0]["message"]["content"]
     out = re.sub(r"<think>.*?</think>", "", out, flags=re.S)
