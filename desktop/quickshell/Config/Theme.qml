@@ -49,6 +49,21 @@ Singleton {
     readonly property color hover:       Qt.rgba(1, 1, 1, 0.07)
     readonly property color pressed:     Qt.rgba(1, 1, 1, 0.12)
     readonly property color shadow:      Qt.rgba(0, 0, 0, 0.45)
+
+    // ── elevation ──────────────────────────────────────────────────────
+    // One shadow token made every surface sit on the same plane. Three
+    // levels give the stack an order the eye can read: the bar and dock rest
+    // just above the wallpaper, panels float over windows, modals sit on top
+    // of everything. Pair each with its matching blur radius and y-offset.
+    readonly property color elev1:       Qt.rgba(0, 0, 0, 0.28)   // bar, dock
+    readonly property color elev2:       Qt.rgba(0, 0, 0, 0.42)   // panels, popovers
+    readonly property color elev3:       Qt.rgba(0, 0, 0, 0.58)   // modals, dialogs
+    readonly property int   elev1Blur:   12
+    readonly property int   elev2Blur:   24
+    readonly property int   elev3Blur:   40
+    readonly property int   elev1Y:      2
+    readonly property int   elev2Y:      6
+    readonly property int   elev3Y:      12
     readonly property color scrim:       Qt.rgba(0, 0, 0, 0.35)
 
     function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
@@ -65,8 +80,10 @@ Singleton {
     readonly property int spaceLg: 16
     readonly property int spaceXl: 24
 
-    readonly property int barHeight:   38
-    readonly property int barMargin:   8
+    // 1440x810 logical is a small canvas; 38 + 8 spent 5.7 % of the height on
+    // the bar alone. 34 + 6 still clears a 13 px label with room to spare.
+    readonly property int barHeight:   34
+    readonly property int barMargin:   6
     readonly property int dockIcon:    Settings.dockIconSize
     readonly property int dockMargin:  10
     readonly property int dockWindowGap: 16

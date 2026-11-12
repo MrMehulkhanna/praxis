@@ -123,14 +123,22 @@ end
 -- Refer to https://wiki.hypr.land/Configuring/Basics/Variables/
 hl.config({
     general = {
-        gaps_in  = 5,
-        gaps_out = 20,
+        -- The logical workspace is small (a 2880x1620 panel at scale 2 is
+        -- 1440x810), so gaps are expensive: gaps_out = 20 cost 40 px of 810,
+        -- and with the bar that was over 10 % of the screen before a single
+        -- window pixel. Half the outer gap, nudge the inner one up so windows
+        -- still read as separate, and the layout breathes without the waste.
+        gaps_in  = 6,
+        gaps_out = 10,
 
         border_size = 2,
 
+        -- Praxis blue -> purple, the same accents Config/Theme.qml uses for the
+        -- shell. These were still Hyprland's stock cyan/green sample gradient,
+        -- which made a themed desktop look like an untouched default config.
         col = {
-            active_border   = { colors = {"rgba(33ccffee)", "rgba(00ff99ee)"}, angle = 45 },
-            inactive_border = "rgba(595959aa)",
+            active_border   = { colors = {"rgba(7aa2f7ee)", "rgba(bb9af7ee)"}, angle = 45 },
+            inactive_border = "rgba(1f2532aa)",
         },
 
         -- Resize windows by hovering a window edge/border and dragging — the cursor
@@ -153,12 +161,16 @@ hl.config({
         active_opacity   = 1.0,
         inactive_opacity = 0.94,
 
+        -- Depth is what makes a flat compositor read as layered rather than
+        -- painted on. A slightly wider, lower shadow separates the focused
+        -- window from the wallpaper without the halo a large range gives.
         shadow = {
-            enabled      = true,
-            range        = 10,           -- moderate, doesn't spill into dock hover zone
-            render_power = 3,
-            color        = 0xcc0a0a0a,
-            offset       = { 0, 4 },
+            enabled       = true,
+            range         = 16,
+            render_power  = 3,
+            color         = 0xd0070709,
+            color_inactive = 0x70070709,
+            offset        = { 0, 6 },
         },
 
         -- Frosted glass but calmer — 5/2 keeps GPU cool and stops paint cascades
