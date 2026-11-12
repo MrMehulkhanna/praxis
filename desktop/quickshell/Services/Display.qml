@@ -169,8 +169,17 @@ done`]
             confLines.push("    on-timeout = systemctl suspend")
             confLines.push("}")
         }
-        const confText = confLines.join("\\n")
-        const cmd = 'RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis"; mkdir -p "$RUN"; printf \'' + confText + '\' > "$RUN/hypridle.conf"; pkill -x hypridle 2>/dev/null || true; sleep 0.2; setsid hypridle -c "$RUN/hypridle.conf" >/dev/null 2>&1 &'
+        // The config contains single quotes (hyprctl dispatch '...'), so it can
+        // never be pasted into a shell string: printf '<conf>' ends at the first
+        // one and bash dies with a syntax error. execDetached swallowed it, so
+        // Sleep-when-idle, Screen-off-when-idle and OLED care silently did
+        // nothing. base64 has no quotes, so the text never meets the parser.
+        const confText = confLines.join("\n")
+        const b64 = Qt.btoa(confText)
+        const cmd = 'set -e; RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis"; mkdir -p "$RUN"; '
+                  + 'printf %s ' + b64 + ' | base64 -d > "$RUN/hypridle.conf"; '
+                  + 'pkill -x hypridle 2>/dev/null || true; sleep 0.2; '
+                  + 'setsid hypridle -c "$RUN/hypridle.conf" >/dev/null 2>&1 &'
         Quickshell.execDetached(["bash", "-c", cmd])
         root.hypridleOn = true
         careLater.start()
