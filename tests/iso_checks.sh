@@ -152,6 +152,8 @@ check "installer icon is shipped"   bash -c "grep -q '^Icon=praxis-install$' '$A
 check "os-release logo is shipped"  test -s "$AIRO/usr/share/icons/hicolor/scalable/apps/$(sed -n 's/^LOGO=//p' "$AIRO/usr/lib/praxis/os-release").svg"
 check "os-release says Praxis"   grep -q '^ID=praxis' "$AIRO/usr/lib/praxis/os-release"
 check "tmpfiles keeps branding"  grep -q '/usr/lib/praxis/os-release' "$AIRO/usr/lib/tmpfiles.d/praxis.conf"
+check "an icon theme ships (or every app gets the generic X11 icon)" bash -c "grep -qx papirus-icon-theme '$REPO/iso/packages.x86_64' && grep -qx adwaita-icon-theme '$REPO/iso/packages.x86_64'"
+check "GTK is pointed at that icon theme" bash -c "grep -q gtk-icon-theme-name '$AIRO/etc/skel/.config/gtk-3.0/settings.ini'"
 check "no /home/mk in the image" bash -c "! grep -rIl '/home/mk' '$AIRO' '$REPO/desktop'"
 
 section "packages"

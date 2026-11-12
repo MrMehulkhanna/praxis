@@ -26,6 +26,9 @@ polkit-kde-agent
 firefox
 kitty
 thunar
+hicolor-icon-theme
+adwaita-icon-theme
+papirus-icon-theme
 rofi
 pavucontrol
 network-manager-applet
