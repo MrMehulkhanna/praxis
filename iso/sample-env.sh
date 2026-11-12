@@ -11,13 +11,14 @@ set -euo pipefail
 ISO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$ISO_DIR/.." && pwd)
 BUILD=${PRAXIS_BUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/praxis-iso}
-ISO=${1:-$(ls -t "$BUILD"/out/praxis-*.iso 2>/dev/null | head -1 || true)}
+ISO=${1:-$(find "$BUILD/out" -maxdepth 1 -name "praxis-*.iso" 2>/dev/null | head -1 || true)}
 
 ENV_DIR=${SAMPLE_ENV_DIR:-/var/tmp/praxis-sample-env}
 MNT_ISO="$ENV_DIR/iso"
 MNT_SFS="$ENV_DIR/squashfs"
 mkdir -p "$ENV_DIR" "$MNT_ISO" "$MNT_SFS"
 
+# shellcheck disable=SC2329
 cleanup() {
     sudo umount -l "$MNT_SFS" 2>/dev/null || true
     sudo umount -l "$MNT_ISO" 2>/dev/null || true
@@ -49,7 +50,7 @@ PASS=0
 FAIL=0
 check() {
     local desc=$1; shift
-    if eval "$@"; then
+    if bash -c "$1"; then
         printf "  ✓ %s\n" "$desc"
         PASS=$((PASS + 1))
     else
