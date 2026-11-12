@@ -16,6 +16,26 @@ context so follow-ups actually follow up. Arrow keys work (readline), and
 import json, os, pathlib, readline, subprocess, sys, time, urllib.request
 
 BASE  = "http://127.0.0.1:8778"
+
+# ── backend auth ────────────────────────────────────────────────────────
+# The API requires a token (see ~/aios/src/core/auth.py). It lives in a
+# 0600 file that only this user can read, so reading it is the whole
+# handshake — no prompt, no config.
+def _praxis_token() -> str:
+    import os as _o, pathlib as _p
+    t = _o.environ.get("AIOS_TOKEN", "").strip()
+    if t:
+        return t
+    for f in (_p.Path(_o.environ.get("AIOS_HOME", _p.Path.home() / "aios")) / "config" / "aios.token",
+              _p.Path("/etc/praxis/aios.token")):
+        try:
+            return f.read_text().strip()
+        except OSError:
+            pass
+    return ""
+
+_AUTH = {"Authorization": "Bearer " + _praxis_token()}
+
 HIST  = pathlib.Path.home() / ".praxis-ai-shell.history"
 CONVO = f"shell-{int(time.time())}"
 MODEL = "auto"
@@ -30,7 +50,7 @@ def api(path: str, data=None):
     body = json.dumps(data).encode() if data is not None else None
     req = urllib.request.Request(BASE + path, data=body,
         method="POST" if body else "GET",
-        headers={"Content-Type": "application/json"} if body else {})
+        headers={**_AUTH, "Content-Type": "application/json"} if body else dict(_AUTH))
     with urllib.request.urlopen(req, timeout=120) as r:
         return r.read().decode()
 

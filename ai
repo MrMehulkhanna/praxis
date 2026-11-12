@@ -21,6 +21,26 @@ Exit codes: 0 ok · 1 error · 2 usage · 3 backend down · 4 refused/denied
 import glob, json, os, pathlib, shutil, subprocess, sys, time, urllib.error, urllib.request
 
 BASE = "http://127.0.0.1:8778"
+
+# ── backend auth ────────────────────────────────────────────────────────
+# The API requires a token (see ~/aios/src/core/auth.py). It lives in a
+# 0600 file that only this user can read, so reading it is the whole
+# handshake — no prompt, no config.
+def _praxis_token() -> str:
+    import os as _o, pathlib as _p
+    t = _o.environ.get("AIOS_TOKEN", "").strip()
+    if t:
+        return t
+    for f in (_p.Path(_o.environ.get("AIOS_HOME", _p.Path.home() / "aios")) / "config" / "aios.token",
+              _p.Path("/etc/praxis/aios.token")):
+        try:
+            return f.read_text().strip()
+        except OSError:
+            pass
+    return ""
+
+_AUTH = {"Authorization": "Bearer " + _praxis_token()}
+
 HOME = pathlib.Path(os.environ.get("AIOS_HOME", pathlib.Path.home() / "aios"))
 D, B, R, G, Y, C, M, RST = "\033[2m", "\033[1m", "\033[31m", "\033[32m", "\033[33m", "\033[36m", "\033[35m", "\033[0m"
 JSON = "--json" in sys.argv
@@ -33,7 +53,7 @@ def die(msg, code=1):
 def api(path, data=None, timeout=15, method=None):
     body = json.dumps(data).encode() if data is not None else None
     req = urllib.request.Request(BASE + path, data=body, method=method or ("POST" if body is not None else "GET"),
-                                 headers={"Content-Type": "application/json"} if body is not None else {})
+                                 headers={**_AUTH, "Content-Type": "application/json"} if body is not None else dict(_AUTH))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
@@ -60,7 +80,7 @@ IMAGES: list = []
 def stream(path, message, model, conversation, show_meta=True):
     body = json.dumps({"message": message, "conversation_id": conversation, "model": model,
                        "images": [str(pathlib.Path(i).expanduser().resolve()) for i in IMAGES]}).encode()
-    req = urllib.request.Request(BASE + path, data=body, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(BASE + path, data=body, headers={**_AUTH, "Content-Type": "application/json"})
     pending = None
     try:
         with urllib.request.urlopen(req, timeout=None) as resp:
@@ -163,7 +183,7 @@ def cmd_status():
 
 def cmd_logs(follow):
     if follow:
-        req = urllib.request.Request(BASE + "/api/activity/stream")
+        req = urllib.request.Request(BASE + "/api/activity/stream", headers=dict(_AUTH))
         try:
             with urllib.request.urlopen(req, timeout=None) as resp:
                 ev = "message"
@@ -261,7 +281,7 @@ def cmd_doctor():
     checks = []
     def add(name, ok, fix=""): checks.append((name, ok, fix))
     try:
-        with urllib.request.urlopen(BASE + "/api/status", timeout=3) as r: s = json.loads(r.read()); add("backend reachable on :8778", True)
+        with urllib.request.urlopen(urllib.request.Request(BASE + "/api/status", headers=dict(_AUTH)), timeout=3) as r: s = json.loads(r.read()); add("backend reachable on :8778", True)
     except Exception: s = None; add("backend reachable on :8778", False, "systemctl --user start aios.service")
     add("aios.service enabled", subprocess.run(["systemctl", "--user", "is-enabled", "aios.service"], capture_output=True, text=True).stdout.strip() == "enabled", "systemctl --user enable aios.service")
     add("llama-server binary", ((HOME / "llama-server").exists() and os.access(HOME / "llama-server", os.X_OK)) or bool(shutil.which("llama-server")), "sudo pacman -S llama-cpp ggml-vulkan")
