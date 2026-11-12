@@ -19,7 +19,10 @@ jobs:
           python-version: "3.12"
       - name: Unit tests
         run: |
-          pip install pytest httpx
+          # The API tests build a TestClient, so the web stack has to be
+          # here. Not -r requirements.txt: that drags in onnxruntime and
+          # faster-whisper, hundreds of MB the unit tests never touch.
+          pip install pytest httpx fastapi 'pydantic>=2' 'uvicorn>=0.34'
           python -m pytest tests/ -q
       - name: Dependencies resolve
         run: pip install --dry-run -r requirements.txt
