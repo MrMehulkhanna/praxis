@@ -102,3 +102,5 @@ intel-media-driver
 libva-intel-driver
 # lets iso/test-live.sh drive the live session in a VM; its udev rule starts it only inside one
 qemu-guest-agent
+gst-plugins-good
+gst-libav

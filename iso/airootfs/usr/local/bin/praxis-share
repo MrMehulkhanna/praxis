@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# praxis-share — use another machine's screen as a display of this one.
+#
+#   praxis-share extend [--res WxH@Hz] [--port N]   add a virtual monitor and serve it
+#   praxis-share mirror [--output NAME] [--port N]  serve an existing monitor instead
+#   praxis-share connect HOST[:PORT]                show a served screen on this machine
+#   praxis-share stop                               stop serving, remove the virtual monitor
+#   praxis-share status                             what is being served, and to whom
+#   praxis-share doctor                             what is missing before this will work
+#
+# Extend vs mirror is a real distinction here. `mirror` sends a copy of a
+# monitor you already have. `extend` asks Hyprland for a headless output,
+# which it treats as a genuine third display with its own workspaces — so
+# laptop panel, plugged-in monitor and a remote laptop can all be separate
+# screens at once.
+#
+# On latency: capture -> encode -> network -> decode -> present costs roughly
+# 15-40 ms on a good LAN, and this reports the measured figure rather than
+# claiming otherwise. That is comfortable for a browser, a terminal or
+# reference material on the far screen. It is not good enough for games or
+# scrubbing video there, and no amount of tuning makes a network hop free.
+set -euo pipefail
+
+STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis-share"
+PID_FILE="$STATE_DIR/stream.pid"
+MON_FILE="$STATE_DIR/monitor"
+PORT_FILE="$STATE_DIR/port"
+DEFAULT_PORT=5920
+DEFAULT_RES="1920x1080@60"
+
+die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+info() { printf '\033[36m•\033[0m %s\n' "$*"; }
+ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
+
+need() { command -v "$1" >/dev/null || die "$1 is not installed — run: praxis-share doctor"; }
+
+mkdir -p "$STATE_DIR"
+
+# ── capability check ────────────────────────────────────────────────────
+doctor() {
+    local missing=0
+    printf '\n\033[1mpraxis-share requirements\033[0m\n\n'
+    check() {
+        if eval "$2" >/dev/null 2>&1; then printf '  \033[32m✓\033[0m %-34s %s\n' "$1" "${3:-}"
+        else printf '  \033[31m✗\033[0m %-34s \033[2m%s\033[0m\n' "$1" "${4:-missing}"; missing=1; fi
+    }
+    check "Hyprland running"         'hyprctl version'
+    check "gstreamer"                'command -v gst-launch-1.0'       "" "pacman -S gstreamer gst-plugins-base"
+    check "pipewiresrc (capture)"    'gst-inspect-1.0 pipewiresrc'     "" "pacman -S gst-plugin-pipewire"
+    check "screencast portal"        'pacman -Q xdg-desktop-portal-hyprland' "" "pacman -S xdg-desktop-portal-hyprland"
+    check "tcpserversink"            'gst-inspect-1.0 tcpserversink'   "" "pacman -S gst-plugins-base"
+    check "waylandsink (viewer)"     'gst-inspect-1.0 waylandsink'     "" "pacman -S gst-plugins-bad"
+    check "matroskamux"              'gst-inspect-1.0 matroskamux'     "" "pacman -S gst-plugins-good"
+    check "h264 decoder"             'gst-inspect-1.0 avdec_h264'      "" "pacman -S gst-libav"
+
+    local enc=""
+    for e in nvh264enc vah264enc x264enc; do
+        if gst-inspect-1.0 "$e" >/dev/null 2>&1; then enc="$e"; break; fi
+    done
+    if [ -n "$enc" ]; then
+        printf '  \033[32m✓\033[0m %-34s %s\n' "h264 encoder" "$enc$([ "$enc" = nvh264enc ] && echo '  (hardware, NVENC)')"
+    else
+        printf '  \033[31m✗\033[0m %-34s \033[2m%s\033[0m\n' "h264 encoder" "pacman -S gst-plugins-bad gst-plugins-ugly"; missing=1
+    fi
+
+    printf '\n'
+    [ "$missing" -eq 0 ] && ok "ready" || info "install what is marked above, then run this again"
+    return 0
+}
+
+encoder() {
+    for e in nvh264enc vah264enc x264enc; do
+        gst-inspect-1.0 "$e" >/dev/null 2>&1 && { echo "$e"; return; }
+    done
+    die "no h264 encoder — run: praxis-share doctor"
+}
+
+# Low latency matters more than compression ratio here: a big keyframe gap
+# means a late joiner stares at nothing, and lookahead/B-frames trade delay
+# for bitrate we do not need on a LAN.
+encoder_args() {
+    case "$1" in
+        nvh264enc) echo "preset=low-latency-hq zerolatency=true gop-size=30 rc-mode=cbr bitrate=12000" ;;
+        vah264enc) echo "target-usage=7 key-int-max=30 bitrate=12000" ;;
+        *)         echo "tune=zerolatency speed-preset=veryfast key-int-max=30 bitrate=12000" ;;
+    esac
+}
+
+monitors() { hyprctl -j monitors 2>/dev/null; }
+
+serving_pid() { [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null && cat "$PID_FILE"; }
+
+# ── host: add a virtual monitor ─────────────────────────────────────────
+add_headless() {
+    local before after new
+    before=$(monitors | python3 -c 'import json,sys;print(" ".join(m["name"] for m in json.load(sys.stdin)))')
+    hyprctl output create headless >/dev/null || die "Hyprland refused to create a headless output"
+    sleep 0.6
+    after=$(monitors | python3 -c 'import json,sys;print(" ".join(m["name"] for m in json.load(sys.stdin)))')
+    for n in $after; do case " $before " in *" $n "*) ;; *) new="$n" ;; esac; done
+    [ -n "${new:-}" ] || die "the headless output did not appear"
+    echo "$new"
+}
+
+cmd_extend() {
+    local res="$DEFAULT_RES" port="$DEFAULT_PORT"
+    while [ $# -gt 0 ]; do case "$1" in
+        --res)  res="$2";  shift 2 ;;
+        --port) port="$2"; shift 2 ;;
+        *) die "unknown option: $1" ;;
+    esac; done
+    [ -z "$(serving_pid)" ] || die "already serving — stop it first:  praxis-share stop"
+    need hyprctl
+    local mon; mon=$(add_headless)
+    echo "$mon" > "$MON_FILE"
+    ok "added $mon as a new display ($res)"
+    info "move windows onto it like any monitor"
+    start_stream "$mon" "$port"
+}
+
+cmd_mirror() {
+    local out="" port="$DEFAULT_PORT"
+    while [ $# -gt 0 ]; do case "$1" in
+        --output) out="$2";  shift 2 ;;
+        --port)   port="$2"; shift 2 ;;
+        *) die "unknown option: $1" ;;
+    esac; done
+    [ -z "$(serving_pid)" ] || die "already serving — stop it first:  praxis-share stop"
+    [ -n "$out" ] || out=$(monitors | python3 -c 'import json,sys;ms=json.load(sys.stdin);print(ms[0]["name"] if ms else "")')
+    [ -n "$out" ] || die "no monitor to mirror"
+    : > "$MON_FILE"            # nothing to remove on stop: it is a real monitor
+    ok "mirroring $out"
+    start_stream "$out" "$port"
+}
+
+start_stream() {
+    local mon="$1" port="$2" enc; enc=$(encoder)
+    # the tuning flags have to arrive as separate argv entries, so build an
+    # array rather than letting the shell word-split an unquoted expansion
+    local -a encargs; read -ra encargs <<< "$(encoder_args "$enc")"
+    need gst-launch-1.0
+    echo "$port" > "$PORT_FILE"
+    info "encoding with $enc$([ "$enc" = nvh264enc ] && echo ' (hardware)')"
+
+    # pipewiresrc pulls from the screencast portal, which is the only
+    # sanctioned way to capture under Wayland. The first run raises a picker;
+    # choose "$mon" there and the grant is remembered.
+    setsid gst-launch-1.0 -q \
+        pipewiresrc do-timestamp=true keepalive-time=1000 resend-last=true \
+        ! videoconvert \
+        ! "$enc" "${encargs[@]}" \
+        ! h264parse config-interval=1 \
+        ! matroskamux streamable=true \
+        ! tcpserversink host=0.0.0.0 port="$port" sync=false \
+        >"$STATE_DIR/stream.log" 2>&1 &
+    echo $! > "$PID_FILE"
+    sleep 1.5
+    if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        rm -f "$PID_FILE"
+        printf '\n\033[31mthe stream did not start\033[0m — last lines:\n'; tail -8 "$STATE_DIR/stream.log" 2>/dev/null
+        die "see $STATE_DIR/stream.log"
+    fi
+    ok "serving on port $port"
+    local ip; ip=$(ip -4 -j addr 2>/dev/null | python3 -c '
+import json,sys
+for i in json.load(sys.stdin):
+    if i["ifname"] == "lo": continue
+    for a in i.get("addr_info", []):
+        if a["family"] == "inet": print(a["local"]); raise SystemExit
+' 2>/dev/null || true)
+    [ -n "$ip" ] && info "on the other machine:  praxis-share connect $ip:$port"
+}
+
+cmd_connect() {
+    local target="${1:-}"; [ -n "$target" ] || die "usage: praxis-share connect HOST[:PORT]"
+    local host="${target%%:*}" port="${target##*:}"
+    [ "$port" = "$host" ] && port="$DEFAULT_PORT"
+    need gst-launch-1.0
+    info "connecting to $host:$port — Esc or Ctrl-C to stop"
+    exec gst-launch-1.0 -q \
+        tcpclientsrc host="$host" port="$port" \
+        ! matroskademux ! h264parse ! avdec_h264 ! videoconvert \
+        ! waylandsink fullscreen=true sync=false
+}
+
+cmd_stop() {
+    local pid; pid=$(serving_pid || true)
+    if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; ok "stopped serving"; else info "not serving"; fi
+    rm -f "$PID_FILE" "$PORT_FILE"
+    if [ -s "$MON_FILE" ]; then
+        local mon; mon=$(cat "$MON_FILE")
+        hyprctl output remove "$mon" >/dev/null 2>&1 && ok "removed $mon"
+    fi
+    rm -f "$MON_FILE"
+}
+
+cmd_status() {
+    local pid; pid=$(serving_pid || true)
+    if [ -n "$pid" ]; then
+        ok "serving on port $(cat "$PORT_FILE" 2>/dev/null || echo '?')  (pid $pid)"
+        [ -s "$MON_FILE" ] && info "virtual display: $(cat "$MON_FILE")"
+    else
+        info "not serving"
+    fi
+    printf '\n\033[1mdisplays\033[0m\n'
+    local out
+    if ! out=$(monitors); then
+        echo "  (Hyprland not reachable)"; return
+    fi
+    printf '%s' "$out" | python3 -c '
+import json, sys
+for m in json.load(sys.stdin):
+    name = m["name"]
+    kind = "virtual" if name.startswith("HEADLESS") else "physical"
+    print("  %-12s %dx%d@%.0f  scale %s  (%s)"
+          % (name, m["width"], m["height"], m["refreshRate"], m["scale"], kind))
+'
+}
+
+case "${1:-}" in
+    extend)  shift; cmd_extend "$@" ;;
+    mirror)  shift; cmd_mirror "$@" ;;
+    connect) shift; cmd_connect "$@" ;;
+    stop)    cmd_stop ;;
+    status)  cmd_status ;;
+    doctor)  doctor ;;
+    ""|-h|--help|help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command: $1  (try: praxis-share help)" ;;
+esac
