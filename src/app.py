@@ -1,8 +1,8 @@
 """AIOS — FastAPI server. One process, everything inside."""
 import asyncio, json, os, pathlib, time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from core.store  import db
@@ -10,6 +10,7 @@ from core.context import engine
 from core.gateway.iface import Request as GReq
 from core.gateway import gate
 from core.perms import policy
+from core import auth
 from core.tools import exec as tools
 from core import activity, router, providers, hardware, agent, rag
 from core.voice import transcribe as stt
@@ -31,6 +32,28 @@ async def lifespan(app: FastAPI):
     await LOCAL.unload_now()
 
 app = FastAPI(title="AIOS", lifespan=lifespan)
+
+# ── front door ──────────────────────────────────────────────────────────
+# Loopback is not a boundary: anything running as this user can reach the
+# API, and the API reads the memory store and runs commands. See core/auth.
+PUBLIC_PATHS = {"/", "/favicon.ico"}
+
+@app.middleware("http")
+async def front_door(request: Request, call_next):
+    if not auth.host_ok(request.headers.get("host")):
+        # 421: this server does not answer for that name (blocks DNS rebinding)
+        return JSONResponse({"detail": "Praxis answers on loopback only."}, status_code=421)
+    if not auth.origin_ok(request.headers.get("origin")):
+        return JSONResponse({"detail": "Cross-origin requests from untrusted origins are blocked."}, status_code=403)
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > 10 * 1024 * 1024:
+        return JSONResponse({"detail": "Payload too large (10 MB maximum)."}, status_code=413)
+    if request.url.path not in PUBLIC_PATHS and not auth.verify(auth.presented(request.headers)):
+        return JSONResponse(
+            {"detail": "Missing or wrong token. Send 'Authorization: Bearer <token>' "
+                       "from ~/aios/config/aios.token (OpenAI-compatible clients: use it as the API key)."},
+            status_code=401)
+    return await call_next(request)
 
 # ── model registry / selection ──────────────────────────────────────────
 def measured_speed() -> dict[str, dict]:
@@ -675,8 +698,30 @@ def memory_forget(req: ForgetReq):
         raise HTTPException(400, str(e))
 
 # ── serve UI ────────────────────────────────────────────────────────────
+# The page is served without a token (it is how you get one) and hands the
+# token to its own fetches. Safe because the Host check above means a rebound
+# origin never reaches this handler, and no CORS headers are ever sent.
+_TOKEN_SHIM = """<script>
+(() => {
+  const T = "%TOKEN%", f = window.fetch;
+  window.fetch = (input, init = {}) => {
+    const u = String(typeof input === "string" ? input : input.url);
+    if (u.startsWith("/") || u.startsWith(location.origin)) {
+      init = { ...init, headers: { ...(init.headers || {}), "Authorization": "Bearer " + T } };
+    }
+    return f(input, init);
+  };
+})();
+</script>"""
+
 @app.get("/")
 def root():
     if UI_FILE.exists():
-        return FileResponse(UI_FILE)
+        html = UI_FILE.read_text()
+        shim = _TOKEN_SHIM.replace("%TOKEN%", auth.token())
+        if "<script>" in html:
+            html = html.replace("<script>", shim + "\n<script>", 1)
+        else:
+            html += shim
+        return HTMLResponse(html)
     return {"status": "AIOS running"}
