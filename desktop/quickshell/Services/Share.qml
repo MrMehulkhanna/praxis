@@ -62,7 +62,7 @@ Singleton {
                 root.scanning = false
                 try {
                     const parsed = JSON.parse(this.text.trim())
-                    if (Array.isArray(parsed)) root.nearbyHosts = parsed
+                    if (Array.isArray(parsed)) root.nearbyHosts = parsed.filter(d => !d.is_self)
                 } catch (e) {
                     // ignore json error
                 }
@@ -83,18 +83,29 @@ Singleton {
         command: ["bash", "-c", `
 S="$XDG_RUNTIME_DIR/praxis-share"
 [ -n "$XDG_RUNTIME_DIR" ] || S="/run/user/$(id -u)/praxis-share"
+GATE="$S/gate.pid"
 PID="$S/capture.pid"
-if [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; then
+if ([ -f "$GATE" ] && kill -0 "$(cat "$GATE")" 2>/dev/null) || ([ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null); then
   PORT="$(cat "$S/port" 2>/dev/null)"
   echo "serving=1"
   echo "port=$PORT"
   echo "monitor=$(cat "$S/monitor" 2>/dev/null)"
-  echo "clients=$(ss -tn state established 2>/dev/null | grep -c ":$PORT")"
+  CLIENTS=0
+  if [ -s "$S/clients.json" ]; then
+    CLIENTS=$(python3 -c "import json; print(json.load(open('$S/clients.json')).get('count',0))" 2>/dev/null || echo 0)
+  else
+    CLIENTS=$(ss -tn state established 2>/dev/null | grep -c ":$PORT" || echo 0)
+  fi
+  echo "clients=$CLIENTS"
   echo "code=$(cat "$S/code" 2>/dev/null)"
 else
   echo "serving=0"
 fi
 echo "ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+if [ -f "$S/viewer.pids" ] && kill -0 "$(awk '{print $1}' "$S/viewer.pids" 2>/dev/null)" 2>/dev/null; then
+  echo "viewing=1"
+  echo "viewTarget=$(cat "$S/viewer.target" 2>/dev/null)"
+fi
 `]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -112,6 +123,12 @@ echo "ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut 
                     root.pairCode   = kv.code || ""
                 } else {
                     root.servingMon = ""; root.clients = 0; root.pairCode = ""
+                }
+                if (kv.viewing === "1") {
+                    root.viewing = true
+                    if (kv.viewTarget) root.viewTarget = kv.viewTarget
+                } else if (!viewer.running) {
+                    root.viewing = false
                 }
             }
         }
@@ -145,12 +162,47 @@ echo "ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut 
         act.running = true
     }
     function stop() { act.command = ["praxis-share", "stop"]; act.running = true }
-    // The viewer needs a terminal for this: the code is typed there, and
-    // running it detached would leave nowhere to type it.
-    // --hold ensures any error message remains visible instead of closing instantly.
+    // ── viewing someone else's screen ─────────────────────────────────
+    // A Process we own, not a terminal: the window knows when the viewer is
+    // up, can show what it is connected to, and can end it.
+    property bool   viewing:      false
+    property string viewTarget:   ""
+    property string connectError: ""
+
     function connectTo(target, code) {
-        Quickshell.execDetached(["kitty", "--title", "Praxis Screen Share", "--hold", "-e", "praxis-share", "connect", target, "--code", code])
+        if (viewer.running) return
+        root.connectError = ""
+        root.viewTarget = target
+        viewer.command = ["praxis-share", "connect", target, "--code", code]
+        viewer.running = true
     }
+    function disconnect() {
+        Quickshell.execDetached(["praxis-share", "disconnect"])
+        viewer.running = false
+        root.viewing = false
+        soon.start()
+    }
+    Process {
+        id: viewer
+        onRunningChanged: root.viewing = running
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const t = this.text.replace(/\x1b\[[0-9;]*m/g, "").trim()
+                if (t.indexOf("not accepted") >= 0) root.connectError = "Wrong code — check the four digits on the other PC."
+                else if (t.indexOf("cannot reach") >= 0) root.connectError = "Cannot reach that PC. Is it still sharing, on the same Wi-Fi?"
+                else if (t.indexOf("viewer stopped") >= 0) root.connectError = "The picture stopped. Run praxis-share doctor on this PC."
+            }
+        }
+        onExited: soon.start()
+    }
+
+    // ── controlling the shared display, as the host ────────────────────
+    function sendWindowThere() {
+        const mon = root.servingMon || "HEADLESS-1"
+        Quickshell.execDetached(["hyprctl", "dispatch",
+            'hl.dsp.window.move({ monitor = "' + mon + '" })'])
+    }
+    function bringBack() { Quickshell.execDetached(["praxis-share", "bring-back"]) }
 
     Process {
         id: act

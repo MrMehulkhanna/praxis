@@ -282,94 +282,65 @@ OverlayWindow {
                     description: Share.blockedBy
                     Icon { name: "info"; size: 14; color: Theme.yellow }
                 }
-                Item {
-                    width: parent.width; height: 38
-                    Btn {
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        icon: Share.serving ? "stop" : "play"
-                        label: Share.serving ? "Stop sharing" : "Start sharing"
-                        onClicked: Share.serving ? Share.stop() : Share.start()
+                SettingRow {
+                    label: "Allow screen share"
+                    description: Share.serving
+                        ? "Advertising on local Wi-Fi. The other PC can discover this screen automatically."
+                        : "Turn on to let another Praxis PC connect as a second display or mirror."
+                    Toggle {
+                        checked: Share.serving
+                        onToggled: v => v ? Share.start() : Share.stop()
                     }
-                    Row {
-                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        visible: Share.serving
-                        spacing: Theme.spaceMd
+                }
+                // Huge PIN and IP badge shown prominently while serving
+                Rectangle {
+                    visible: Share.serving
+                    width: parent.width
+                    height: pinCardCol.implicitHeight + 28
+                    radius: Theme.radiusLg
+                    color: Theme.alpha(Theme.surface, 0.7)
+                    border.width: 1
+                    border.color: Theme.alpha(Theme.accent, 0.4)
 
-                        // Address pill with click-to-copy
+                    Column {
+                        id: pinCardCol
+                        anchors.fill: parent; anchors.margins: 14
+                        spacing: 12
+
                         Row {
+                            width: parent.width
                             spacing: Theme.spaceSm
-                            anchors.verticalCenter: parent.verticalCenter
                             Text {
-                                text: "address"
-                                color: Theme.muted
-                                font.family: Theme.font; font.pixelSize: Theme.fontXs
+                                text: "PAIRING PIN"
+                                color: Theme.accent
+                                font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.Bold; font.letterSpacing: 1.2
                                 anchors.verticalCenter: parent.verticalCenter
                             }
-                            Rectangle {
-                                id: addrBadge
-                                height: 30; width: addrContent.width + 16; radius: Theme.radiusSm
-                                color: Theme.alpha(Theme.surface, 0.7)
-                                border.width: 1
-                                border.color: win.copiedAddr ? Theme.green : (addrMa.containsMouse ? Theme.accent : Theme.borderStrong)
+                            Item { width: 12; height: 1 }
+                            Text {
+                                text: "This PC: " + (Share.localIp ? Share.localIp + ":" + Share.port : ":" + Share.port)
+                                color: Theme.muted
+                                font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
                                 anchors.verticalCenter: parent.verticalCenter
-                                Behavior on border.color { ColorAnimation { duration: Theme.fast } }
-
-                                Row {
-                                    id: addrContent
-                                    anchors.centerIn: parent; spacing: 6
-                                    Text {
-                                        id: addrTxt
-                                        text: (Share.localIp || "127.0.0.1") + ":" + Share.port
-                                        color: Theme.text
-                                        font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                    Icon {
-                                        name: win.copiedAddr ? "check" : "copy"
-                                        size: 13
-                                        color: win.copiedAddr ? Theme.green : (addrMa.containsMouse ? Theme.text : Theme.muted)
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: addrMa
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        Quickshell.execDetached(["wl-copy", "--", addrTxt.text])
-                                        win.copiedAddr = true
-                                        copyTimer.restart()
-                                    }
-                                }
                             }
                         }
 
-                        // Code pill
+                        // Huge 4-digit PIN display
                         Row {
-                            spacing: Theme.spaceSm
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: Share.pairCode !== ""
-                            Text {
-                                text: "code"
-                                color: Theme.muted
-                                font.family: Theme.font; font.pixelSize: Theme.fontXs
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                            Rectangle {
-                                width: codeTxt.width + 20; height: 30; radius: Theme.radiusSm
-                                color: Theme.alpha(Theme.accent, 0.14)
-                                border.width: 1; border.color: Theme.alpha(Theme.accent, 0.4)
-                                anchors.verticalCenter: parent.verticalCenter
-                                Text {
-                                    id: codeTxt
-                                    anchors.centerIn: parent
-                                    text: Share.pairCode
-                                    color: Theme.accent
-                                    font.family: Theme.fontMono; font.pixelSize: Theme.fontLg
-                                    font.weight: Font.DemiBold; font.letterSpacing: 3
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 12
+                            Repeater {
+                                model: (Share.pairCode || "----").split("")
+                                Rectangle {
+                                    width: 52; height: 60; radius: Theme.radiusSm
+                                    color: Theme.alpha(Theme.bg, 0.8)
+                                    border.width: 1; border.color: Theme.alpha(Theme.accent, 0.5)
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData
+                                        color: Theme.accent
+                                        font.family: Theme.fontMono; font.pixelSize: 32; font.weight: Font.Bold
+                                    }
                                 }
                             }
                         }
@@ -377,7 +348,95 @@ OverlayWindow {
                 }
             }
 
+            // ── host: who is watching, and what you can do about it ────
+            Rectangle {
+                visible: Share.serving
+                width: parent.width
+                height: hostCol.implicitHeight + 24
+                radius: Theme.radiusLg
+                color: Share.clients > 0 ? Theme.alpha(Theme.green, 0.10) : Theme.alpha(Theme.accent, 0.08)
+                border.width: 1
+                border.color: Share.clients > 0 ? Theme.alpha(Theme.green, 0.40) : Theme.alpha(Theme.accent, 0.30)
+                Column {
+                    id: hostCol
+                    anchors.fill: parent; anchors.margins: 12
+                    spacing: 10
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 8; height: 8; radius: 4
+                            color: Share.clients > 0 ? Theme.green : Theme.yellow
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: Share.clients > 0 ? "Connected" : "Waiting"
+                            color: Share.clients > 0 ? Theme.green : Theme.accent
+                            font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.Bold; font.letterSpacing: 1.1
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        text: Share.clients > 0
+                            ? "Connected — " + Share.clients + (Share.clients === 1 ? " viewer" : " viewers")
+                              + ". Your extra screen is to the right of this one."
+                            : "Waiting — open Share screen on the other PC and pick this one from the list."
+                        color: Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontSm
+                    }
+                    Row {
+                        visible: Share.clients > 0
+                        spacing: Theme.spaceSm
+                        Btn { icon: "monitor"; label: "Send focused window there"; onClicked: Share.sendWindowThere() }
+                        Btn { icon: "chevron-left"; label: "Bring all windows back"; onClicked: Share.bringBack() }
+                        Btn { icon: "stop"; label: "Stop sharing"; onClicked: Share.stop() }
+                    }
+                }
+            }
+
             Rectangle { width: parent.width; height: 1; color: Theme.border }
+            // ── viewer: what this PC is showing ───────────────────────
+            Rectangle {
+                visible: Share.viewing || Share.connectError !== ""
+                width: parent.width
+                height: viewCol.implicitHeight + 24
+                radius: Theme.radiusLg
+                color: Share.connectError !== "" ? Theme.alpha(Theme.red, 0.10) : Theme.alpha(Theme.green, 0.10)
+                border.width: 1
+                border.color: Share.connectError !== "" ? Theme.alpha(Theme.red, 0.40) : Theme.alpha(Theme.green, 0.40)
+                Column {
+                    id: viewCol
+                    anchors.fill: parent; anchors.margins: 12
+                    spacing: 10
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 8; height: 8; radius: 4
+                            color: Share.connectError !== "" ? Theme.red : Theme.green
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: Share.connectError !== "" ? "Connection Error" : "Viewer Active"
+                            color: Share.connectError !== "" ? Theme.red : Theme.green
+                            font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.Bold; font.letterSpacing: 1.1
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        text: Share.connectError !== "" ? Share.connectError
+                            : "Showing " + Share.viewTarget + " fullscreen. Super+C or Disconnect to stop."
+                        color: Share.connectError !== "" ? Theme.red : Theme.text
+                        font.family: Theme.font; font.pixelSize: Theme.fontSm
+                    }
+                    Btn {
+                        visible: Share.viewing
+                        icon: "x"; label: "Disconnect"
+                        onClicked: Share.disconnect()
+                    }
+                }
+            }
+
 
             // ── receive ────────────────────────────────────────────────
             Column {
@@ -400,17 +459,39 @@ OverlayWindow {
                 Column {
                     width: parent.width
                     spacing: Theme.spaceSm
-                    visible: Share.nearbyHosts.length > 0
 
-                    Row {
-                        spacing: 8
-                        Rectangle { width: 7; height: 7; radius: 4; color: Theme.green; anchors.verticalCenter: parent.verticalCenter }
+                    Item {
+                        width: parent.width; height: 30
+                        Row {
+                            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+                            Rectangle { width: 7; height: 7; radius: 4; color: Theme.green; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                text: "DEVICES SHARING ON THIS WI-FI"
+                                color: Theme.accent
+                                font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold
+                                font.letterSpacing: 1.1
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                        Btn {
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            icon: "search"
+                            label: Share.scanning ? "Scanning…" : "Scan"
+                            onClicked: Share.scan()
+                        }
+                    }
+
+                    Rectangle {
+                        visible: Share.nearbyHosts.length === 0
+                        width: parent.width; height: 42; radius: Theme.radiusSm
+                        color: Theme.alpha(Theme.surface, 0.4)
+                        border.width: 1; border.color: Theme.border
                         Text {
-                            text: "DEVICES SHARING ON THIS WI-FI"
-                            color: Theme.accent
-                            font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold
-                            font.letterSpacing: 1.1
-                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.centerIn: parent
+                            text: "No sharing devices found yet — start sharing on the other PC, then Scan"
+                            color: Theme.muted
+                            font.family: Theme.font; font.pixelSize: Theme.fontSm
                         }
                     }
 
@@ -477,7 +558,7 @@ OverlayWindow {
 
                 SettingRow {
                     label: Share.nearbyHosts.length > 0 ? "Or enter address manually" : "Show another machine's screen"
-                    description: "Its address and the six-digit code, both shown on that machine when you start sharing there."
+                    description: "Its address and the four-digit code, both shown on that machine when you start sharing there."
                     Row {
                         spacing: Theme.spaceSm
                         Rectangle {
@@ -500,7 +581,7 @@ OverlayWindow {
                                     }
                                 }
                                 onAccepted: {
-                                    if (codeIn.text.length === 6 && text.trim()) {
+                                    if (codeIn.text.length === 4 && text.trim()) {
                                         Share.connectTo(text.trim(), codeIn.text)
                                     } else {
                                         codeIn.forceActiveFocus()
@@ -526,7 +607,7 @@ OverlayWindow {
                                 anchors.fill: parent; anchors.margins: 8
                                 verticalAlignment: Text.AlignVCenter
                                 color: Theme.text
-                                maximumLength: 6
+                                maximumLength: 4
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.letterSpacing: 2
                                 Keys.onPressed: (event) => {
@@ -536,7 +617,7 @@ OverlayWindow {
                                     }
                                 }
                                 onAccepted: {
-                                    if (win.connectTarget.trim() && text.length === 6) {
+                                    if (win.connectTarget.trim() && text.length === 4) {
                                         Share.connectTo(win.connectTarget.trim(), text)
                                     }
                                 }
@@ -551,7 +632,7 @@ OverlayWindow {
                         }
                         Btn {
                             icon: "monitor"; label: "Connect"
-                            enabled: win.connectTarget.trim() !== "" && codeIn.text.length === 6
+                            enabled: win.connectTarget.trim() !== "" && codeIn.text.length === 4
                             onClicked: Share.connectTo(win.connectTarget.trim(), codeIn.text)
                         }
                     }
