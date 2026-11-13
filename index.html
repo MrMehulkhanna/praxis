@@ -1354,20 +1354,100 @@ Singleton {
       </div>
 
       <!-- Release Version Filters -->
-      <div class="release-filter-bar"><button class="release-filter-btn active" data-filter="all">All Builds (4)</button>
-        <button class="release-filter-btn" data-filter="stable">Production Stable (v2026.10.29)</button>
+      <div class="release-filter-bar"><button class="release-filter-btn active" data-filter="all">All Builds (5)</button>
+        <button class="release-filter-btn" data-filter="stable">Production Stable (v2026.11.13)</button>
         <button class="release-filter-btn" data-filter="rc">Release Candidates</button>
         <button class="release-filter-btn" data-filter="archived">Archived Builds</button>
       </div>
 
-      <div class="releases-hub"><!-- Version 2026.10.29 (Production Stable - Genesis) -->
-        <div class="release-card featured" data-type="stable"><div class="release-card-head"><div class="release-title-group"><h3><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <div class="releases-hub">
+        <!-- Version 2026.11.13 (Production Stable - Wi-Fi Screen Share & Touchpad) -->
+        <div class="release-card featured" data-type="stable">
+          <div class="release-card-head">
+            <div class="release-title-group">
+              <h3>
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Praxis Linux v2026.11.13 "Beacon"</span>
+              </h3>
+              <div class="release-date">Released: November 13, 2026 · Git Branch: main · Zero-IP Wi-Fi Screen Share &amp; Touchpad Precision</div>
+            </div>
+            <div class="release-badges">
+              <span class="rel-badge stable">Stable Production</span>
+              <span class="rel-badge recommended">Latest &amp; Recommended</span>
+              <span class="rel-badge">UEFI 64-Bit</span>
+            </div>
+          </div>
+
+          <div class="spec-list" style="margin-bottom: 20px;">
+            <span class="spec-tag">ISO Build: 2026.11.13</span>
+            <span class="spec-tag">Kernel: Linux 6.11-cachyos-bore</span>
+            <span class="spec-tag">Screen Share: Wi-Fi UDP Beacon &amp; TLS-PSK</span>
+            <span class="spec-tag">Touchpad: Precision Engine</span>
+            <span class="spec-tag">Compositor: Hyprland 0.44.1</span>
+            <span class="spec-tag">UI: Quickshell Glass</span>
+          </div>
+
+          <div class="release-grid-body">
+            <div>
+              <p style="color: #cbd5e1; font-size: 0.95rem; margin-bottom: 14px;">
+                The latest production release of Praxis AIOS featuring zero-configuration local display sharing with automated Wi-Fi device discovery, dedicated host IP clipboard badge, fullscreen presentation mode (Alt+Enter), and complete Touchpad &amp; Mouse sensitivity controls.
+              </p>
+              <ul class="release-feature-list">
+                <li>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  <span><strong>Zero-IP Wi-Fi Screen Share:</strong> When sharing on the same Wi-Fi, nearby computers appear automatically with a 1-click Select button. No manual IP typing required.</span>
+                </li>
+                <li>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  <span><strong>Prominent Host IP &amp; 1-Click Copy:</strong> Active sharing session displays the exact IP address and 6-digit TLS pairing code with one-click clipboard copying.</span>
+                </li>
+                <li>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  <span><strong>Fullscreen Presentation Mode:</strong> Expand the screen sharing interface to edge-to-edge fullscreen with <code>Alt+Enter</code> or the header toggle button.</span>
+                </li>
+                <li>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  <span><strong>Precision Touchpad &amp; Mouse Settings:</strong> Control pointer sensitivity, scroll speed calibration, natural scrolling, tap-to-click, and per-device overrides.</span>
+                </li>
+                <li>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  <span><strong>Hardware Fallback Pipelines:</strong> Resilient video and audio sinks with automatic Wayland, X11, and PulseAudio/PipeWire fallback negotiation.</span>
+                </li>
+              </ul>
+
+              <div class="release-buttons">
+                <a href="https://github.com/MrMehulkhanna/praxis/releases" target="_blank" rel="noopener noreferrer" class="btn-primary" style="display: inline-flex;">
+                  <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                  <span>View All Releases on GitHub</span>
+                </a>
+                <a href="https://github.com/MrMehulkhanna/praxis/archive/refs/heads/main.zip" class="btn-secondary-dl" title="Download Desktop Environment &amp; Source (.zip)">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  <span>Download Latest Source (.zip)</span>
+                </a>
+                <a href="https://github.com/MrMehulkhanna/praxis" target="_blank" rel="noopener noreferrer" class="btn-secondary-dl" title="Explore Repository">
+                  <span>Explore Repository</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="dl-action-box">
+              <div class="hash-box">
+                <div>
+                  <div class="hash-label">Latest Git Commit (main)</div>
+                  <div class="hash-value" style="font-family: monospace;">PRX-NET-066 · Wi-Fi auto-discovery &amp; screen share gate</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Version 2026.10.29 (Production Stable - Genesis) -->
+        <div class="release-card" data-type="stable"><div class="release-card-head"><div class="release-title-group"><h3><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <span>Praxis Linux v2026.10.29 "Genesis"</span>
               </h3>
               <div class="release-date">Released: October 29, 2026 · Git Tag: v2026.10.29 / v2026.10 · Direct Scanout Architecture</div>
             </div>
             <div class="release-badges"><span class="rel-badge stable">Stable Production</span>
-              <span class="rel-badge recommended">Latest &amp; Recommended</span>
               <span class="rel-badge">UEFI 64-Bit</span>
             </div>
           </div>
