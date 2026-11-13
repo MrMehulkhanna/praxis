@@ -890,10 +890,31 @@
   • neofetch         — Show system hardware, Wayland compositor, and theme
   • aios status      — Check local LLM daemon, Whisper speech, and sandbox
   • aios chat <msg>  — Query local context engine with zero cloud leakage
+  • praxis-share scan   — Auto-discover screen sharing devices on local Wi-Fi
+  • praxis-share status — Check active screen sharing pipelines and viewers
+  • praxis-touchpad  — Precision touchpad sensitivity and gesture tuning
   • sensors          — Read CPU / RTX 4060 GPU thermals and fan curves
   • bt-scan          — Run automated BlueZ D-Bus PIN pairing agent
   • wifi-scan        — Multi-band 30s background Wi-Fi scanner
   • clear            — Reset terminal screen`,
+
+      'praxis-share scan': `[praxis-share] Scanning local Wi-Fi beacon for sharing devices...
+  ✔ Found: "mk" @ 10.225.175.147:5920 (Port 5920, Gate TLS-PSK)
+  Tip: In Settings > Share screen > RECEIVE, nearby devices appear automatically with a 1-click [Select] button!`,
+
+      'praxis-share status': `[praxis-share] Screen Sharing Pipeline Status:
+  ● Service: Active on port 5920 (AES/TLS-PSK Encrypted)
+  ● Wi-Fi Auto-Discovery: Active on UDP 5921 (Beacon broadcast)
+  ● Virtual Output: HEADLESS-1 (1920x1080@60Hz, 12Mbps CBR)
+  ● Hardware Encoder: H.264 (NVENC / VAAPI)
+  ● Latency: 18ms LAN delay (Zero internet / cloud leakage)`,
+
+      'praxis-touchpad': `[praxis-touchpad] Precision Touchpad Engine:
+  ● Sensitivity: 0.25 (range: -1.0 to 1.0)
+  ● Scroll Factor: 1.00 (calibrated smooth scroll)
+  ● Natural Scroll: enabled
+  ● Tap-to-Click: enabled (1-finger left, 2-finger right, 3-finger middle)
+  ● Gestures: 3-finger swipe up (Win+Tab), 3-finger swipe down (Win+D)`,
 
       neofetch: `
   <span style="color: #bb9af7;">       /\\       </span>   <span style="color: #7dcfff; font-weight: bold;">mk@praxis-omen16</span>
