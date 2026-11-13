@@ -162,8 +162,21 @@ PanelWindow {
 
                 IconButton {
                     icon: "minus"; iconSize: 12; padding: 5
-                    onClicked: Quickshell.execDetached(["hyprctl", "dispatch",
-                        'hl.dsp.window.move({ workspace = "special:minimized" })'])
+                    // praxis-win, not a bare dispatch: moving the window to
+                    // special:minimized is only half of minimising. If that
+                    // workspace happens to be open on the monitor, the window
+                    // lands somewhere still visible and the button looks dead.
+                    // praxis-win hides it afterwards.
+                    //
+                    // The address is passed explicitly because a click here can
+                    // move focus before the dispatch lands, and "the active
+                    // window" would then be the wrong one.
+                    onClicked: {
+                        const t = Hyprland.activeToplevel
+                        const addr = t && t.lastIpcObject ? (t.lastIpcObject.address || "") : ""
+                        Quickshell.execDetached(addr ? ["praxis-win", "minimize", addr]
+                                                     : ["praxis-win", "minimize"])
+                    }
                 }
                 IconButton {
                     icon: "maximize"; iconSize: 12; padding: 5

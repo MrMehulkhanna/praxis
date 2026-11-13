@@ -8,6 +8,8 @@
   praxis-win layout                 next layout: tiles → master + stack →
                                     3 columns (master in the middle) → tiles
   praxis-win show-desktop           toggle special workspace to reveal clean desktop (Win+D)
+  praxis-win minimize [ADDRESS]     send a window to special:minimized and hide it
+  praxis-win unminimize             bring the minimised windows back into view
 
 A snapped window floats at the exact spot, inside the space the bar and the
 dock leave free, with the same gap as tiled windows.
@@ -92,6 +94,38 @@ def show_desktop():
     dispatch('hl.dsp.workspace.toggle_special("desktop")')
 
 
+MIN_WS = "special:minimized"
+
+
+def special_shown(name=MIN_WS):
+    """Is that special workspace currently displayed on any monitor?"""
+    for m in query("monitors") or []:
+        if (m.get("specialWorkspace") or {}).get("name") == name:
+            return True
+    return False
+
+
+def minimize(address=None):
+    """Send a window out of sight.
+
+    Moving it to a special workspace is only half the job: if that workspace
+    happens to be open on the monitor, the window lands somewhere still
+    visible and minimising looks like it did nothing at all. Hide it after.
+
+    The address is passed explicitly where the caller has one, because a
+    click on the bar can move focus before the dispatch lands, and then
+    "the active window" is no longer the window the user meant.
+    """
+    target = f', window = "address:{address}"' if address else ""
+    dispatch(f'hl.dsp.window.move({{ workspace = "{MIN_WS}"{target} }})')
+    if special_shown():
+        dispatch(f'hl.dsp.workspace.toggle_special("{MIN_WS.split(":", 1)[1]}")')
+
+
+def unminimize():
+    dispatch(f'hl.dsp.workspace.toggle_special("{MIN_WS.split(":", 1)[1]}")')
+
+
 def main(argv):
     if len(argv) >= 2 and argv[0] == "snap" and argv[1] in (
             "left", "right", "left3", "mid3", "right3", "max", "restore"):
@@ -100,6 +134,10 @@ def main(argv):
         next_layout()
     elif argv[:1] == ["show-desktop"]:
         show_desktop()
+    elif argv[:1] == ["minimize"]:
+        minimize(argv[1] if len(argv) > 1 else None)
+    elif argv[:1] == ["unminimize"]:
+        unminimize()
     else:
         print(__doc__.strip(), file=sys.stderr)
         return 2
