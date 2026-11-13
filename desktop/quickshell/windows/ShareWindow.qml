@@ -637,6 +637,20 @@ OverlayWindow {
                         }
                     }
                 }
+
+                SettingRow {
+                    label: "Use this keyboard and mouse on the other PC (Experimental)"
+                    description: "Control the remote machine using Deskflow input sharing."
+                    Toggle {
+                        checked: Share.inputControl
+                        onToggled: v => {
+                            Share.inputControl = v
+                            if (!v && Share.inputSharing) {
+                                Share.stopInput()
+                            }
+                        }
+                    }
+                }
             }
 
             // ── live, only while it is ────────────────────────────────

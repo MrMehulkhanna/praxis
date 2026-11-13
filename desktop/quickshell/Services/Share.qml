@@ -106,6 +106,11 @@ if [ -f "$S/viewer.pids" ] && kill -0 "$(awk '{print $1}' "$S/viewer.pids" 2>/de
   echo "viewing=1"
   echo "viewTarget=$(cat "$S/viewer.target" 2>/dev/null)"
 fi
+if [ -f "$S/input.pid" ] && kill -0 "$(cat "$S/input.pid")" 2>/dev/null; then
+  echo "inputSharing=1"
+else
+  echo "inputSharing=0"
+fi
 `]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -130,6 +135,7 @@ fi
                 } else if (!viewer.running) {
                     root.viewing = false
                 }
+                root.inputSharing = kv.inputSharing === "1"
             }
         }
     }
@@ -168,19 +174,35 @@ fi
     property bool   viewing:      false
     property string viewTarget:   ""
     property string connectError: ""
+    property bool   inputControl: false
+    property bool   inputSharing: false
 
     function connectTo(target, code) {
         if (viewer.running) return
         root.connectError = ""
         root.viewTarget = target
+        if (root.inputControl) {
+            const hostOnly = target.split(":")[0]
+            if (hostOnly) root.joinInput(hostOnly)
+        }
         viewer.command = ["praxis-share", "connect", target, "--code", code]
         viewer.running = true
     }
     function disconnect() {
         Quickshell.execDetached(["praxis-share", "disconnect"])
+        if (root.inputSharing) root.stopInput()
         viewer.running = false
         root.viewing = false
         soon.start()
+    }
+    function startInput(peer) {
+        Quickshell.execDetached(["praxis-share", "input", "host", "--peer", peer || "praxis-peer"])
+    }
+    function joinInput(host) {
+        Quickshell.execDetached(["praxis-share", "input", "join", host])
+    }
+    function stopInput() {
+        Quickshell.execDetached(["praxis-share", "input", "stop"])
     }
     Process {
         id: viewer
@@ -193,7 +215,10 @@ fi
                 else if (t.indexOf("viewer stopped") >= 0) root.connectError = "The picture stopped. Run praxis-share doctor on this PC."
             }
         }
-        onExited: soon.start()
+        onExited: {
+            if (root.inputSharing) root.stopInput()
+            soon.start()
+        }
     }
 
     // ── controlling the shared display, as the host ────────────────────

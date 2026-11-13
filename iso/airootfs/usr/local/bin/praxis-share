@@ -367,6 +367,7 @@ cmd_disconnect() {
     fi
     pkill -f "gst-launch-1.0.*tcpclientsrc" 2>/dev/null || true
     pkill -f "praxis-share-gate client" 2>/dev/null || true
+    cmd_input stop >/dev/null 2>&1 || true
     ok "disconnected"
 }
 
