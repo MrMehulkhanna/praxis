@@ -597,7 +597,7 @@ OverlayWindow {
                                 }
                                 onAccepted: {
                                     let t = win.connectTarget.trim()
-                                    if (codeIn.text.length === 4 && t) {
+                                    if ((codeIn.text.length === 4 || codeIn.text.length === 6) && t) {
                                         Share.connectTo(t, codeIn.text)
                                     } else {
                                         codeIn.forceActiveFocus()
@@ -614,7 +614,7 @@ OverlayWindow {
                             }
                         }
                         Rectangle {
-                            width: 96; height: 30; radius: Theme.radiusSm
+                            width: 104; height: 30; radius: Theme.radiusSm
                             color: Theme.alpha(Theme.bg, 0.6)
                             border.width: 1
                             border.color: codeIn.activeFocus ? Theme.accent : Theme.border
@@ -623,7 +623,7 @@ OverlayWindow {
                                 anchors.fill: parent; anchors.margins: 8
                                 verticalAlignment: Text.AlignVCenter
                                 color: Theme.text
-                                maximumLength: 4
+                                maximumLength: 6
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.letterSpacing: 2
                                 Keys.onPressed: (event) => {
@@ -633,14 +633,14 @@ OverlayWindow {
                                     }
                                 }
                                 onAccepted: {
-                                    if (win.connectTarget.trim() && text.length === 4) {
+                                    if (win.connectTarget.trim() && (text.length === 4 || text.length === 6)) {
                                         Share.connectTo(win.connectTarget.trim(), text)
                                     }
                                 }
                                 Text {
                                     anchors.fill: parent; verticalAlignment: Text.AlignVCenter
                                     visible: !codeIn.text && !codeIn.activeFocus
-                                    text: "code"
+                                    text: "PIN"
                                     color: Theme.muted
                                     font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
                                 }
@@ -648,7 +648,7 @@ OverlayWindow {
                         }
                         Btn {
                             icon: "monitor"; label: "Connect"
-                            enabled: win.connectTarget.trim() !== "" && codeIn.text.length === 4
+                            enabled: win.connectTarget.trim() !== "" && (codeIn.text.length === 4 || codeIn.text.length === 6)
                             onClicked: Share.connectTo(win.connectTarget.trim(), codeIn.text)
                         }
                     }
