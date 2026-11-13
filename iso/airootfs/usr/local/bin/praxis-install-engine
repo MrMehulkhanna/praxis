@@ -332,7 +332,16 @@ step 12 "Preparing packages"
 praxis_enable_local_repo
 
 # Robust download options for pacman: disable timeout drops and retry
-grep -q '^DisableDownloadTimeout' /etc/pacman.conf || sed -i '/^\[options\]/a DisableDownloadTimeout' /etc/pacman.conf
+# Deliberately NOT DisableDownloadTimeout. It was added here to stop an
+# install freezing on a slow mirror, and it does the opposite: pacman's
+# timeout fires on a *stalled* transfer, not a slow one, so disabling it
+# turns a mirror that accepts a connection and then sends nothing into a
+# wait with no end. Measured on a running system: ten established
+# connections, zero bytes moving, no output, forever.
+#
+# Sorted mirrors plus parallel downloads are the actual fix for slowness;
+# the timeout is what rescues the machine when a mirror goes quiet.
+sed -i '/^DisableDownloadTimeout/d' /etc/pacman.conf
 grep -q '^ParallelDownloads' /etc/pacman.conf || sed -i '/^\[options\]/a ParallelDownloads = 5' /etc/pacman.conf
 
 # Refresh fastest mirrors if network is available

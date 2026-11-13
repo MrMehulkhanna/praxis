@@ -9,9 +9,47 @@
 set -uo pipefail
 
 log() { echo -e "\n\033[1;36m==> $*\033[0m"; }
+
+# ── restart signalling ──────────────────────────────────────────────────
+# A GUI cannot guess whether an update needs a reboot by reading log text,
+# so leave a machine-readable marker. Only the things that genuinely cannot
+# be reloaded in place count: a new kernel is not the running one, and
+# systemd and the graphics driver both need the session restarted.
+RESTART_MARKER=/var/lib/praxis/restart-required
+pkgver() { pacman -Q "$1" 2>/dev/null | awk '{print $2}'; }
+restart_snapshot() {
+    printf '%s|%s|%s|%s\n' "$(uname -r)" "$(pkgver linux)" "$(pkgver systemd)" "$(pkgver nvidia-utils)"
+}
+mark_restart_if_needed() {   # before after
+    [ "$1" = "$2" ] && return 0
+    local reasons=""
+    IFS='|' read -r _ l0 s0 n0 <<<"$1"
+    IFS='|' read -r _ l1 s1 n1 <<<"$2"
+    [ "$l0" != "$l1" ] && reasons="$reasons kernel"
+    [ "$s0" != "$s1" ] && reasons="$reasons systemd"
+    [ "$n0" != "$n1" ] && reasons="$reasons graphics-driver"
+    [ -n "$reasons" ] || return 0
+    install -d -m755 "$(dirname "$RESTART_MARKER")" 2>/dev/null || \
+        sudo install -d -m755 "$(dirname "$RESTART_MARKER")" 2>/dev/null || return 0
+    printf '%s\n' "${reasons# }" >"$RESTART_MARKER" 2>/dev/null || \
+        printf '%s\n' "${reasons# }" | sudo tee "$RESTART_MARKER" >/dev/null 2>&1 || true
+}
 success() { echo -e "\033[1;32m  ✓ $*\033[0m"; }
 info() { echo -e "\033[1;34m  → $*\033[0m"; }
 warn() { echo -e "\033[1;33m  ! $*\033[0m"; }
+# ── one at a time ───────────────────────────────────────────────────────
+# Two updates running together deadlock on pacman's database lock and sit
+# there with no error, which from a GUI looks exactly like a hung update.
+# Refuse the second one plainly instead.
+PRAXIS_UPDATE_LOCK=/tmp/praxis-update.lock
+exec 9>"$PRAXIS_UPDATE_LOCK" 2>/dev/null || true
+if command -v flock >/dev/null 2>&1 && ! flock -n 9; then
+    echo -e "\033[1;33m  An update is already running. Wait for it to finish.\033[0m" >&2
+    exit 7
+fi
+
+RESTART_BEFORE="$(restart_snapshot)"
+
 notify() { command -v notify-send >/dev/null && notify-send -a "Praxis" -t 3500 "Praxis Update" "$1" 2>/dev/null || true; }
 
 # Safe copy function: uses rsync if available, falls back to cp -a (coreutils)
@@ -553,6 +591,11 @@ if [ -n "$DESK_USER" ]; then
         sudo -u "$DESK_USER" env XDG_RUNTIME_DIR="/run/user/$(id -u "$DESK_USER")" hyprctl -i 0 reload >/dev/null 2>&1 || true
     fi
     success "Window manager configuration reloaded"
+fi
+
+mark_restart_if_needed "${RESTART_BEFORE:-}" "$(restart_snapshot)"
+if [ -s "$RESTART_MARKER" ]; then
+    echo -e "\n\033[1;33m  ⟳ A restart is needed to finish: $(cat "$RESTART_MARKER")\033[0m"
 fi
 
 if command -v praxis-restart-shell >/dev/null 2>&1; then
