@@ -2107,3 +2107,43 @@ section:not(.hero-section) {
   }
   .tilt { transform: none !important; transition: none !important; }
 }
+
+/* ── manifesto rows ───────────────────────────────────────────────────────
+   A numbered list with a hairline between entries. The number does the work
+   the icon tile was doing — it marks where an entry starts — at a fraction
+   of the ink, and it carries meaning the icon never did. */
+.intent-rows { max-width: 62rem; margin: 0 auto; }
+.intent-row {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  gap: 1.5rem;
+  padding: 2rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.intent-row:last-child { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.intent-n {
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.34);
+  padding-top: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.intent-body h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.22rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.95);
+}
+.intent-body p {
+  margin: 0;
+  max-width: 46rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.6);
+}
+@media (max-width: 640px) {
+  .intent-row { grid-template-columns: 1fr; gap: 0.5rem; padding: 1.5rem 0; }
+  .intent-n { padding-top: 0 }
+}
