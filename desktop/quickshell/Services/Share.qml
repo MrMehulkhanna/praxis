@@ -112,8 +112,9 @@ echo "ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut 
     function stop() { act.command = ["praxis-share", "stop"]; act.running = true }
     // The viewer needs a terminal for this: the code is typed there, and
     // running it detached would leave nowhere to type it.
+    // --hold ensures any error message remains visible instead of closing instantly.
     function connectTo(target, code) {
-        Quickshell.execDetached(["kitty", "-e", "praxis-share", "connect", target, "--code", code])
+        Quickshell.execDetached(["kitty", "--title", "Praxis Screen Share", "--hold", "-e", "praxis-share", "connect", target, "--code", code])
     }
 
     Process {

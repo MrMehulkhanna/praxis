@@ -14,27 +14,55 @@ import "root:/components"
 OverlayWindow {
     id: win
     name: "share"
-    onOpened: { Share.refresh(); Share.checkReady() }
+    onOpened: { Share.refresh(); Share.checkReady(); card.forceActiveFocus() }
 
     property string connectTarget: ""
     property bool   copiedAddr: false
+    property bool   isFullscreen: false
     Timer { id: copyTimer; interval: 1800; onTriggered: win.copiedAddr = false }
 
     // same shape as the Settings buttons, so the two windows match
     component Btn: IconButton { implicitHeight: 30; padding: 10 }
 
     Glass {
+        id: card
         anchors.centerIn: parent
-        width: 720
-        height: Math.min(parent.height - 80, col.implicitHeight + 56)
-        radius: Theme.radiusXl
+        width: win.isFullscreen ? parent.width - 24 : 720
+        height: win.isFullscreen ? parent.height - 24 : Math.min(parent.height - 80, col.implicitHeight + 56)
+        radius: win.isFullscreen ? Theme.radiusLg : Theme.radiusXl
         elevation: 3
+        focus: true
 
-        Column {
-            id: col
+        Behavior on width { NumberAnimation { duration: Theme.normal; easing.type: Theme.easeMove } }
+        Behavior on height { NumberAnimation { duration: Theme.normal; easing.type: Theme.easeMove } }
+        Behavior on radius { NumberAnimation { duration: Theme.normal } }
+
+        Keys.onPressed: (event) => {
+            if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                win.isFullscreen = !win.isFullscreen
+                event.accepted = true
+            }
+        }
+        Keys.onEscapePressed: (event) => {
+            if (win.isFullscreen) {
+                win.isFullscreen = false
+                event.accepted = true
+            }
+        }
+
+        Flickable {
+            id: flick
             anchors.fill: parent
             anchors.margins: 28
-            spacing: Theme.spaceXl
+            contentWidth: width
+            contentHeight: col.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+
+            Column {
+                id: col
+                width: parent.width
+                spacing: Theme.spaceXl
 
             // ── header ─────────────────────────────────────────────────
             Item {
@@ -55,31 +83,56 @@ OverlayWindow {
                         font.family: Theme.font; font.pixelSize: Theme.fontSm
                     }
                 }
-                // live dot, only when it means something
-                Rectangle {
+                Row {
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    visible: Share.serving
-                    width: live.width + 26; height: 26; radius: 13
-                    color: Theme.alpha(Theme.green, 0.14)
-                    border.width: 1; border.color: Theme.alpha(Theme.green, 0.35)
-                    Row {
-                        id: live
-                        anchors.centerIn: parent; spacing: 7
-                        Rectangle {
-                            width: 7; height: 7; radius: 4; color: Theme.green
-                            anchors.verticalCenter: parent.verticalCenter
-                            SequentialAnimation on opacity {
-                                running: Share.serving; loops: Animation.Infinite
-                                NumberAnimation { to: 0.25; duration: 900; easing.type: Easing.InOutQuad }
-                                NumberAnimation { to: 1.0;  duration: 900; easing.type: Easing.InOutQuad }
+                    spacing: Theme.spaceSm
+
+                    // live dot, only when it means something
+                    Rectangle {
+                        visible: Share.serving
+                        width: live.width + 26; height: 26; radius: 13
+                        color: Theme.alpha(Theme.green, 0.14)
+                        border.width: 1; border.color: Theme.alpha(Theme.green, 0.35)
+                        anchors.verticalCenter: parent.verticalCenter
+                        Row {
+                            id: live
+                            anchors.centerIn: parent; spacing: 7
+                            Rectangle {
+                                width: 7; height: 7; radius: 4; color: Theme.green
+                                anchors.verticalCenter: parent.verticalCenter
+                                SequentialAnimation on opacity {
+                                    running: Share.serving; loops: Animation.Infinite
+                                    NumberAnimation { to: 0.25; duration: 900; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { to: 1.0;  duration: 900; easing.type: Easing.InOutQuad }
+                                }
+                            }
+                            Text {
+                                text: "live  ·  :" + Share.port
+                                color: Theme.green
+                                font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
+                                anchors.verticalCenter: parent.verticalCenter
                             }
                         }
-                        Text {
-                            text: "live  ·  :" + Share.port
-                            color: Theme.green
-                            font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
+                    }
+
+                    // Fullscreen toggle button
+                    IconButton {
+                        icon: win.isFullscreen ? "restore" : "maximize"
+                        iconSize: 14
+                        iconColor: hovered ? Theme.text : Theme.muted
+                        implicitHeight: 28; implicitWidth: 28; padding: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: win.isFullscreen = !win.isFullscreen
+                    }
+
+                    // Close button
+                    IconButton {
+                        icon: "x"
+                        iconSize: 14
+                        iconColor: hovered ? Theme.text : Theme.muted
+                        implicitHeight: 28; implicitWidth: 28; padding: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: Shell.closeAll()
                     }
                 }
             }
@@ -90,11 +143,12 @@ OverlayWindow {
             // The one being sent lifts and lights up, which is the whole
             // state of the feature in a single glance.
             Rectangle {
-                width: parent.width; height: 190
+                width: parent.width; height: win.isFullscreen ? 240 : 190
                 radius: Theme.radiusLg
                 color: Theme.alpha(Theme.surface, 0.5)
                 border.width: 1; border.color: Theme.border
                 clip: true
+                Behavior on height { NumberAnimation { duration: Theme.normal; easing.type: Theme.easeMove } }
 
                 Row {
                     anchors.centerIn: parent
@@ -360,6 +414,12 @@ OverlayWindow {
                                 color: Theme.text
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
                                 onTextChanged: win.connectTarget = text
+                                Keys.onPressed: (event) => {
+                                    if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                                        win.isFullscreen = !win.isFullscreen
+                                        event.accepted = true
+                                    }
+                                }
                                 onAccepted: {
                                     if (codeIn.text.length === 6 && text.trim()) {
                                         Share.connectTo(text.trim(), codeIn.text)
@@ -390,6 +450,12 @@ OverlayWindow {
                                 maximumLength: 6
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.letterSpacing: 2
+                                Keys.onPressed: (event) => {
+                                    if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                                        win.isFullscreen = !win.isFullscreen
+                                        event.accepted = true
+                                    }
+                                }
                                 onAccepted: {
                                     if (win.connectTarget.trim() && text.length === 6) {
                                         Share.connectTo(win.connectTarget.trim(), text)
@@ -439,4 +505,5 @@ OverlayWindow {
             }
         }
     }
+}
 }

@@ -266,6 +266,34 @@ cmd_connect() {
     [ "$port" = "$host" ] && port="$DEFAULT_PORT"
     need gst-launch-1.0; need praxis-share-gate
 
+    # Check receiver requirements before connecting so missing plugins are immediately obvious
+    local missing=()
+    gst-inspect-1.0 tsdemux >/dev/null 2>&1 || missing+=("tsdemux (gst-plugins-bad)")
+    gst-inspect-1.0 h264parse >/dev/null 2>&1 || missing+=("h264parse (gst-plugins-bad)")
+    gst-inspect-1.0 avdec_h264 >/dev/null 2>&1 || missing+=("avdec_h264 (gst-libav)")
+    if [ ${#missing[@]} -gt 0 ]; then
+        printf '\n\033[31m✗ This machine is missing media decoders needed to view shared screens:\033[0m\n' >&2
+        for m in "${missing[@]}"; do
+            printf '  • %s\n' "$m" >&2
+        done
+        printf '\nTo install them on this machine, run:\n' >&2
+        printf '  \033[1;32msudo pacman -S --needed gst-plugins-bad gst-libav gst-plugins-good\033[0m\n\n' >&2
+        if [ -t 0 ] || [ -t 1 ]; then
+            read -p "Press Enter to exit..." _ || true
+        fi
+        exit 1
+    fi
+
+    local vsink="waylandsink fullscreen=true"
+    if [ -z "${WAYLAND_DISPLAY:-}" ] || ! gst-inspect-1.0 waylandsink >/dev/null 2>&1; then
+        vsink="autovideosink"
+    fi
+
+    local asink="pulsesink"
+    if ! gst-inspect-1.0 pulsesink >/dev/null 2>&1; then
+        asink="autoaudiosink"
+    fi
+
     if [ -z "$code" ]; then
         # asked for rather than guessed: the host is showing it on its screen
         printf 'pairing code shown on %s: ' "$host"
@@ -290,12 +318,23 @@ cmd_connect() {
     # from the network: everything over the wire is inside the TLS session
     # the pairing code established.
     trap 'kill "$gate" 2>/dev/null' EXIT INT TERM
+    set +e
     gst-launch-1.0 -q \
         tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d \
         d. ! queue max-size-time=200000000 ! h264parse ! avdec_h264 ! videoconvert \
-           ! waylandsink fullscreen=true sync=false \
+           ! $vsink sync=false \
         d. ! queue max-size-time=200000000 ! aacparse ! avdec_aac ! audioconvert ! audioresample \
-           ! pulsesink sync=false
+           ! $asink sync=false
+    local rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        echo ""
+        printf '\033[31m✗ Stream viewer stopped (exit code %d).\033[0m\n' "$rc" >&2
+        printf 'Run \033[1mpraxis-share doctor\033[0m on this machine to verify dependencies.\n\n' >&2
+        if [ -t 0 ] || [ -t 1 ]; then
+            read -p "Press Enter to close..." _ || true
+        fi
+    fi
 }
 
 cmd_stop() {
