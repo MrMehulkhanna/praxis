@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # praxis-share — use another machine's screen as a display of this one.
 #
-#   praxis-share extend [--res WxH@Hz] [--port N]   add a virtual monitor and serve it
+#   praxis-share extend [--res WxH@Hz] [--port N] [--no-audio]
+#                                                  add a virtual monitor and serve it
 #   praxis-share mirror [--output NAME] [--port N]  serve an existing monitor instead
 #   praxis-share connect HOST[:PORT]                show a served screen on this machine
 #   praxis-share stop                               stop serving, remove the virtual monitor
@@ -29,6 +30,7 @@ MON_FILE="$STATE_DIR/monitor"
 PORT_FILE="$STATE_DIR/port"
 DEFAULT_PORT=5920
 DEFAULT_RES="1920x1080@60"
+WITH_AUDIO=1          # send sound with the picture unless told not to
 
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m•\033[0m %s\n' "$*"; }
@@ -99,6 +101,14 @@ encoder_args() {
 
 monitors() { hyprctl -j monitors 2>/dev/null; }
 
+# The monitor of the default sink is "what this machine is playing". Capturing
+# it into the same container as the video is what keeps sound with picture:
+# one set of timestamps, one muxer, nothing to drift apart.
+default_monitor() {
+    local sink; sink=$(pactl get-default-sink 2>/dev/null) || return 1
+    [ -n "$sink" ] && echo "${sink}.monitor"
+}
+
 serving_pid() { [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null && cat "$PID_FILE"; }
 
 # ── host: add a virtual monitor ─────────────────────────────────────────
@@ -118,6 +128,8 @@ cmd_extend() {
     while [ $# -gt 0 ]; do case "$1" in
         --res)  res="$2";  shift 2 ;;
         --port) port="$2"; shift 2 ;;
+        --no-audio) WITH_AUDIO=0; shift ;;
+        --audio) WITH_AUDIO=1; shift ;;
         *) die "unknown option: $1" ;;
     esac; done
     [ -z "$(serving_pid)" ] || die "already serving — stop it first:  praxis-share stop"
@@ -134,6 +146,8 @@ cmd_mirror() {
     while [ $# -gt 0 ]; do case "$1" in
         --output) out="$2";  shift 2 ;;
         --port)   port="$2"; shift 2 ;;
+        --no-audio) WITH_AUDIO=0; shift ;;
+        --audio) WITH_AUDIO=1; shift ;;
         *) die "unknown option: $1" ;;
     esac; done
     [ -z "$(serving_pid)" ] || die "already serving — stop it first:  praxis-share stop"
@@ -168,8 +182,29 @@ start_stream() {
     # each tuning flag needs its own -p, so expand them into an argv array
     local -a pargs=(); local kv
     for kv in $(encoder_args "$enc"); do pargs+=(-p "$kv"); done
+
+    local -a aargs=()
+    if [ "$WITH_AUDIO" = 1 ]; then
+        local src; src=$(default_monitor || true)
+        if [ -n "$src" ]; then
+            # AAC, not Opus. This box ships no libgstopus, and Opus inside MPEG-TS
+            # needs a parser GStreamer does not have here — the stream carried
+            # the audio fine and no client could decode it. AAC has a complete
+            # path both ways: ffmpeg encodes it, aacparse/avdec_aac decode it.
+            # --audio-backend=pulse, not pipewire. The pipewire backend connects,
+            # declares the stream, and then delivers nothing: the encoder reports
+            # "Qavg: nan" and the muxed file carries an AAC track with zero
+            # packets. Nothing errors, so it looks like working silence. pulse
+            # (through pipewire-pulse) captures the same monitor correctly.
+            aargs=(--audio="$src" --audio-backend=pulse -C aac)
+            info "audio: $(printf '%s' "$src" | sed 's/^alsa_output\.//; s/\.monitor$//')"
+        else
+            info "no audio source found — video only"
+        fi
+    fi
+
     setsid wf-recorder -D -o "$mon" -c "$enc" -m mpegts -r "$fps" \
-        "${pargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
+        "${pargs[@]}" "${aargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
     echo $! > "$PID_FILE"
 
     setsid gst-launch-1.0 -q \
@@ -200,10 +235,15 @@ cmd_connect() {
     [ "$port" = "$host" ] && port="$DEFAULT_PORT"
     need gst-launch-1.0
     info "connecting to $host:$port — Esc or Ctrl-C to stop"
+    # One demuxer, two branches. sync=false on video keeps latency down;
+    # the audio branch carries the clock, so sound and picture stay together
+    # without either waiting on the other.
     exec gst-launch-1.0 -q \
-        tcpclientsrc host="$host" port="$port" \
-        ! tsdemux ! h264parse ! avdec_h264 ! videoconvert \
-        ! waylandsink fullscreen=true sync=false
+        tcpclientsrc host="$host" port="$port" ! tsdemux name=d \
+        d. ! queue max-size-time=200000000 ! h264parse ! avdec_h264 ! videoconvert \
+           ! waylandsink fullscreen=true sync=false \
+        d. ! queue max-size-time=200000000 ! aacparse ! avdec_aac ! audioconvert ! audioresample \
+           ! pulsesink sync=false
 }
 
 cmd_stop() {
