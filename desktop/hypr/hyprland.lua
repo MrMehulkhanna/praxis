@@ -452,8 +452,10 @@ hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("quickshell ipc call shell settings D
 hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { description = "Praxis: Search and launch" })
 -- Super+B → widget board (StandBy-style tiles: clock, calendar, battery, sys, media, weather)
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle widgets"), { description = "Praxis: Widgets" })
--- Super+Shift+S: share this screen with another Praxis machine
-hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("quickshell ipc call shell toggle share"), { description = "Praxis: Share screen" })
+-- Super+Shift+D: share this screen with another Praxis machine.
+-- Not Shift+S — that is already the area screenshot, and binding it twice
+-- meant every attempt to share the screen fired slurp instead.
+hl.bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd("quickshell ipc call shell toggle share"), { description = "Praxis: Share screen" })
 -- Super+Shift+Q → power menu (lock/suspend/logout/reboot/off)
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"), { description = "System: Power menu" })
 -- Super+N → quicknote (rofi prompt → today's ~/aios/notes/YYYY-MM-DD.md)

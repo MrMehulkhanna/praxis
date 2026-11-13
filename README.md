@@ -121,7 +121,7 @@ it says so and offers to restart, naming which.
 
 ### "I want my other laptop to be a second screen"
 
-`Super+Shift+S`. **Extend** asks the compositor for a headless output and
+`Super+Shift+D`. **Extend** asks the compositor for a headless output and
 sends it over the network, so the second machine becomes a real third display
 with its own workspaces, not a mirror. Sound rides in the same stream as the
 picture, so they cannot drift apart.
@@ -207,7 +207,7 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 ```
 Super              search and launch          Super+I        the assistant
 Super+H            voice typing               Super+O        control centre
-Super+← →          snap left / right          Super+Shift+S  share this screen
+Super+← →          snap left / right          Super+Shift+D  share this screen
 Super+Shift+O      copy text off the screen   Ctrl+Shift+Esc task manager
 Super+Z            minimise                   Super+G        game mode
 ```
@@ -289,7 +289,7 @@ The essentials. The full searchable list is in **Settings › Shortcuts**.
 | `Super+I` | AI assistant | `Super+↑ / ↓` | Maximise / restore | `Super+Shift+H` | Speak a command |
 | `Super+O` | Control Center | `Super+Alt+1/2/3` | Thirds | `Super+Shift+O` | Copy text from screen |
 | `Super+Tab` | All workspaces | `Super+Alt+M` | Next layout | `Super+Shift+V` | Clipboard history |
-| `Super+B` | Widgets | `Super+Z` | Minimise | `Super+Shift+S` | Share screen |
+| `Super+B` | Widgets | `Super+Z` | Minimise | `Super+Shift+D` | Share screen |
 | `Super+Q` | Terminal | `Super+Shift+← / →` | Other monitor | `Super+Shift+C` | Colour picker |
 | `Super+L` | Lock | `Super+Shift+1…9` | Send to workspace | `Super+Shift+R` | Record screen |
 | `Super+N` | Quick note | `Super+C` | Close | `Print` | Screenshot |
