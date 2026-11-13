@@ -493,10 +493,43 @@ OverlayWindow {
                             onSelected: v => Display.setRefresh(Display.internal.name, v)
                         }
                     }
+                    // ── OLED colour ───────────────────────────────────
+                    // Only on a panel that is actually OLED: hasOled comes
+                    // from reading ATNA out of the EDID, so a non-OLED laptop
+                    // booting this ISO never sees these rows.
                     SettingRow {
                         visible: Display.hasOled
-                        label: "OLED care  ★ recommended"
-                        description: "Dims after 4 min (wakes instantly), locks after 12, suspends on battery after 25. Never blanks the panel — safe for this OLED. Stays on after a restart."
+                        label: "Wide colour (OLED)"
+                        description: "Drives the panel at its own gamut in 10-bit instead of sRGB in 8-bit. Richer colour and no banding in dark scenes."
+                        Toggle { checked: Display.oledWide; onToggled: v => Display.setOledWide(v) }
+                    }
+                    SettingRow {
+                        visible: Display.hasOled && Display.oledWide
+                        label: "OLED brightness"
+                        description: "How bright normal content sits in that wider space. Above 100 % uses more power and more of the panel's life."
+                        Slider {
+                            width: 240; icon: "sun"
+                            // 100–200 % across the travel
+                            value: (Display.oledBrightPct - 100) / 100
+                            valueText: Math.round(100 + shown * 100) + "%"
+                            onMoved: v => Display.setOledColor(Math.round(100 + v * 100), Display.oledSatPct)
+                        }
+                    }
+                    SettingRow {
+                        visible: Display.hasOled && Display.oledWide
+                        label: "OLED colour strength"
+                        description: "Saturation of normal content. 100 % is untouched; higher is more vivid."
+                        Slider {
+                            width: 240; icon: "image"
+                            value: (Display.oledSatPct - 100) / 100
+                            valueText: Math.round(100 + shown * 100) + "%"
+                            onMoved: v => Display.setOledColor(Display.oledBrightPct, Math.round(100 + v * 100))
+                        }
+                    }
+                    SettingRow {
+                        visible: Display.hasOled
+                        label: "Burn-in protection  ★ recommended"
+                        description: "Dims after 4 min (wakes instantly), locks after 12, suspends on battery after 25. Never blanks the panel. This protects the panel from burn-in — it does not change colour; the rows above do."
                         Toggle { checked: Display.hypridleOn; onToggled: v => Display.setIdle(v ? "oled" : "off") }
                     }
                     SettingRow {

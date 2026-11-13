@@ -51,6 +51,12 @@ done`]
                                scale: m.scale, x: m.x, y: m.y, modes: ipc.availableModes || [],
                                oled: !!e.oled, vendor: e.vendor || "", model: e.model || "", hdr_nits: e.hdr_nits || "" })
                 }
+                // Record the EDID verdict on its own. panels is a join
+                // against Hyprland.monitors, and if that list has not arrived
+                // when the probe returns, the join is empty and hasOled was
+                // stuck false for the session — hiding the OLED rows and
+                // dropping the brightness floor to 1 % on a panel that needs 10.
+                root.probedOled = Object.keys(byConn).some(k => byConn[k].oled)
                 root.panels = out
                 root.refreshProbed = true
             }
@@ -61,7 +67,52 @@ done`]
         for (const p of panels) if (p.name.startsWith("eDP")) return p
         return panels.length ? panels[0] : null
     }
-    readonly property bool hasOled: panels.some(p => p.oled)
+    property bool probedOled: false
+    readonly property bool hasOled: probedOled || panels.some(p => p.oled)
+
+    // ── OLED colour (praxis-display color) ─────────────────────────────
+    // Hyprland drives outputs through the srgb preset at 8 bits unless told
+    // otherwise; on a wide-gamut OLED that is the narrowest pipeline the
+    // panel has. These are percentages because that is how the vendor tools
+    // put it, and how the user thinks about it.
+    property int  oledBrightPct: 100
+    property int  oledSatPct:    100
+    property bool oledWide:      false
+
+    function refreshOledColor() { if (!oledProbe.running) oledProbe.running = true }
+    Process {
+        id: oledProbe
+        command: ["bash", "-c",
+            "hyprctl -j monitors | jq -r '[.[] | select(.name | startswith(\"eDP\"))][0] | \"\\(.sdrBrightness) \\(.sdrSaturation) \\(.colorManagementPreset)\"'"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const f = this.text.trim().split(/\s+/)
+                if (f.length >= 3 && f[0] !== "null") {
+                    root.oledBrightPct = Math.round(parseFloat(f[0]) * 100) || 100
+                    root.oledSatPct    = Math.round(parseFloat(f[1]) * 100) || 100
+                    root.oledWide      = f[2] === "wide"
+                }
+            }
+        }
+    }
+    function setOledColor(brightPct, satPct) {
+        root.oledBrightPct = brightPct
+        root.oledSatPct    = satPct
+        colorSet.command = ["praxis-display", "color", String(brightPct), String(satPct)]
+        colorSet.running = true
+    }
+    function setOledWide(on) {
+        colorSet.command = on ? ["praxis-display", "color", String(root.oledBrightPct), String(root.oledSatPct)]
+                              : ["praxis-display", "color", "off"]
+        colorSet.running = true
+        root.oledWide = on
+    }
+    Process {
+        id: colorSet
+        stderr: StdioCollector { onStreamFinished: if (this.text.trim()) console.warn("praxis-display color:", this.text.trim()) }
+        onExited: oledLater.start()
+    }
+    Timer { id: oledLater; interval: 900; onTriggered: root.refreshOledColor() }
 
     // ── modes, refresh rate, scale: through praxis-display ──────────────
     // A change applies at once and goes back by itself after 15 s unless kept
@@ -200,5 +251,5 @@ done`]
         refreshLater.start()
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: { refresh(); refreshOledColor() }
 }
