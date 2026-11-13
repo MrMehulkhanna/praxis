@@ -108,18 +108,20 @@ def special_shown(name=MIN_WS):
 def minimize(address=None):
     """Send a window out of sight.
 
-    Moving it to a special workspace is only half the job: if that workspace
-    happens to be open on the monitor, the window lands somewhere still
-    visible and minimising looks like it did nothing at all. Hide it after.
+    follow = false is the whole fix. Moving a window into a special
+    workspace *opens that workspace on the monitor*, so the window lands
+    somewhere still visible and minimising looks like it did nothing.
+    Hiding it afterwards does not work either: the move is asynchronous, so
+    a check of the monitor state straight after still reports the workspace
+    hidden, the toggle is skipped, and Hyprland then shows it anyway. Asking
+    not to follow avoids the race instead of trying to win it.
 
     The address is passed explicitly where the caller has one, because a
     click on the bar can move focus before the dispatch lands, and then
     "the active window" is no longer the window the user meant.
     """
     target = f', window = "address:{address}"' if address else ""
-    dispatch(f'hl.dsp.window.move({{ workspace = "{MIN_WS}"{target} }})')
-    if special_shown():
-        dispatch(f'hl.dsp.workspace.toggle_special("{MIN_WS.split(":", 1)[1]}")')
+    dispatch(f'hl.dsp.window.move({{ workspace = "{MIN_WS}", follow = false{target} }})')
 
 
 def unminimize():
