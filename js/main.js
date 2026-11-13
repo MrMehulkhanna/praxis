@@ -300,3 +300,50 @@ Sources:
   // Initial load
   updateTerminal('diagnostics');
 })();
+
+/* ── depth on scroll ──────────────────────────────────────────────────────
+   One observer for the whole page. Elements are revealed once and then
+   unobserved: re-animating on every pass back up the page is the thing that
+   makes a site feel like a demo rather than a product.
+
+   Honours prefers-reduced-motion by doing nothing at all — the CSS already
+   leaves those elements in their final state, so skipping the observer is
+   enough. */
+(() => {
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const targets = document.querySelectorAll('.rise, .rise-stagger');
+  if (still || !('IntersectionObserver' in window)) {
+    targets.forEach(el => el.classList.add('in'));
+    return;
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    }
+  }, {
+    // a little before the element is fully on screen, so the motion has
+    // finished by the time the reader's eye arrives
+    rootMargin: '0px 0px -12% 0px',
+    threshold: 0.08,
+  });
+  targets.forEach(el => io.observe(el));
+
+  // pointer-reactive lean, desktop pointers only — on a touch screen there
+  // is no hover, and the tilt would just fire on tap and stick
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    for (const card of document.querySelectorAll('.tilt')) {
+      const max = 5;  // degrees; beyond this it stops reading as depth
+      card.addEventListener('pointermove', (ev) => {
+        const r = card.getBoundingClientRect();
+        const px = (ev.clientX - r.left) / r.width - 0.5;
+        const py = (ev.clientY - r.top) / r.height - 0.5;
+        card.style.transform =
+          `rotateY(${(px * max).toFixed(2)}deg) rotateX(${(-py * max).toFixed(2)}deg) translateZ(6px)`;
+      });
+      card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+    }
+  }
+})();
