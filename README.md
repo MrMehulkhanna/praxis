@@ -9,26 +9,20 @@
 
 <p align="center">
   <a href="https://github.com/MrMehulkhanna/praxis/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MrMehulkhanna/praxis/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Local AI" src="https://img.shields.io/badge/AI-local_first-8B5CF6">
-  <img alt="Offline" src="https://img.shields.io/badge/works-offline-22C55E">
-  <img alt="Telemetry" src="https://img.shields.io/badge/telemetry-none-EF4444">
-  <img alt="Wayland" src="https://img.shields.io/badge/Wayland-native-58E1FF?logo=wayland&logoColor=black">
-  <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-based-1793D1?logo=archlinux&logoColor=white">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
 <p align="center">
-  <a href="https://mrmehulkhanna.github.io/praxis/"><b>🌐 Official Website</b></a> ·
-  <a href="#-get-it">Get it</a> ·
-  <a href="#-what-you-get">Features</a> ·
-  <a href="#%EF%B8%8F-shortcuts">Shortcuts</a> ·
-  <a href="#-how-it-works">How it works</a> ·
-  <a href="#-develop">Develop</a>
+  <a href="https://mrmehulkhanna.github.io/praxis/"><b>Website</b></a> ·
+  <a href="#get-it">Get it</a> ·
+  <a href="#what-you-get">Features</a> ·
+  <a href="#shortcuts">Shortcuts</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#develop">Develop</a>
 </p>
 
 ---
 
-## 🎯 The motto
+## The motto
 
 **Praxis** is the Greek word for turning knowledge into action. That is the whole idea:
 
@@ -44,21 +38,21 @@ launcher, voice, the terminal, your editor. Pick a model once and it is used eve
 
 | | |
 |---|---|
-| 🔒 **Private by default** | Models run on your own GPU or CPU. Cloud models are opt-in, and a paid one can't even be reached unless you allow it. No telemetry, ever. |
-| ⚡ **Fast on real hardware** | Designed on a 16 GB laptop with a 6 GB GPU. Everything adapts to the machine it lands on — GPU drivers, model size, refresh rate, battery. |
-| 🧘 **Never in your way** | One keyboard shortcut for everything, gestures that follow your fingers, and a desktop that heals itself instead of asking you to open a terminal. |
-| 🤝 **Safe for everyone** | An installer that protects Windows and your files, an AI that can't run a dangerous command without asking, and updates that never ask for a password. |
+| **Private by default** | Models run on your own GPU or CPU. Cloud models are opt-in, and a paid one can't even be reached unless you allow it. No telemetry, ever. |
+| **Fast on real hardware** | Designed on a 16 GB laptop with a 6 GB GPU. Everything adapts to the machine it lands on — GPU drivers, model size, refresh rate, battery. |
+| **Never in your way** | One keyboard shortcut for everything, gestures that follow your fingers, and a desktop that heals itself instead of asking you to open a terminal. |
+| **Safe for everyone** | An installer that protects Windows and your files, an AI that can't run a dangerous command without asking, and updates that never ask for a password. |
 
 ---
 
-## 🚀 Get it
+## Get it
 
 1. **Download** the ISO from [Releases](https://github.com/MrMehulkhanna/praxis/releases) (≈ 2 GB) — or build it on Arch with `bash iso/build.sh`.
 2. **Write it to a USB stick:** `bash iso/flash.sh praxis-*.iso` — refuses anything that isn't a USB disk and verifies the copy afterwards.
 3. **Boot it** (UEFI, Secure Boot off). The live desktop starts by itself — try everything before installing.
 4. **Click _Install Praxis_ in the dock.** Pick next to Windows, free space, one partition or the whole disk — done.
 
-> 📖 Step-by-step help, partitioning tips and hardware troubleshooting: **[Installation Guide](docs/INSTALLATION.md)**
+> Step-by-step help, partitioning tips and hardware troubleshooting: **[Installation Guide](docs/INSTALLATION.md)**
 
 Already installed? Update to the newest version at any time — **Settings › Update**, or:
 
@@ -68,9 +62,9 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 
 ---
 
-## ✨ What you get
+## What you get
 
-### 🧠 An AI built into the system — not an app
+### The AI is a system service, not an app
 
 | | |
 |---|---|
@@ -85,7 +79,7 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 | **AI that can't hurt you** | Every command the AI proposes is classified *auto / confirm / forbidden*. Only an explicit safe list runs unattended, and every decision is written to an audit log. |
 | **AI off in one tap** | Control Center › **AI off** frees the GPU and its memory completely — for games, video calls or battery. |
 
-### 🪟 Window management that feels like magic
+### Window management
 
 | | |
 |---|---|
@@ -100,16 +94,16 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 
 <p align="center"><img src="docs/screenshots/settings-shortcuts.png" width="720" alt="Settings — every shortcut, grouped and searchable"></p>
 
-### 🖥️ A desktop that's beautiful *and* useful
+### The desktop
 
 | | |
 |---|---|
 | **Live top bar** | CPU, memory, GPU memory, network speed and temperatures at a glance; a clock that's always visible and right-clicks to sync. |
 | **Launcher & command palette** | Tap `Super` — apps, files, settings and actions in one search box. |
 | **Control Center** | Wi-Fi, Bluetooth, audio, brightness, night light, power profile and the three **modes**: |
-| &nbsp;&nbsp;🎮 **Game mode** | `Super+G` — performance profile, no notifications, no blur, no animations. |
-| &nbsp;&nbsp;🔋 **Battery saver** | Turns itself on when you unplug: 60 Hz, still wallpaper, lighter AI. |
-| &nbsp;&nbsp;🤖 **AI on/off** | Free the GPU in one tap. |
+| &nbsp;&nbsp;**Game mode** | `Super+G` — performance profile, no notifications, no blur, no animations. |
+| &nbsp;&nbsp;**Battery saver** | Turns itself on when you unplug: 60 Hz, still wallpaper, lighter AI. |
+| &nbsp;&nbsp;**AI on/off** | Free the GPU in one tap. |
 | **Widget board** | `Super+B` — a StandBy-style board of glanceable widgets. |
 | **Task manager** | `Ctrl+Shift+Esc` — live CPU *and* GPU use per process, and one Stop button for running AI jobs. |
 | **Built-in tools** | Clipboard history (`Super+Shift+V`), emoji picker (`Super+.`), colour picker (`Super+Shift+C`), screen recorder (`Super+Shift+R`), quick notes (`Super+N`), screenshots (`Print`). |
@@ -118,7 +112,7 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 
 <p align="center"><img src="docs/screenshots/settings-wallpaper.png" width="720" alt="Settings — still and live wallpapers"></p>
 
-### 💻 Hardware that just works
+### Hardware
 
 | | |
 |---|---|
@@ -131,7 +125,7 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 | **No more freezes** | Compressed swap (zstd) sized to your RAM, kernel Pressure Stall Information (PSI) thrashing protection, and an out-of-memory guard that stops the AI model first — never your desktop compositor. |
 | **Clock agrees with Windows** | Dual-boot time is handled for you; time zone is detected automatically. |
 
-### 🛡️ An installer you can trust with your Windows PC
+### The installer, and your Windows partition
 
 | | |
 |---|---|
@@ -141,17 +135,50 @@ curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootf
 | **Boots straight into Praxis** | Some HP and Acer firmware keeps putting Windows first, so you'd need F9/F12 every time. Praxis puts itself back at the front of the boot order on every start, and keeps a fallback loader the firmware always finds. Windows stays one click away in the boot menu. |
 | **Tested like it matters** | Every install type is run for real into disk images — including a fake Windows 11 disk full of files — then booted and checked in a virtual machine. Windows' files must be byte-identical afterwards. |
 
-### 🔄 Updates and self-care
+### Keeping itself healthy
 
 | | |
 |---|---|
-| **One-click updates** | **Settings › Update** pulls the newest desktop, tools and fixes from GitHub and applies them for every user on the PC — no password prompts, no restart needed. |
 | **Self-healing** | `praxis doctor` checks the whole system; `praxis doctor --fix` applies the fixes that are safe to automate. Also in **Settings › Health**. |
 | **Snapshots** | On btrfs, every update is preceded by a snapshot you can boot from the menu if anything goes wrong. |
 
 ---
 
-## ⌨️ Shortcuts
+## Sharing a screen with another machine
+
+`Super+Shift+S`, or `praxis-share` from a terminal.
+
+Two Praxis machines on the same network can act as one desk. **Extend** asks
+Hyprland for a headless output and sends it over, so the other laptop becomes
+a genuine third display with its own workspaces — not a mirror. **Mirror**
+copies a screen you already have.
+
+Sound travels in the same stream as the picture, so the two cannot drift
+apart. Video is hardware-encoded where the GPU allows it.
+
+A viewer needs a six-digit code the host shows on screen. The code is a TLS
+pre-shared key rather than a password checked after connecting: a client that
+does not know it fails the handshake and never reaches the stream, and the
+session key is derived from it, so everything after is encrypted. Nothing to
+copy between machines.
+
+Over a local network the picture arrives roughly 15–40 ms late. That is
+comfortable for a browser, a terminal or reference material on the far
+screen, and it is not good enough for games or scrubbing video there.
+
+`praxis-share input host` shares this keyboard and mouse with the other
+machine; `praxis-share input join HOST` takes them from it.
+
+## Updating
+
+Settings → General → Update, or `praxis-update`.
+
+The window streams the update as it happens and shows which stage it is on.
+When something has been replaced that cannot be reloaded in place — the
+kernel, systemd, the graphics driver — it says so and offers to restart,
+naming which one. Nothing is hidden in a terminal.
+
+## Shortcuts
 
 The essentials — the full, searchable list is in **Settings › Shortcuts**.
 
@@ -170,7 +197,7 @@ The essentials — the full, searchable list is in **Settings › Shortcuts**.
 
 ---
 
-## 🧰 The `ai` command
+## The `ai` command
 
 ```console
 $ ai "why is my laptop hot?"          # agent — collects real diagnostics, then answers
@@ -186,7 +213,7 @@ Editors and other tools can use the same models through an OpenAI-compatible end
 
 ---
 
-## 🏗️ How it works
+## How it works
 
 ```mermaid
 flowchart LR
@@ -254,7 +281,7 @@ tools/      wallpaper generators, hardware helper, utilities
 
 ---
 
-## 🛠️ Develop
+## Develop
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -266,12 +293,12 @@ sudo iso/test-install.sh alongside-btrfs wipe-ext4      # real installs into dis
 
 `ai doctor` names anything missing. Contributions, bug reports and ideas are welcome — open an issue.
 
-## 🧭 Principles
+## Principles
 
 **Local-first · private · model-agnostic · cost-aware · offline-capable · user-controlled · transparent.**
 No hidden automation. No telemetry. Your computer works for you.
 
-## 📜 License & credits
+## License & credits
 
 MIT — see [`LICENSE`](LICENSE). Praxis stands on the shoulders of great open-source projects —
 Arch Linux, Hyprland, Quickshell, llama.cpp, Whisper, PipeWire and many more — each under its own
