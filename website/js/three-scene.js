@@ -440,7 +440,13 @@
   let isHeroVisible = true;
   let isPageVisible = !document.hidden;
 
-  if (IntersectionObserver in window) {
+  // 'IntersectionObserver' in window — the left side of `in` has to be a
+  // string. Written bare, the constructor is coerced to its source text and
+  // looked up as a property name, which never matches, so the guard was
+  // always false and the observer was never attached. isHeroVisible then sat
+  // at its initial true and the render loop ran at full rate off-screen,
+  // which is exactly the cost PRX-WEB-010 set out to avoid.
+  if ('IntersectionObserver' in window) {
     const heroObs = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         isHeroVisible = entry.isIntersecting;
