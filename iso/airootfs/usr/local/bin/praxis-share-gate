@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""
+praxis-share-gate — the lock on a shared screen.
+
+  praxis-share-gate serve  --listen PORT --to PORT --code CODE
+  praxis-share-gate client --host H --port P --listen PORT --code CODE
+
+Without this, praxis-share is an open screen and microphone-adjacent audio
+feed to anyone on the network. With it, a viewer needs a six-digit code the
+host is showing on its own screen.
+
+The code is a TLS pre-shared key, not a password checked after connecting.
+A client that does not know it fails the TLS handshake and never reaches
+the stream at all, and because the handshake derives the session key from
+the code, everything after it is encrypted too. No certificates, nothing to
+copy between machines — read six digits off the other screen.
+
+Six digits is 10^6, which is thin against an attacker who can try forever,
+so the server stops listening to an address for a while after a few bad
+handshakes, and the code is new for every session. That is proportionate to
+a home or office network; it is not a reason to expose the port to the
+internet.
+"""
+import argparse
+import secrets
+import socket
+import ssl
+import sys
+import threading
+import time
+
+ALPHABET = "0123456789"
+CODE_LEN = 6
+MAX_FAILS = 5
+LOCKOUT_S = 60
+IDENTITY = b"praxis-share"
+
+
+def new_code() -> str:
+    return "".join(secrets.choice(ALPHABET) for _ in range(CODE_LEN))
+
+
+def psk_from(code: str) -> bytes:
+    # The code is short and low-entropy, so stretch it before it becomes key
+    # material. PBKDF2 makes each guess cost something even if the handshake
+    # itself could somehow be replayed offline.
+    import hashlib
+    return hashlib.pbkdf2_hmac("sha256", code.encode(), b"praxis-share-v1", 200_000, 32)
+
+
+def pipe(a: socket.socket, b: socket.socket) -> None:
+    try:
+        while True:
+            data = a.recv(65536)
+            if not data:
+                break
+            b.sendall(data)
+    except (OSError, ssl.SSLError):
+        pass
+    finally:
+        for s in (a, b):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
+def serve(listen_port: int, to_port: int, code: str) -> int:
+    key = psk_from(code)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.set_ciphers("PSK")
+    ctx.set_psk_server_callback(lambda identity: key, IDENTITY.decode())
+
+    fails: dict[str, list] = {}
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("0.0.0.0", listen_port))
+    srv.listen(8)
+    print(f"gate: listening on {listen_port}, forwarding to 127.0.0.1:{to_port}", flush=True)
+
+    while True:
+        try:
+            raw, addr = srv.accept()
+        except OSError:
+            break
+        ip = addr[0]
+        rec = fails.get(ip)
+        if rec and rec[0] >= MAX_FAILS and time.time() - rec[1] < LOCKOUT_S:
+            raw.close()
+            continue
+
+        def handle(raw=raw, ip=ip):
+            try:
+                tls = ctx.wrap_socket(raw, server_side=True)
+            except (ssl.SSLError, OSError):
+                r = fails.setdefault(ip, [0, 0.0])
+                r[0] += 1
+                r[1] = time.time()
+                print(f"gate: refused {ip} (wrong code, {r[0]})", flush=True)
+                try:
+                    raw.close()
+                except OSError:
+                    pass
+                return
+            fails.pop(ip, None)
+            print(f"gate: {ip} accepted", flush=True)
+            try:
+                up = socket.create_connection(("127.0.0.1", to_port), timeout=5)
+            except OSError as e:
+                print(f"gate: stream not reachable: {e}", flush=True)
+                tls.close()
+                return
+            threading.Thread(target=pipe, args=(tls, up), daemon=True).start()
+            threading.Thread(target=pipe, args=(up, tls), daemon=True).start()
+
+        threading.Thread(target=handle, daemon=True).start()
+    return 0
+
+
+def client(host: str, port: int, listen_port: int, code: str) -> int:
+    key = psk_from(code)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    ctx.set_ciphers("PSK")
+    ctx.set_psk_client_callback(lambda hint: (IDENTITY.decode(), key))
+
+    try:
+        tls = ctx.wrap_socket(socket.create_connection((host, port), timeout=10),
+                              server_hostname=None)
+    except ssl.SSLError:
+        print("praxis-share-gate: the code was not accepted", file=sys.stderr)
+        return 4
+    except OSError as e:
+        print(f"praxis-share-gate: cannot reach {host}:{port} ({e})", file=sys.stderr)
+        return 3
+
+    lsn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    lsn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    lsn.bind(("127.0.0.1", listen_port))
+    lsn.listen(1)
+    print(f"gate: connected — play from 127.0.0.1:{listen_port}", flush=True)
+    local, _ = lsn.accept()
+    t1 = threading.Thread(target=pipe, args=(tls, local), daemon=True)
+    t2 = threading.Thread(target=pipe, args=(local, tls), daemon=True)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(add_help=True)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("serve");  s.add_argument("--listen", type=int, required=True); s.add_argument("--to", type=int, required=True); s.add_argument("--code", required=True)
+    c = sub.add_parser("client"); c.add_argument("--host", required=True); c.add_argument("--port", type=int, required=True); c.add_argument("--listen", type=int, required=True); c.add_argument("--code", required=True)
+    sub.add_parser("newcode")
+    a = ap.parse_args(argv)
+    if a.cmd == "newcode":
+        print(new_code()); return 0
+    if a.cmd == "serve":
+        return serve(a.listen, a.to, a.code)
+    return client(a.host, a.port, a.listen, a.code)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(0)

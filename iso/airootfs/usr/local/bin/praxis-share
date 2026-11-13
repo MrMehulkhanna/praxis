@@ -26,6 +26,8 @@ STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis-share"
 PID_FILE="$STATE_DIR/capture.pid"
 SERVE_PID_FILE="$STATE_DIR/serve.pid"
 FIFO="$STATE_DIR/stream.ts"
+GATE_PID_FILE="$STATE_DIR/gate.pid"
+CODE_FILE="$STATE_DIR/code"
 MON_FILE="$STATE_DIR/monitor"
 PORT_FILE="$STATE_DIR/port"
 DEFAULT_PORT=5920
@@ -160,6 +162,7 @@ cmd_mirror() {
 
 start_stream() {
     local mon="$1" port="$2" fps="${3:-60}" enc
+    local inner=$(( port + 1000 ))   # loopback-only; the gate fronts "$port"
     need wf-recorder; need gst-launch-1.0
     enc=$(encoder)
     echo "$port" > "$PORT_FILE"
@@ -209,9 +212,18 @@ start_stream() {
 
     setsid gst-launch-1.0 -q \
         filesrc location="$FIFO" ! queue max-size-time=100000000 leaky=downstream \
-        ! tcpserversink host=0.0.0.0 port="$port" sync=false recover-policy=keyframe \
+        ! tcpserversink host=127.0.0.1 port="$inner" sync=false recover-policy=keyframe \
         >"$STATE_DIR/serve.log" 2>&1 &
     echo $! > "$SERVE_PID_FILE"
+
+    # The stream itself only ever listens on loopback. The port other
+    # machines can reach belongs to the gate, which will not forward a byte
+    # to a client that cannot prove it knows the code.
+    local code; code=$(praxis-share-gate newcode)
+    printf '%s\n' "$code" > "$CODE_FILE"; chmod 600 "$CODE_FILE"
+    setsid praxis-share-gate serve --listen "$port" --to "$inner" --code "$code" \
+        >"$STATE_DIR/gate.log" 2>&1 &
+    echo $! > "$GATE_PID_FILE"
 
     sleep 2
     if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
@@ -219,6 +231,8 @@ start_stream() {
         cmd_stop >/dev/null 2>&1; die "see $STATE_DIR/capture.log"
     fi
     ok "serving on port $port"
+    printf '\n  \033[1mpairing code  %s\033[0m\n' "$(cat "$CODE_FILE")"
+    info "the other machine needs this code — it is new every time you start"
     local ip; ip=$(ip -4 -j addr 2>/dev/null | python3 -c '
 import json,sys
 for i in json.load(sys.stdin):
@@ -230,16 +244,42 @@ for i in json.load(sys.stdin):
 }
 
 cmd_connect() {
-    local target="${1:-}"; [ -n "$target" ] || die "usage: praxis-share connect HOST[:PORT]"
+    local target="" code=""
+    while [ $# -gt 0 ]; do case "$1" in
+        --code) code="$2"; shift 2 ;;
+        *) target="$1"; shift ;;
+    esac; done
+    [ -n "$target" ] || die "usage: praxis-share connect HOST[:PORT] [--code NNNNNN]"
     local host="${target%%:*}" port="${target##*:}"
     [ "$port" = "$host" ] && port="$DEFAULT_PORT"
-    need gst-launch-1.0
-    info "connecting to $host:$port — Esc or Ctrl-C to stop"
-    # One demuxer, two branches. sync=false on video keeps latency down;
-    # the audio branch carries the clock, so sound and picture stay together
-    # without either waiting on the other.
-    exec gst-launch-1.0 -q \
-        tcpclientsrc host="$host" port="$port" ! tsdemux name=d \
+    need gst-launch-1.0; need praxis-share-gate
+
+    if [ -z "$code" ]; then
+        # asked for rather than guessed: the host is showing it on its screen
+        printf 'pairing code shown on %s: ' "$host"
+        read -r code
+    fi
+    [ -n "$code" ] || die "no code given"
+
+    local local_port=$(( port + 2000 ))
+    mkdir -p "$STATE_DIR"
+    info "connecting to $host:$port"
+    setsid praxis-share-gate client --host "$host" --port "$port" \
+        --listen "$local_port" --code "$code" >"$STATE_DIR/client.log" 2>&1 &
+    local gate=$!
+    sleep 2
+    if ! kill -0 "$gate" 2>/dev/null; then
+        printf '\n'; sed 's/^/  /' "$STATE_DIR/client.log" 2>/dev/null | tail -3
+        die "could not connect"
+    fi
+    ok "connected — Esc or Ctrl-C to stop"
+
+    # The decoder now reads from the authenticated tunnel on loopback, not
+    # from the network: everything over the wire is inside the TLS session
+    # the pairing code established.
+    trap 'kill "$gate" 2>/dev/null' EXIT INT TERM
+    gst-launch-1.0 -q \
+        tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d \
         d. ! queue max-size-time=200000000 ! h264parse ! avdec_h264 ! videoconvert \
            ! waylandsink fullscreen=true sync=false \
         d. ! queue max-size-time=200000000 ! aacparse ! avdec_aac ! audioconvert ! audioresample \
@@ -250,7 +290,8 @@ cmd_stop() {
     local pid; pid=$(serving_pid || true)
     if [ -n "$pid" ]; then kill -INT "$pid" 2>/dev/null || true; ok "stopped capturing"; else info "not serving"; fi
     [ -f "$SERVE_PID_FILE" ] && kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null
-    rm -f "$PID_FILE" "$SERVE_PID_FILE" "$PORT_FILE" "$FIFO"
+    [ -f "$GATE_PID_FILE" ] && kill "$(cat "$GATE_PID_FILE")" 2>/dev/null
+    rm -f "$PID_FILE" "$SERVE_PID_FILE" "$GATE_PID_FILE" "$PORT_FILE" "$CODE_FILE" "$FIFO"
     if [ -s "$MON_FILE" ]; then
         local mon; mon=$(cat "$MON_FILE")
         hyprctl output remove "$mon" >/dev/null 2>&1 && ok "removed $mon"
@@ -263,6 +304,7 @@ cmd_status() {
     if [ -n "$pid" ]; then
         ok "serving on port $(cat "$PORT_FILE" 2>/dev/null || echo '?')  (pid $pid)"
         [ -s "$MON_FILE" ] && info "virtual display: $(cat "$MON_FILE")"
+        [ -s "$CODE_FILE" ] && printf '  pairing code  \033[1m%s\033[0m\n' "$(cat "$CODE_FILE")"
     else
         info "not serving"
     fi

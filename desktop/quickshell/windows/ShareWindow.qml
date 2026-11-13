@@ -224,12 +224,31 @@ OverlayWindow {
                         label: Share.serving ? "Stop sharing" : "Start sharing"
                         onClicked: Share.serving ? Share.stop() : Share.start()
                     }
-                    Text {
+                    Row {
                         anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        visible: Share.serving && Share.localIp !== ""
-                        text: "praxis-share connect " + Share.localIp + ":" + Share.port
-                        color: Theme.text2
-                        font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
+                        visible: Share.serving && Share.pairCode !== ""
+                        spacing: Theme.spaceSm
+                        Text {
+                            text: "code"
+                            color: Theme.muted
+                            font.family: Theme.font; font.pixelSize: Theme.fontXs
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        // Big, monospaced and spaced out, because its whole job
+                        // is being read off this screen and typed on another.
+                        Rectangle {
+                            width: codeTxt.width + 20; height: 30; radius: Theme.radiusSm
+                            color: Theme.alpha(Theme.accent, 0.14)
+                            border.width: 1; border.color: Theme.alpha(Theme.accent, 0.4)
+                            Text {
+                                id: codeTxt
+                                anchors.centerIn: parent
+                                text: Share.pairCode
+                                color: Theme.accent
+                                font.family: Theme.fontMono; font.pixelSize: Theme.fontLg
+                                font.weight: Font.DemiBold; font.letterSpacing: 3
+                            }
+                        }
                     }
                 }
             }
@@ -245,7 +264,7 @@ OverlayWindow {
                 }
                 SettingRow {
                     label: "Show another machine's screen"
-                    description: "Its address, as that machine shows it when you start sharing there."
+                    description: "Its address and the six-digit code, both shown on that machine when you start sharing there."
                     Row {
                         spacing: Theme.spaceSm
                         Rectangle {
@@ -272,10 +291,32 @@ OverlayWindow {
                                 }
                             }
                         }
+                        Rectangle {
+                            width: 96; height: 30; radius: Theme.radiusSm
+                            color: Theme.alpha(Theme.bg, 0.6)
+                            border.width: 1
+                            border.color: codeIn.activeFocus ? Theme.accent : Theme.border
+                            TextInput {
+                                id: codeIn
+                                anchors.fill: parent; anchors.margins: 8
+                                verticalAlignment: Text.AlignVCenter
+                                color: Theme.text
+                                maximumLength: 6
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.letterSpacing: 2
+                                Text {
+                                    anchors.fill: parent; verticalAlignment: Text.AlignVCenter
+                                    visible: !codeIn.text && !codeIn.activeFocus
+                                    text: "code"
+                                    color: Theme.muted
+                                    font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
+                                }
+                            }
+                        }
                         Btn {
                             icon: "monitor"; label: "Connect"
-                            enabled: win.connectTarget.trim() !== ""
-                            onClicked: Share.connectTo(win.connectTarget.trim())
+                            enabled: win.connectTarget.trim() !== "" && codeIn.text.length === 6
+                            onClicked: Share.connectTo(win.connectTarget.trim(), codeIn.text)
                         }
                     }
                 }

@@ -20,6 +20,7 @@ Singleton {
     property string mirrorOf:   ""
     property bool   ready:      false      // praxis-share doctor is happy
     property string blockedBy:  ""         // what is missing, if anything
+    property string pairCode:   ""         // shown by the host, typed on the viewer
 
     // live figures, so the UI can show what is actually happening rather
     // than what we hope is happening
@@ -54,6 +55,7 @@ if [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   echo "port=$PORT"
   echo "monitor=$(cat "$S/monitor" 2>/dev/null)"
   echo "clients=$(ss -tn state established 2>/dev/null | grep -c ":$PORT")"
+  echo "code=$(cat "$S/code" 2>/dev/null)"
 else
   echo "serving=0"
 fi
@@ -72,8 +74,9 @@ echo "ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut 
                     root.port       = parseInt(kv.port) || root.port
                     root.servingMon = kv.monitor || ""
                     root.clients    = parseInt(kv.clients) || 0
+                    root.pairCode   = kv.code || ""
                 } else {
-                    root.servingMon = ""; root.clients = 0
+                    root.servingMon = ""; root.clients = 0; root.pairCode = ""
                 }
             }
         }
@@ -107,7 +110,11 @@ echo "ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut 
         act.running = true
     }
     function stop() { act.command = ["praxis-share", "stop"]; act.running = true }
-    function connectTo(target) { Quickshell.execDetached(["praxis-share", "connect", target]) }
+    // The viewer needs a terminal for this: the code is typed there, and
+    // running it detached would leave nowhere to type it.
+    function connectTo(target, code) {
+        Quickshell.execDetached(["kitty", "-e", "praxis-share", "connect", target, "--code", code])
+    }
 
     Process {
         id: act
