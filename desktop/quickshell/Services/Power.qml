@@ -36,14 +36,25 @@ Singleton {
         v = Math.max(root.minBrightness, Math.min(1, v))
         root.brightness = v
         if (!brtSet.running) {
-            brtSet.command = ["env", "PRAXIS_QUIET=1", "praxis-brightness", "set", Math.round(v * 100)]
+            // String(): Process.command is a list of strings, and a bare
+            // number is not one. Everywhere else in the shell that passes a
+            // number does String(...) — this was the one place that did not.
+            brtSet.command = ["env", "PRAXIS_QUIET=1", "praxis-brightness", "set", String(Math.round(v * 100))]
             brtSet.running = true
         } else _pendingBrt = v
     }
     property real _pendingBrt: -1
     Process {
         id: brtSet
-        onExited: { if (root._pendingBrt >= 0) { const v = root._pendingBrt; root._pendingBrt = -1; root.setBrightness(v) } }
+        // A brightness set that fails should say so. Silently swallowing it
+        // is how a dead slider looked like a mystery instead of a bug.
+        stderr: StdioCollector {
+            onStreamFinished: if (this.text.trim()) console.warn("praxis-brightness:", this.text.trim())
+        }
+        onExited: code => {
+            if (code !== 0) console.warn("praxis-brightness set failed, exit", code)
+            if (root._pendingBrt >= 0) { const v = root._pendingBrt; root._pendingBrt = -1; root.setBrightness(v) }
+        }
     }
     Process {
         id: brtProc

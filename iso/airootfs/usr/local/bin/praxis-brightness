@@ -90,10 +90,18 @@ for e in /sys/class/drm/card*-eDP-*/edid; do
     [ -r "$e" ] && grep -aq ATNA "$e" && floor=10      # Samsung OLED panels (sysfs sizes read 0)
 done
 case "${1:-up}" in
-    up)      bc -e -n"$floor%" -q set "${step}%+" ;;
-    down)    bc -e -n"$floor%" -q set "${step}%-" ;;
-    set)     bc -e -n"$floor%" -q set "${2:?value}%" ;;
-    get)     bc1 -e -m | awk -F, '{print $4}'; exit 0 ;;
+    # Linear, not brightnessctl's -e curve. On this 400-step panel -e put
+    # 10 % at raw 0 — the screen fully off — 30 % at raw 3 and 50 % at raw 25,
+    # so the whole usable range sat in the top third of the slider and the
+    # bottom two thirds were black. The OLED floor was meaningless too,
+    # because 10 % of an exponential scale is raw 0.
+    #
+    # Linear gives 10 % = raw 40 and 50 % = raw 200: every part of the slider
+    # does something, and the floor keeps the panel visible.
+    up)      bc -n"$floor%" -q set "${step}%+" ;;
+    down)    bc -n"$floor%" -q set "${step}%-" ;;
+    set)     bc -n"$floor%" -q set "${2:?value}%" ;;
+    get)     bc1 -m | awk -F, '{print $4}'; exit 0 ;;
     save)    bc -q -s set "${2:-15}%" >/dev/null; exit 0 ;;          # dim (idle) and remember the level
     restore) bc -q -r; exit 0 ;;
     device)  echo "$DEV"; exit 0 ;;
@@ -129,7 +137,7 @@ case "${1:-up}" in
     *)       echo "usage: praxis-brightness up|down|set N|get|save [N]|restore|device|list|use <dev>" >&2; exit 2 ;;
 esac
 
-pct=$(bc1 -e -m | awk -F, '{print $4}' | tr -d '%')
+pct=$(bc1 -m | awk -F, '{print $4}' | tr -d '%')
 if [ -z "${PRAXIS_QUIET:-}" ] && command -v notify-send >/dev/null; then   # quiet: the shell's own slider
     notify-send -a "Praxis" -t 900 -h "int:value:$pct" -h "string:x-canonical-private-synchronous:brightness" \
         "󰃞 Brightness" "${pct}%"
