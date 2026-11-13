@@ -220,10 +220,10 @@ OverlayWindow {
             H { text: "SYSTEM UPDATES" }
             SettingRow {
                 label: "Update Praxis OS"
-                description: "Pull latest desktop updates, shell features, tools and system packages from repository (No password required)"
+                description: "Pull the latest desktop, tools and system packages. Progress and any restart requirement are shown in the window."
                 Btn {
                     icon: "refresh"; label: "Update System"
-                    onClicked: Quickshell.execDetached(["kitty", "--title", "Praxis System Update", "-e", "bash", "-c", "sudo /usr/local/bin/praxis-update || /usr/local/bin/praxis-update; echo ''; echo 'Window will auto-close in 5 seconds (or press Enter)...'; read -t 5 -p '' || true"])
+                    onClicked: Shell.open("update")
                 }
             }
             H { text: "START-UP" }

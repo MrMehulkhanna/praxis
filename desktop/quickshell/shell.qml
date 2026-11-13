@@ -20,6 +20,7 @@ ShellRoot {
     ActivityPanel {}
     WidgetBoard {}
     ShareWindow {}
+    UpdateWindow {}
     WorkspaceOverview {}
     DictationOsd {}
 
