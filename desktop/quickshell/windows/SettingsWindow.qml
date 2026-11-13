@@ -497,6 +497,20 @@ OverlayWindow {
                     // Only on a panel that is actually OLED: hasOled comes
                     // from reading ATNA out of the EDID, so a non-OLED laptop
                     // booting this ISO never sees these rows.
+                    // Screen sharing lives here because it is a display
+                    // feature, and a keyboard shortcut nobody has been told
+                    // about is the same as no feature at all.
+                    SettingRow {
+                        label: "Share this screen with another PC"
+                        description: Share.serving
+                            ? "Sharing now on port " + Share.port + ". " + Share.clients + (Share.clients === 1 ? " viewer" : " viewers") + "."
+                            : "Use another Praxis machine as a second display, or show its screen here.  Super+Shift+D"
+                        Btn {
+                            icon: "monitor"
+                            label: Share.serving ? "Sharing — open" : "Open"
+                            onClicked: Shell.open("share")
+                        }
+                    }
                     SettingRow {
                         visible: Display.hasOled
                         label: "Wide colour (OLED)"

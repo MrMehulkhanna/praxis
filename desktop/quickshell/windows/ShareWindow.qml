@@ -189,10 +189,19 @@ OverlayWindow {
             Column {
                 width: parent.width; spacing: Theme.spaceMd
                 Text {
-                    text: "SEND"
+                    text: "SEND  ·  this screen goes to the other machine"
                     color: Theme.muted
                     font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold
                     font.letterSpacing: 1.2
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: !Share.serving
+                    text: "Start here, then read the address and code off this window and type them "
+                        + "into the other machine's Receive box."
+                    color: Theme.text2
+                    font.family: Theme.font; font.pixelSize: Theme.fontSm
                 }
                 SettingRow {
                     label: "Mode"
@@ -253,14 +262,24 @@ OverlayWindow {
                 }
             }
 
+            Rectangle { width: parent.width; height: 1; color: Theme.border }
+
             // ── receive ────────────────────────────────────────────────
             Column {
                 width: parent.width; spacing: Theme.spaceMd
                 Text {
-                    text: "RECEIVE"
+                    text: "RECEIVE  ·  the other machine's screen shows here"
                     color: Theme.muted
                     font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold
                     font.letterSpacing: 1.2
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Use this when the other machine is the one sharing. Both boxes are shown "
+                        + "on its screen after it starts."
+                    color: Theme.text2
+                    font.family: Theme.font; font.pixelSize: Theme.fontSm
                 }
                 SettingRow {
                     label: "Show another machine's screen"
