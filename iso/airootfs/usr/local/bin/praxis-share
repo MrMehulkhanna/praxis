@@ -318,6 +318,18 @@ cmd_connect() {
     fi
     [ -n "$code" ] || die "no code given"
 
+    # Auto-correct common subnet octet typo (e.g. typing 10.255 when on 10.225)
+    local my_sub
+    my_sub=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d. -f1-2 | head -1)
+    if [ -n "$my_sub" ] && [[ "$host" =~ ^10\.255\.(.*) ]] && [[ "$my_sub" == 10.* ]] && [[ "$my_sub" != "10.255" ]]; then
+        local fixed_host="${my_sub}.${host#10.255.}"
+        if (exec 3<>/dev/tcp/"$fixed_host"/"$port") 2>/dev/null; then
+            exec 3<&- 3>&-
+            info "auto-correcting typo in host address: $host -> $fixed_host"
+            host="$fixed_host"
+        fi
+    fi
+
     local local_port=$(( port + 2000 ))
     mkdir -p "$STATE_DIR"
     info "connecting to $host:$port"

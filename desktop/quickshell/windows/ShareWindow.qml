@@ -317,11 +317,20 @@ OverlayWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                             Item { width: 12; height: 1 }
-                            Text {
-                                text: "This PC: " + (Share.localIp ? Share.localIp + ":" + Share.port : ":" + Share.port)
-                                color: Theme.muted
-                                font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
+                            Rectangle {
+                                radius: Theme.radiusSm
+                                color: Theme.alpha(Theme.accent, 0.15)
+                                border.width: 1; border.color: Theme.alpha(Theme.accent, 0.4)
+                                implicitHeight: 22
+                                implicitWidth: ipBadgeTxt.implicitWidth + 16
                                 anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    id: ipBadgeTxt
+                                    anchors.centerIn: parent
+                                    text: "Address: " + (Share.localIp ? Share.localIp + ":" + Share.port : ":" + Share.port)
+                                    color: Theme.text
+                                    font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold
+                                }
                             }
                         }
 
@@ -573,7 +582,13 @@ OverlayWindow {
                                 verticalAlignment: Text.AlignVCenter
                                 color: Theme.text
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
-                                onTextChanged: win.connectTarget = text
+                                onTextChanged: {
+                                    let t = text.trim()
+                                    if (Share.localIp && Share.localIp.startsWith("10.225.") && t.startsWith("10.255.")) {
+                                        t = "10.225." + t.slice(7)
+                                    }
+                                    win.connectTarget = t
+                                }
                                 Keys.onPressed: (event) => {
                                     if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
                                         win.isFullscreen = !win.isFullscreen
@@ -581,8 +596,9 @@ OverlayWindow {
                                     }
                                 }
                                 onAccepted: {
-                                    if (codeIn.text.length === 4 && text.trim()) {
-                                        Share.connectTo(text.trim(), codeIn.text)
+                                    let t = win.connectTarget.trim()
+                                    if (codeIn.text.length === 4 && t) {
+                                        Share.connectTo(t, codeIn.text)
                                     } else {
                                         codeIn.forceActiveFocus()
                                     }

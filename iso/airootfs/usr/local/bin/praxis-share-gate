@@ -37,18 +37,61 @@ CODE_LEN = 4  # four digits: easy to read across a desk; the lockout below keeps
 MAX_FAILS = 5
 LOCKOUT_S = 60
 IDENTITY = b"praxis-share"
+import struct
+import subprocess
+
 BEACON_PORT = 5921
+MCAST_GRP = "239.255.79.20"
 
 
 def get_local_ip() -> str:
+    for target in ["8.8.8.8", "1.1.1.1", "10.255.255.255"]:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((target, 1))
+            ip = s.getsockname()[0]
+            s.close()
+            if ip and not ip.startswith("127."):
+                return ip
+        except Exception:
+            pass
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "scope", "global"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and "/" in parts[3]:
+                return parts[3].split("/")[0]
     except Exception:
-        return "127.0.0.1"
+        pass
+    return "127.0.0.1"
+
+
+def get_broadcast_addrs() -> list[str]:
+    addrs = ["<broadcast>", "255.255.255.255"]
+    local_ip = get_local_ip()
+    if local_ip and local_ip != "127.0.0.1":
+        parts = local_ip.split(".")
+        if len(parts) == 4:
+            addrs.append(f"{parts[0]}.{parts[1]}.{parts[2]}.255")
+    try:
+        out = subprocess.check_output(["ip", "-4", "-o", "addr", "show"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            p = line.split()
+            if "brd" in p:
+                idx = p.index("brd")
+                if idx + 1 < len(p):
+                    addrs.append(p[idx + 1])
+    except Exception:
+        pass
+    try:
+        out = subprocess.check_output(["ip", "-4", "neigh"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            p = line.split()
+            if p and p[0] != "FAILED" and not p[0].startswith("127."):
+                addrs.append(p[0])
+    except Exception:
+        pass
+    return list(dict.fromkeys(addrs))
 
 
 def start_beacon(listen_port: int) -> None:
@@ -65,6 +108,11 @@ def start_beacon(listen_port: int) -> None:
             b_sock.bind(("", BEACON_PORT))
         except OSError:
             pass
+        try:
+            mreq = struct.pack("4sl", socket.inet_aton(MCAST_GRP), socket.INADDR_ANY)
+            b_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        except OSError:
+            pass
 
         while True:
             ip = get_local_ip()
@@ -74,8 +122,16 @@ def start_beacon(listen_port: int) -> None:
                 "ip": ip,
                 "port": listen_port
             }).encode("utf-8")
+            beacon_pkt = b"PRAXIS_BEACON:" + payload
+
+            targets = get_broadcast_addrs()
+            for tgt in targets:
+                try:
+                    b_sock.sendto(beacon_pkt, (tgt, BEACON_PORT))
+                except OSError:
+                    pass
             try:
-                b_sock.sendto(b"PRAXIS_BEACON:" + payload, ("<broadcast>", BEACON_PORT))
+                b_sock.sendto(beacon_pkt, (MCAST_GRP, BEACON_PORT))
             except OSError:
                 pass
 
@@ -86,14 +142,16 @@ def start_beacon(listen_port: int) -> None:
                 try:
                     data, addr = b_sock.recvfrom(2048)
                     if data == b"PRAXIS_DISCOVER":
-                        b_sock.sendto(b"PRAXIS_BEACON:" + payload, addr)
-                except (socket.timeout, OSError):
+                        b_sock.sendto(beacon_pkt, addr)
+                except socket.timeout:
+                    continue
+                except OSError:
                     break
 
     threading.Thread(target=_loop, daemon=True).start()
 
 
-def scan(timeout: float = 0.8) -> list[dict]:
+def scan(timeout: float = 1.2) -> list[dict]:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -105,9 +163,21 @@ def scan(timeout: float = 0.8) -> list[dict]:
         s.bind(("", 0))
     except OSError:
         pass
-
     try:
-        s.sendto(b"PRAXIS_DISCOVER", ("<broadcast>", BEACON_PORT))
+        mreq = struct.pack("4sl", socket.inet_aton(MCAST_GRP), socket.INADDR_ANY)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+    except OSError:
+        pass
+
+    discover_pkt = b"PRAXIS_DISCOVER"
+    targets = get_broadcast_addrs()
+    for tgt in targets:
+        try:
+            s.sendto(discover_pkt, (tgt, BEACON_PORT))
+        except OSError:
+            pass
+    try:
+        s.sendto(discover_pkt, (MCAST_GRP, BEACON_PORT))
     except OSError:
         pass
 
@@ -118,7 +188,7 @@ def scan(timeout: float = 0.8) -> list[dict]:
         rem = end_time - time.time()
         if rem <= 0:
             break
-        s.settimeout(min(rem, 0.4))
+        s.settimeout(min(rem, 0.3))
         try:
             data, addr = s.recvfrom(2048)
             if data.startswith(b"PRAXIS_BEACON:"):
@@ -138,6 +208,34 @@ def scan(timeout: float = 0.8) -> list[dict]:
         except (socket.timeout, OSError, json.JSONDecodeError):
             pass
     s.close()
+
+    # TCP probe fallback for active neighbors in ip neigh if not discovered via UDP
+    for tgt in targets:
+        if tgt in ["<broadcast>", "255.255.255.255"] or tgt.endswith(".255") or tgt == my_ip:
+            continue
+        key = f"{tgt}:5920"
+        if key not in devices:
+            try:
+                tc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                tc.settimeout(0.15)
+                if tc.connect_ex((tgt, 5920)) == 0:
+                    hostname = f"Praxis PC ({tgt})"
+                    try:
+                        h = socket.gethostbyaddr(tgt)[0]
+                        if h:
+                            hostname = h.split(".")[0]
+                    except Exception:
+                        pass
+                    devices[key] = {
+                        "name": hostname,
+                        "ip": tgt,
+                        "port": 5920,
+                        "is_self": False
+                    }
+                tc.close()
+            except Exception:
+                pass
+
     return list(devices.values())
 
 

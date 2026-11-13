@@ -180,12 +180,16 @@ fi
     function connectTo(target, code) {
         if (viewer.running) return
         root.connectError = ""
-        root.viewTarget = target
+        let t = (target || "").trim()
+        if (root.localIp && root.localIp.startsWith("10.225.") && t.startsWith("10.255.")) {
+            t = "10.225." + t.slice(7)
+        }
+        root.viewTarget = t
         if (root.inputControl) {
-            const hostOnly = target.split(":")[0]
+            const hostOnly = t.split(":")[0]
             if (hostOnly) root.joinInput(hostOnly)
         }
-        viewer.command = ["praxis-share", "connect", target, "--code", code]
+        viewer.command = ["praxis-share", "connect", t, "--code", code]
         viewer.running = true
     }
     function disconnect() {
