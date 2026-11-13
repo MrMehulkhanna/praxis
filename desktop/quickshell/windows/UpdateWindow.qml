@@ -11,21 +11,24 @@ import "root:/components"
 OverlayWindow {
     id: win
     name: "update"
-    onOpened: Updates.checkRestart()
+    onOpened: {
+        Updates.checkRestart()
+        Updates.checkForUpdates()
+    }
 
     component Btn: IconButton { implicitHeight: 30; padding: 10 }
 
     Glass {
         anchors.centerIn: parent
         width: 680
-        height: Math.min(parent.height - 80, 520)
+        height: Math.min(parent.height - 80, 560)
         radius: Theme.radiusXl
         elevation: 3
 
         Column {
             anchors.fill: parent
             anchors.margins: 26
-            spacing: Theme.spaceLg
+            spacing: Theme.spaceMd
 
             // ── header ─────────────────────────────────────────────────
             Item {
@@ -64,6 +67,64 @@ OverlayWindow {
                         RotationAnimation on rotation {
                             running: Updates.running; loops: Animation.Infinite
                             from: 0; to: 360; duration: 1100
+                        }
+                    }
+                }
+            }
+
+            // ── commit & repository status ─────────────────────────────
+            Rectangle {
+                width: parent.width
+                implicitHeight: repoCol.implicitHeight + 16
+                radius: Theme.radiusMd
+                color: Theme.alpha(Theme.bg, 0.5)
+                border.width: 1; border.color: Theme.border
+
+                Column {
+                    id: repoCol
+                    anchors.fill: parent; anchors.margins: 10
+                    spacing: 6
+
+                    Item {
+                        width: parent.width
+                        height: 20
+                        Row {
+                            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spaceSm
+                            Text {
+                                text: "Repository"
+                                color: Theme.text
+                                font.family: Theme.font; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: Updates.currentCommit ? ("commit " + Updates.currentCommit) : ""
+                                color: Theme.muted
+                                font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                        Text {
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            text: Updates.checking ? "Checking repository…"
+                                : (Updates.upToDate ? "✓ Up to date" : ("⟳ " + Updates.incomingCommits.length + " new commit(s) available (" + Updates.latestCommit + ")"))
+                            color: Updates.upToDate ? Theme.green : Theme.accent
+                            font.family: Theme.font; font.pixelSize: Theme.fontSm; font.weight: Font.Medium
+                        }
+                    }
+
+                    Repeater {
+                        model: Updates.incomingCommits.slice(0, 3)
+                        delegate: Row {
+                            spacing: 8
+                            width: parent.width
+                            Text { text: "•"; color: Theme.accent; font.pixelSize: Theme.fontXs }
+                            Text {
+                                text: modelData
+                                color: Theme.text2
+                                font.family: Theme.font; font.pixelSize: Theme.fontXs
+                                elide: Text.ElideRight
+                                width: parent.width - 24
+                            }
                         }
                     }
                 }
@@ -114,7 +175,7 @@ OverlayWindow {
             // ── log ────────────────────────────────────────────────────
             Rectangle {
                 width: parent.width
-                height: 260
+                height: 210
                 radius: Theme.radiusLg
                 color: Theme.alpha(Theme.bg, 0.65)
                 border.width: 1; border.color: Theme.border
@@ -159,12 +220,21 @@ OverlayWindow {
             // ── actions ────────────────────────────────────────────────
             Item {
                 width: parent.width; height: 32
-                Btn {
+                Row {
                     anchors.left: parent.left
-                    icon: Updates.running ? "refresh" : "refresh"
-                    label: Updates.running ? "Updating…" : (Updates.finished ? "Check again" : "Update now")
-                    enabled: !Updates.running
-                    onClicked: Updates.start()
+                    spacing: Theme.spaceSm
+                    Btn {
+                        icon: "refresh"
+                        label: Updates.running ? "Updating…" : (!Updates.upToDate ? "Update now" : "Update system")
+                        enabled: !Updates.running
+                        onClicked: Updates.start()
+                    }
+                    Btn {
+                        icon: "refresh"
+                        label: Updates.checking ? "Checking…" : "Check again"
+                        enabled: !Updates.running && !Updates.checking
+                        onClicked: Updates.checkForUpdates()
+                    }
                 }
                 Text {
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter

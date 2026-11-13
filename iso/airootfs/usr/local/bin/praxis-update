@@ -77,23 +77,86 @@ copy_tree_sudo() {
     fi
 }
 
+find_repo() {
+    if [ -d "$HOME/aios/.git" ]; then echo "$HOME/aios"
+    elif [ -n "${SUDO_USER:-}" ] && [ -d "/home/$SUDO_USER/aios/.git" ]; then echo "/home/$SUDO_USER/aios"
+    elif [ -d "/opt/aios/.git" ]; then echo "/opt/aios"
+    else
+        for c in /home/*/aios; do [ -d "$c/.git" ] && echo "$c" && return 0; done
+    fi
+}
+
+if [ "${1:-}" = "--check-json" ]; then
+    r=$(find_repo)
+    python3 -c "
+import json, subprocess, os, sys
+repo = sys.argv[1]
+cur_hash = ''
+latest_hash = ''
+incoming = []
+pacman_count = 0
+if repo and os.path.isdir(os.path.join(repo, '.git')):
+    try:
+        cur_hash = subprocess.check_output(['git', '-C', repo, 'rev-parse', '--short', 'HEAD'], stderr=subprocess.DEVNULL, text=True).strip()
+        subprocess.run(['git', '-C', repo, 'fetch', '--quiet', 'origin', 'main'], stderr=subprocess.DEVNULL, timeout=5)
+        latest_hash = subprocess.check_output(['git', '-C', repo, 'rev-parse', '--short', 'origin/main'], stderr=subprocess.DEVNULL, text=True).strip()
+        out = subprocess.check_output(['git', '-C', repo, 'log', 'HEAD..origin/main', '--pretty=format:%h %s'], stderr=subprocess.DEVNULL, text=True).strip()
+        if out:
+            incoming = [l.strip() for l in out.split('\n') if l.strip()]
+    except Exception:
+        pass
+try:
+    pout = subprocess.check_output(['checkupdates'], stderr=subprocess.DEVNULL, text=True).strip()
+    if pout:
+        pacman_count = len([l for l in pout.split('\n') if l.strip()])
+except Exception:
+    pass
+up_to_date = (len(incoming) == 0 and (cur_hash == latest_hash or not latest_hash))
+print(json.dumps({
+    'current': cur_hash,
+    'latest': latest_hash or cur_hash,
+    'incoming': incoming,
+    'upToDate': up_to_date,
+    'pacman_count': pacman_count
+}))
+" "${r:-}"
+    exit 0
+fi
+
 if [ "${1:-}" = "--check" ] || [ "${1:-}" = "-n" ]; then
     log "Checking for updates..."
     if command -v checkupdates >/dev/null 2>&1; then
         c=$(checkupdates 2>/dev/null | wc -l)
         echo "  Pacman: $c packages have newer versions"
     fi
-    if [ -d "$HOME/aios/.git" ]; then
-        ( cd "$HOME/aios" && git fetch --quiet 2>/dev/null || true; \
-          incoming=$(git -C "$HOME/aios" log 'HEAD..@{u}' --oneline 2>/dev/null | wc -l); \
-          echo "  Repository: $incoming new commit(s) available from GitHub" )
+    r=$(find_repo)
+    if [ -n "$r" ] && [ -d "$r/.git" ]; then
+        ( cd "$r" && git fetch --quiet origin main 2>/dev/null || true; \
+          cur=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
+          latest=$(git rev-parse --short origin/main 2>/dev/null || echo "$cur"); \
+          inc=$(git log 'HEAD..origin/main' --pretty=format:'  • %h %s' 2>/dev/null || true); \
+          if [ -n "$inc" ]; then
+              echo "  Repository: $cur -> $latest"
+              echo "$inc"
+          else
+              echo "  Repository: up to date at $cur"
+          fi )
     fi
     exit 0
 fi
 
 # ---------------------------------------------------------------------------
-# 0. Sudoers passwordless configuration (ensures zero password prompts)
+# 0. Sudoers passwordless configuration & system hygiene
 # ---------------------------------------------------------------------------
+# Clean obsolete DisableDownloadTimeout if present in /etc/pacman.conf
+if [ -f /etc/pacman.conf ] && grep -q "DisableDownloadTimeout" /etc/pacman.conf; then
+    info "Removing obsolete DisableDownloadTimeout from /etc/pacman.conf..."
+    if [ "$EUID" -eq 0 ]; then
+        sed -i '/DisableDownloadTimeout/d' /etc/pacman.conf
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo sed -i '/DisableDownloadTimeout/d' /etc/pacman.conf
+    fi
+fi
 if [ "$EUID" -eq 0 ]; then
     cat << 'EOF' > /etc/sudoers.d/praxis-nopasswd
 # Allow passwordless execution of Praxis system updates and time synchronization
@@ -237,6 +300,22 @@ if [ ! -d "$SRC_REPO/desktop/quickshell" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 3b. Install desktop packages from packages.x86_64
+# ---------------------------------------------------------------------------
+# Ensures packages added since the machine was installed are brought in
+if [ -f "$SRC_REPO/iso/packages.x86_64" ] && command -v pacman >/dev/null 2>&1; then
+    log "Ensuring desktop package set from packages.x86_64 is installed"
+    mapfile -t DESKTOP_PKGS < <(awk '/^# @live-only/ { exit } /^[a-zA-Z0-9]/ { print $1 }' "$SRC_REPO/iso/packages.x86_64")
+    if [ "${#DESKTOP_PKGS[@]}" -gt 0 ]; then
+        if [ "$EUID" -eq 0 ]; then
+            pacman -S --needed --noconfirm "${DESKTOP_PKGS[@]}" || warn "Some desktop packages could not be installed"
+        else
+            sudo pacman -S --needed --noconfirm "${DESKTOP_PKGS[@]}" || warn "Some desktop packages could not be installed"
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # 4. Synchronize Desktop & Shell Configurations
 # ---------------------------------------------------------------------------
 log "Updating desktop configurations (~/.config/quickshell, hypr, swaync)"
@@ -267,7 +346,21 @@ sync_user_desktop() {
         fi
     fi
 
-    for d in hypr swaync rofi; do
+    local hypr_dir="$target_home/.config/hypr"
+    mkdir -p "$hypr_dir"
+    if [ -d "$SRC_REPO/desktop/hypr" ]; then
+        if command -v rsync >/dev/null 2>&1; then
+            rsync -a --exclude 'praxis-local.lua' "$SRC_REPO/desktop/hypr/" "$hypr_dir/"
+        else
+            for f in "$SRC_REPO/desktop/hypr/"*; do
+                base=$(basename "$f")
+                [ "$base" = "praxis-local.lua" ] && continue
+                cp -a "$f" "$hypr_dir/"
+            done
+        fi
+    fi
+
+    for d in swaync rofi; do
         if [ -d "$SRC_REPO/desktop/$d" ]; then
             copy_tree "$SRC_REPO/desktop/$d" "$target_home/.config/$d"
         fi
@@ -316,10 +409,37 @@ if [ -d "$SRC_REPO/iso/airootfs/usr/local/bin" ]; then
         copy_tree_sudo "$SRC_REPO/iso/airootfs/usr/share/icons" /usr/share/icons
     fi
     if [ "$EUID" -eq 0 ]; then
-        chmod 755 /usr/local/bin/praxis-* /usr/local/bin/aios-* 2>/dev/null || true
+        chmod 755 /usr/local/bin/praxis* /usr/local/bin/aios* 2>/dev/null || true
     elif command -v sudo >/dev/null 2>&1; then
-        sudo chmod 755 /usr/local/bin/praxis-* /usr/local/bin/aios-* 2>/dev/null || true
+        sudo chmod 755 /usr/local/bin/praxis* /usr/local/bin/aios* 2>/dev/null || true
     fi
+    # Ensure branding and os-release symlink
+    if [ -f "$SRC_REPO/iso/airootfs/usr/lib/praxis/os-release" ]; then
+        if [ "$EUID" -eq 0 ]; then
+            install -d -m755 /usr/lib/praxis
+            install -m644 "$SRC_REPO/iso/airootfs/usr/lib/praxis/os-release" /usr/lib/praxis/os-release
+            ln -sf /usr/lib/praxis/os-release /etc/os-release
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo install -d -m755 /usr/lib/praxis
+            sudo install -m644 "$SRC_REPO/iso/airootfs/usr/lib/praxis/os-release" /usr/lib/praxis/os-release
+            sudo ln -sf /usr/lib/praxis/os-release /etc/os-release
+        fi
+    fi
+    # Ensure Limine boot menu entries are branded as Praxis Linux (with backup)
+    for LCONF in /boot/EFI/BOOT/limine.conf /boot/limine.conf /boot/EFI/limine/limine.conf; do
+        [ -f "$LCONF" ] || continue
+        if [ ! -f "${LCONF}.bak" ]; then
+            if [ "$EUID" -eq 0 ]; then cp -a "$LCONF" "${LCONF}.bak"
+            elif command -v sudo >/dev/null 2>&1; then sudo cp -a "$LCONF" "${LCONF}.bak"; fi
+        fi
+        if [ "$EUID" -eq 0 ]; then
+            grep -q '^interface_branding:' "$LCONF" || sed -i '1i interface_branding: Praxis Linux\nbackdrop: 0b0d12\n' "$LCONF"
+            sed -i 's|^/Arch Linux.*|/Praxis Linux|' "$LCONF"
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo grep -q '^interface_branding:' "$LCONF" || sudo sed -i '1i interface_branding: Praxis Linux\nbackdrop: 0b0d12\n' "$LCONF"
+            sudo sed -i 's|^/Arch Linux.*|/Praxis Linux|' "$LCONF"
+        fi
+    done
     # Boot straight into Praxis (no F9/F12 menu): fix the firmware boot order
     # and fallback loader now, and re-check at every startup
     if [ -x /usr/local/bin/praxis-bootfix ]; then
@@ -554,7 +674,7 @@ fi
 
 # Ensure laptop lid sleep behavior in logind
 LOGIND_PRAXIS="/etc/systemd/logind.conf.d/10-praxis.conf"
-if [ ! -f "$LOGIND_PRAXIS" ]; then
+if [ ! -f "$LOGIND_PRAXIS" ] || ! grep -q "HandleLidSwitch=suspend" "$LOGIND_PRAXIS" 2>/dev/null; then
     if [ "$EUID" -eq 0 ]; then
         install -d -m755 /etc/systemd/logind.conf.d
         cat << 'EOF' > "$LOGIND_PRAXIS"

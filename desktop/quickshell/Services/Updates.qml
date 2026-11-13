@@ -19,8 +19,39 @@ Singleton {
     property var    lines:    []          // what has been printed so far
     property bool   restartNeeded: false
     property string restartReason: ""
+    property string currentCommit:   ""
+    property string latestCommit:    ""
+    property var    incomingCommits: []
+    property bool   upToDate:        true
+    property bool   checking:        false
 
     readonly property string marker: "/var/lib/praxis/restart-required"
+
+    function checkForUpdates() {
+        if (!checkProc.running && !root.running) {
+            root.checking = true
+            checkProc.running = true
+        }
+    }
+
+    Process {
+        id: checkProc
+        command: ["praxis-update", "--check-json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.checking = false
+                try {
+                    const parsed = JSON.parse(this.text.trim())
+                    root.currentCommit = parsed.current || ""
+                    root.latestCommit = parsed.latest || parsed.current || ""
+                    root.incomingCommits = Array.isArray(parsed.incoming) ? parsed.incoming : []
+                    root.upToDate = parsed.upToDate !== undefined ? parsed.upToDate : (root.incomingCommits.length === 0)
+                } catch (e) {
+                    // ignore json parse error
+                }
+            }
+        }
+    }
 
     function checkRestart() { if (!restartProbe.running) restartProbe.running = true }
     Process {
@@ -79,8 +110,12 @@ Singleton {
             root.failed = code !== 0
             root.phase = code === 0 ? "done" : "failed"
             root.checkRestart()
+            root.checkForUpdates()
         }
     }
 
-    Component.onCompleted: checkRestart()
+    Component.onCompleted: {
+        checkRestart()
+        checkForUpdates()
+    }
 }
