@@ -2147,3 +2147,13 @@ section:not(.hero-section) {
   .intent-row { grid-template-columns: 1fr; gap: 0.5rem; padding: 1.5rem 0; }
   .intent-n { padding-top: 0 }
 }
+
+/* The ticker separator belongs in the stylesheet, not the markup. It carries
+   no meaning — a screen reader should not announce it — and holding it as
+   element content meant a sweep over the page's text could empty it, which
+   is exactly what happened. */
+.kinetic-sep::before {
+  content: "·";
+  opacity: 0.38;
+  padding: 0 0.1em;
+}
