@@ -5,6 +5,9 @@
 #                                                  add a virtual monitor and serve it
 #   praxis-share mirror [--output NAME] [--port N]  serve an existing monitor instead
 #   praxis-share connect HOST[:PORT]                show a served screen on this machine
+#   praxis-share input host [--side right]          share this keyboard and mouse
+#   praxis-share input join HOST                    take this machine's input from HOST
+#   praxis-share input stop                         stop sharing input
 #   praxis-share stop                               stop serving, remove the virtual monitor
 #   praxis-share status                             what is being served, and to whom
 #   praxis-share doctor                             what is missing before this will work
@@ -292,6 +295,7 @@ cmd_stop() {
     [ -f "$SERVE_PID_FILE" ] && kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null
     [ -f "$GATE_PID_FILE" ] && kill "$(cat "$GATE_PID_FILE")" 2>/dev/null
     rm -f "$PID_FILE" "$SERVE_PID_FILE" "$GATE_PID_FILE" "$PORT_FILE" "$CODE_FILE" "$FIFO"
+    input_running && info "input is still shared — praxis-share input stop"
     if [ -s "$MON_FILE" ]; then
         local mon; mon=$(cat "$MON_FILE")
         hyprctl output remove "$mon" >/dev/null 2>&1 && ok "removed $mon"
@@ -323,10 +327,99 @@ for m in json.load(sys.stdin):
 '
 }
 
+# ── keyboard and mouse across machines ──────────────────────────────────
+# Separate from the video on purpose. The virtual display is a real output
+# of this compositor, so windows moved onto it are already driven by this
+# keyboard — nothing to forward. What is missing is the other direction:
+# one keyboard and mouse reaching the other machine's own desktop. That is
+# what deskflow does, and it needs a screen layout naming both sides.
+# -s names the settings file; the screen layout is read from
+# deskflow-server.conf sitting beside it, not from -s itself.
+DESKFLOW_SETTINGS="$STATE_DIR/deskflow.conf"
+DESKFLOW_CONF="$STATE_DIR/deskflow-server.conf"
+INPUT_PID_FILE="$STATE_DIR/input.pid"
+
+write_deskflow_conf() {   # here there side
+    # Deskflow 1.27 moved the screen list out of the server config and into
+    # the settings file; a server config that still declares screens is
+    # ignored with a warning, and its links then fail with "unknown computer
+    # name". So the neighbours are declared here, in the INI.
+    local opposite
+    case "$3" in right) opposite=left ;; left) opposite=right ;; up) opposite=down ;; *) opposite=up ;; esac
+    cat >"$DESKFLOW_SETTINGS" <<INI
+[General]
+$3=$2
+screenSaverSync=false
+
+[core]
+computerName=$1
+
+[log]
+level=Info
+INI
+    cat >"$DESKFLOW_CONF" <<CONF
+section: options
+    screenSaverSync = false
+    switchCorners = none
+end
+CONF
+    printf '%s\n' "$opposite" >/dev/null   # kept for symmetry on the far side
+}
+
+input_running() { [ -f "$INPUT_PID_FILE" ] && kill -0 "$(cat "$INPUT_PID_FILE")" 2>/dev/null; }
+
+cmd_input() {
+    local sub="${1:-status}"; shift || true
+    case "$sub" in
+        host)
+            local side=right peer=""
+            while [ $# -gt 0 ]; do case "$1" in
+                --side) side="$2"; shift 2 ;;
+                --peer) peer="$2"; shift 2 ;;
+                *) die "unknown option: $1" ;;
+            esac; done
+            command -v deskflow-core >/dev/null || die "deskflow is not installed"
+            input_running && die "input is already shared — praxis-share input stop"
+            [ -n "$peer" ] || peer="praxis-peer"
+            local me; me=$(uname -n)
+            write_deskflow_conf "$me" "$peer" "$side"
+            setsid deskflow-core server --new-instance -s "$DESKFLOW_SETTINGS" \
+                >"$STATE_DIR/input.log" 2>&1 &
+            echo $! > "$INPUT_PID_FILE"
+            sleep 1.5
+            input_running || { tail -4 "$STATE_DIR/input.log" 2>/dev/null; die "deskflow did not start"; }
+            ok "sharing this keyboard and mouse — the other machine is to the $side"
+            info "on it:  praxis-share input join $(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+            ;;
+        join)
+            local host="${1:-}"; [ -n "$host" ] || die "usage: praxis-share input join HOST"
+            command -v deskflow-core >/dev/null || die "deskflow is not installed"
+            input_running && die "already joined — praxis-share input stop"
+            setsid deskflow-core client --new-instance "$host" \
+                >"$STATE_DIR/input.log" 2>&1 &
+            echo $! > "$INPUT_PID_FILE"
+            sleep 1.5
+            input_running || { tail -4 "$STATE_DIR/input.log" 2>/dev/null; die "could not join $host"; }
+            ok "taking keyboard and mouse from $host"
+            ;;
+        stop)
+            if input_running; then kill "$(cat "$INPUT_PID_FILE")" 2>/dev/null; ok "input sharing stopped"
+            else info "input is not shared"; fi
+            rm -f "$INPUT_PID_FILE"
+            ;;
+        status|"")
+            if input_running; then ok "input is shared (pid $(cat "$INPUT_PID_FILE"))"
+            else info "input is not shared"; fi
+            ;;
+        *) die "unknown: praxis-share input $sub" ;;
+    esac
+}
+
 case "${1:-}" in
     extend)  shift; cmd_extend "$@" ;;
     mirror)  shift; cmd_mirror "$@" ;;
     connect) shift; cmd_connect "$@" ;;
+    input)   shift; cmd_input "$@" ;;
     stop)    cmd_stop ;;
     status)  cmd_status ;;
     doctor)  doctor ;;
