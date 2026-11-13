@@ -442,10 +442,13 @@ hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc call shell toggle cc"
 -- Super+W  → Launchpad (Windows/Apps)
 hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { description = "Praxis: Search and launch" })
 -- Tap Super (Windows key) to open search apps
+-- Tap Super on its own to search. Two bindings, not four: "SUPER_L" with no
+-- modifier still registers with modmask 64, identical to "SUPER + SUPER_L",
+-- so the pair below used to be registered twice. One tap then fired the
+-- toggle twice and the launcher opened and shut in the same frame, which
+-- looks exactly like the key doing nothing.
 hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
 hl.bind("SUPER + SUPER_R", hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
-hl.bind("SUPER_L",         hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
-hl.bind("SUPER_R",         hl.dsp.exec_cmd("quickshell ipc call shell toggle launcher"), { release = true, description = "Praxis: Search and launch (tap Super)" })
 -- Super+P  → Display / Projection settings
 hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("quickshell ipc call shell settings Display"), { description = "Praxis: Display settings" })
 -- Super+Space → App Search & Omnibox
