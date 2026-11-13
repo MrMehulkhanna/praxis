@@ -22,6 +22,7 @@ a home or office network; it is not a reason to expose the port to the
 internet.
 """
 import argparse
+import json
 import secrets
 import socket
 import ssl
@@ -34,6 +35,108 @@ CODE_LEN = 6
 MAX_FAILS = 5
 LOCKOUT_S = 60
 IDENTITY = b"praxis-share"
+BEACON_PORT = 5921
+
+
+def get_local_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def start_beacon(listen_port: int) -> None:
+    def _loop() -> None:
+        hostname = socket.gethostname() or "Praxis PC"
+        b_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        b_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        b_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            b_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except (AttributeError, OSError):
+            pass
+        try:
+            b_sock.bind(("", BEACON_PORT))
+        except OSError:
+            pass
+
+        while True:
+            ip = get_local_ip()
+            payload = json.dumps({
+                "service": "praxis-share",
+                "name": hostname,
+                "ip": ip,
+                "port": listen_port
+            }).encode("utf-8")
+            try:
+                b_sock.sendto(b"PRAXIS_BEACON:" + payload, ("<broadcast>", BEACON_PORT))
+            except OSError:
+                pass
+
+            t_end = time.time() + 1.5
+            while time.time() < t_end:
+                rem = max(0.1, t_end - time.time())
+                b_sock.settimeout(rem)
+                try:
+                    data, addr = b_sock.recvfrom(2048)
+                    if data == b"PRAXIS_DISCOVER":
+                        b_sock.sendto(b"PRAXIS_BEACON:" + payload, addr)
+                except (socket.timeout, OSError):
+                    break
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+def scan(timeout: float = 0.8) -> list[dict]:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    except (AttributeError, OSError):
+        pass
+    try:
+        s.bind(("", 0))
+    except OSError:
+        pass
+
+    try:
+        s.sendto(b"PRAXIS_DISCOVER", ("<broadcast>", BEACON_PORT))
+    except OSError:
+        pass
+
+    devices: dict[str, dict] = {}
+    my_ip = get_local_ip()
+    end_time = time.time() + timeout
+    while time.time() < end_time:
+        rem = end_time - time.time()
+        if rem <= 0:
+            break
+        s.settimeout(min(rem, 0.4))
+        try:
+            data, addr = s.recvfrom(2048)
+            if data.startswith(b"PRAXIS_BEACON:"):
+                info = json.loads(data[len(b"PRAXIS_BEACON:"):].decode("utf-8"))
+                ip = info.get("ip") or addr[0]
+                port = info.get("port", 5920)
+                name = info.get("name") or ip
+                if ip == "127.0.0.1" and addr[0] != "127.0.0.1":
+                    ip = addr[0]
+                key = f"{ip}:{port}"
+                devices[key] = {
+                    "name": name,
+                    "ip": ip,
+                    "port": port,
+                    "is_self": (ip == my_ip)
+                }
+        except (socket.timeout, OSError, json.JSONDecodeError):
+            pass
+    s.close()
+    return list(devices.values())
 
 
 def new_code() -> str:
@@ -78,6 +181,7 @@ def serve(listen_port: int, to_port: int, code: str) -> int:
     srv.bind(("0.0.0.0", listen_port))
     srv.listen(8)
     print(f"gate: listening on {listen_port}, forwarding to 127.0.0.1:{to_port}", flush=True)
+    start_beacon(listen_port)
 
     while True:
         try:
@@ -155,9 +259,13 @@ def main(argv: list[str]) -> int:
     s = sub.add_parser("serve");  s.add_argument("--listen", type=int, required=True); s.add_argument("--to", type=int, required=True); s.add_argument("--code", required=True)
     c = sub.add_parser("client"); c.add_argument("--host", required=True); c.add_argument("--port", type=int, required=True); c.add_argument("--listen", type=int, required=True); c.add_argument("--code", required=True)
     sub.add_parser("newcode")
+    sub.add_parser("scan")
     a = ap.parse_args(argv)
     if a.cmd == "newcode":
         print(new_code()); return 0
+    if a.cmd == "scan":
+        print(json.dumps(scan()))
+        return 0
     if a.cmd == "serve":
         return serve(a.listen, a.to, a.code)
     return client(a.host, a.port, a.listen, a.code)

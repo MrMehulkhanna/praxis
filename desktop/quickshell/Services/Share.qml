@@ -21,6 +21,8 @@ Singleton {
     property bool   ready:      false      // praxis-share doctor is happy
     property string blockedBy:  ""         // what is missing, if anything
     property string pairCode:   ""         // shown by the host, typed on the viewer
+    property var    nearbyHosts: []        // auto-discovered machines sharing on local Wi-Fi
+    property bool   scanning:    false
 
     // live figures, so the UI can show what is actually happening rather
     // than what we hope is happening
@@ -33,7 +35,40 @@ Singleton {
     readonly property int displayCount: displays.length
 
     // ── polling ────────────────────────────────────────────────────────
-    function refresh() { if (!statusProc.running) statusProc.running = true }
+    function refresh() {
+        if (!statusProc.running) statusProc.running = true
+        root.scan()
+    }
+
+    function scan() {
+        if (!scanProc.running) {
+            root.scanning = true
+            scanProc.running = true
+        }
+    }
+
+    Timer {
+        id: scanTimer
+        interval: 3500
+        running: true; repeat: true
+        onTriggered: root.scan()
+    }
+
+    Process {
+        id: scanProc
+        command: ["praxis-share-gate", "scan"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.scanning = false
+                try {
+                    const parsed = JSON.parse(this.text.trim())
+                    if (Array.isArray(parsed)) root.nearbyHosts = parsed
+                } catch (e) {
+                    // ignore json error
+                }
+            }
+        }
+    }
     Timer {
         interval: root.serving ? 2000 : 8000
         running: true; repeat: true; triggeredOnStart: true

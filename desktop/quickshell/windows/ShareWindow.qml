@@ -391,13 +391,92 @@ OverlayWindow {
                 Text {
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: "Use this when the other machine is the one sharing. Both boxes are shown "
-                        + "on its screen after it starts."
+                    text: "Use this when the other machine is the one sharing. Select an auto-discovered device below or enter its address manually."
                     color: Theme.text2
                     font.family: Theme.font; font.pixelSize: Theme.fontSm
                 }
+
+                // Discovered nearby sharing devices on local Wi-Fi
+                Column {
+                    width: parent.width
+                    spacing: Theme.spaceSm
+                    visible: Share.nearbyHosts.length > 0
+
+                    Row {
+                        spacing: 8
+                        Rectangle { width: 7; height: 7; radius: 4; color: Theme.green; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: "DEVICES SHARING ON THIS WI-FI"
+                            color: Theme.accent
+                            font.family: Theme.font; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold
+                            font.letterSpacing: 1.1
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    Repeater {
+                        model: Share.nearbyHosts
+                        delegate: Rectangle {
+                            id: devCard
+                            width: parent.width; height: 46; radius: Theme.radiusSm
+                            color: devMa.containsMouse ? Theme.alpha(Theme.accent, 0.12) : Theme.alpha(Theme.surface, 0.6)
+                            border.width: 1
+                            border.color: (win.connectTarget === (modelData.ip + ":" + modelData.port)) ? Theme.accent : Theme.border
+                            Behavior on color { ColorAnimation { duration: Theme.fast } }
+
+                            Item {
+                                anchors.fill: parent; anchors.margins: 10
+                                Row {
+                                    anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; spacing: 10
+                                    Icon {
+                                        name: "wifi"
+                                        size: 16
+                                        color: Theme.green
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter; spacing: 1
+                                        Text {
+                                            text: (modelData.name || "Praxis PC") + (modelData.is_self ? " (This PC)" : "")
+                                            color: Theme.text
+                                            font.family: Theme.font; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: modelData.ip + ":" + modelData.port
+                                            color: Theme.muted
+                                            font.family: Theme.fontMono; font.pixelSize: Theme.fontXs
+                                        }
+                                    }
+                                }
+                                Btn {
+                                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                    icon: "monitor"
+                                    label: (win.connectTarget === (modelData.ip + ":" + modelData.port)) ? "Selected" : "Select"
+                                    onClicked: {
+                                        win.connectTarget = modelData.ip + ":" + modelData.port
+                                        addr.text = win.connectTarget
+                                        codeIn.forceActiveFocus()
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: devMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    win.connectTarget = modelData.ip + ":" + modelData.port
+                                    addr.text = win.connectTarget
+                                    codeIn.forceActiveFocus()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 SettingRow {
-                    label: "Show another machine's screen"
+                    label: Share.nearbyHosts.length > 0 ? "Or enter address manually" : "Show another machine's screen"
                     description: "Its address and the six-digit code, both shown on that machine when you start sharing there."
                     Row {
                         spacing: Theme.spaceSm

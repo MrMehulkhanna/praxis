@@ -470,6 +470,7 @@ case "${1:-}" in
     input)   shift; cmd_input "$@" ;;
     stop)    cmd_stop ;;
     status)  cmd_status ;;
+    scan)    shift; praxis-share-gate scan "$@" ;;
     doctor)  doctor ;;
     ""|-h|--help|help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command: $1  (try: praxis-share help)" ;;
