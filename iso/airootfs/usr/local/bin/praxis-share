@@ -123,7 +123,13 @@ default_monitor() {
     [ -n "$sink" ] && echo "${sink}.monitor"
 }
 
-serving_pid() { [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null && cat "$PID_FILE"; }
+serving_pid() {
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        cat "$PID_FILE"
+    elif [ -f "$GATE_PID_FILE" ] && kill -0 "$(cat "$GATE_PID_FILE")" 2>/dev/null; then
+        cat "$GATE_PID_FILE"
+    fi
+}
 
 # ── host: add a virtual monitor ─────────────────────────────────────────
 add_headless() {
@@ -148,11 +154,27 @@ cmd_extend() {
     esac; done
     [ -z "$(serving_pid)" ] || die "already serving — stop it first:  praxis-share stop"
     need hyprctl
-    local mon; mon=$(add_headless)
-    echo "$mon" > "$MON_FILE"
-    ok "added $mon as a new display ($res)"
-    info "move windows onto it like any monitor"
-    start_stream "$mon" "$port"
+    mkdir -p "$STATE_DIR"
+    echo "extend" > "$STATE_DIR/mode"
+    echo "$res" > "$STATE_DIR/res"
+    echo "$WITH_AUDIO" > "$STATE_DIR/with_audio"
+    echo "$port" > "$PORT_FILE"
+    rm -f "$MON_FILE"
+
+    local inner=$(( port + 1000 ))
+    local code; code=$(praxis-share-gate newcode)
+    printf '%s\n' "$code" > "$CODE_FILE"; chmod 600 "$CODE_FILE"
+    setsid praxis-share-gate serve --listen "$port" --to "$inner" --code "$code" \
+        --on-connect "praxis-share on-connect-stream" \
+        >"$STATE_DIR/gate.log" 2>&1 &
+    echo $! > "$GATE_PID_FILE"
+    sleep 1
+    if ! kill -0 "$(cat "$GATE_PID_FILE")" 2>/dev/null; then
+        die "gate did not start — see $STATE_DIR/gate.log"
+    fi
+    ok "serving on port $port"
+    printf '\n  \033[1mpairing code  %s\033[0m\n' "$code"
+    info "extra screen will appear to the right when a viewer connects"
 }
 
 cmd_mirror() {
@@ -167,9 +189,51 @@ cmd_mirror() {
     [ -z "$(serving_pid)" ] || die "already serving — stop it first:  praxis-share stop"
     [ -n "$out" ] || out=$(monitors | python3 -c 'import json,sys;ms=json.load(sys.stdin);print(ms[0]["name"] if ms else "")')
     [ -n "$out" ] || die "no monitor to mirror"
+    mkdir -p "$STATE_DIR"
+    echo "mirror" > "$STATE_DIR/mode"
+    echo "$out" > "$STATE_DIR/mirror_out"
+    echo "$WITH_AUDIO" > "$STATE_DIR/with_audio"
+    echo "$port" > "$PORT_FILE"
     : > "$MON_FILE"            # nothing to remove on stop: it is a real monitor
-    ok "mirroring $out"
-    start_stream "$out" "$port"
+
+    local inner=$(( port + 1000 ))
+    local code; code=$(praxis-share-gate newcode)
+    printf '%s\n' "$code" > "$CODE_FILE"; chmod 600 "$CODE_FILE"
+    setsid praxis-share-gate serve --listen "$port" --to "$inner" --code "$code" \
+        --on-connect "praxis-share on-connect-stream" \
+        >"$STATE_DIR/gate.log" 2>&1 &
+    echo $! > "$GATE_PID_FILE"
+    sleep 1
+    if ! kill -0 "$(cat "$GATE_PID_FILE")" 2>/dev/null; then
+        die "gate did not start — see $STATE_DIR/gate.log"
+    fi
+    ok "mirroring $out on port $port"
+    printf '\n  \033[1mpairing code  %s\033[0m\n' "$code"
+}
+
+cmd_on_connect_stream() {
+    # Called by the gate when the first viewer completes TLS handshake
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        return 0
+    fi
+    local mode; mode=$(cat "$STATE_DIR/mode" 2>/dev/null || echo "extend")
+    local mon=""
+    if [ "$mode" = "extend" ]; then
+        if [ -s "$MON_FILE" ]; then
+            mon=$(cat "$MON_FILE")
+        else
+            mon=$(add_headless)
+            echo "$mon" > "$MON_FILE"
+            ok "added $mon as a new display"
+        fi
+    else
+        mon=$(cat "$STATE_DIR/mirror_out" 2>/dev/null || true)
+        [ -n "$mon" ] || mon=$(monitors | python3 -c 'import json,sys;ms=json.load(sys.stdin);print(ms[0]["name"] if ms else "")')
+    fi
+    local port; port=$(cat "$PORT_FILE" 2>/dev/null || echo "$DEFAULT_PORT")
+    local with_audio; with_audio=$(cat "$STATE_DIR/with_audio" 2>/dev/null || echo "1")
+    WITH_AUDIO="$with_audio"
+    start_stream "$mon" "$port"
 }
 
 start_stream() {
@@ -179,18 +243,6 @@ start_stream() {
     enc=$(encoder)
     echo "$port" > "$PORT_FILE"
 
-    # Capture goes through wf-recorder rather than pipewiresrc: pipewiresrc
-    # needs a portal node id, which means an interactive picker, and we need
-    # to name the output up front. wf-recorder takes -o OUTPUT directly.
-    #
-    # Two traps, both found the hard way:
-    #   -f -   is read as a file literally named "-", not stdout, so every
-    #          pipe came out empty. A named pipe is the way to stream out.
-    #   -D     a headless output nobody has moved a window onto produces no
-    #          damage, so without this the capture sits at zero frames.
-    #
-    # mpegts, not matroska: matroska only finalises on a clean exit and is
-    # not seekable down a pipe, so a viewer joining late gets nothing.
     rm -f "$FIFO"; mkfifo "$FIFO"
 
     info "capturing $mon with $enc$([ "$enc" = h264_nvenc ] && echo ' (hardware)')"
@@ -202,15 +254,6 @@ start_stream() {
     if [ "$WITH_AUDIO" = 1 ]; then
         local src; src=$(default_monitor || true)
         if [ -n "$src" ]; then
-            # AAC, not Opus. This box ships no libgstopus, and Opus inside MPEG-TS
-            # needs a parser GStreamer does not have here — the stream carried
-            # the audio fine and no client could decode it. AAC has a complete
-            # path both ways: ffmpeg encodes it, aacparse/avdec_aac decode it.
-            # --audio-backend=pulse, not pipewire. The pipewire backend connects,
-            # declares the stream, and then delivers nothing: the encoder reports
-            # "Qavg: nan" and the muxed file carries an AAC track with zero
-            # packets. Nothing errors, so it looks like working silence. pulse
-            # (through pipewire-pulse) captures the same monitor correctly.
             aargs=(--audio="$src" --audio-backend=pulse -C aac)
             info "audio: $(printf '%s' "$src" | sed 's/^alsa_output\.//; s/\.monitor$//')"
         else
@@ -227,32 +270,6 @@ start_stream() {
         ! tcpserversink host=127.0.0.1 port="$inner" sync=false recover-policy=keyframe \
         >"$STATE_DIR/serve.log" 2>&1 &
     echo $! > "$SERVE_PID_FILE"
-
-    # The stream itself only ever listens on loopback. The port other
-    # machines can reach belongs to the gate, which will not forward a byte
-    # to a client that cannot prove it knows the code.
-    local code; code=$(praxis-share-gate newcode)
-    printf '%s\n' "$code" > "$CODE_FILE"; chmod 600 "$CODE_FILE"
-    setsid praxis-share-gate serve --listen "$port" --to "$inner" --code "$code" \
-        >"$STATE_DIR/gate.log" 2>&1 &
-    echo $! > "$GATE_PID_FILE"
-
-    sleep 2
-    if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-        printf '\n\033[31mcapture did not start\033[0m — last lines:\n'; tail -8 "$STATE_DIR/capture.log" 2>/dev/null
-        cmd_stop >/dev/null 2>&1; die "see $STATE_DIR/capture.log"
-    fi
-    ok "serving on port $port"
-    printf '\n  \033[1mpairing code  %s\033[0m\n' "$(cat "$CODE_FILE")"
-    info "the other machine needs this code — it is new every time you start"
-    local ip; ip=$(ip -4 -j addr 2>/dev/null | python3 -c '
-import json,sys
-for i in json.load(sys.stdin):
-    if i["ifname"] == "lo": continue
-    for a in i.get("addr_info", []):
-        if a["family"] == "inet": print(a["local"]); raise SystemExit
-' 2>/dev/null || true)
-    [ -n "$ip" ] && info "on the other machine:  praxis-share connect $ip:$port"
 }
 
 cmd_connect() {
@@ -317,32 +334,68 @@ cmd_connect() {
     # The decoder now reads from the authenticated tunnel on loopback, not
     # from the network: everything over the wire is inside the TLS session
     # the pairing code established.
-    trap 'kill "$gate" 2>/dev/null' EXIT INT TERM
-    set +e
+    # The viewer runs in the background and we wait on it, rather than in the
+    # foreground: bash does not run a trap while a foreground child is
+    # running, so a Disconnect from the window used to leave the picture up
+    # until the stream died on its own. With wait, a signal lands at once.
+    echo "$target" > "$STATE_DIR/viewer.target"
     gst-launch-1.0 -q \
         tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d \
         d. ! queue max-size-time=200000000 ! h264parse ! avdec_h264 ! videoconvert \
            ! $vsink sync=false \
         d. ! queue max-size-time=200000000 ! aacparse ! avdec_aac ! audioconvert ! audioresample \
-           ! $asink sync=false
+           ! $asink sync=false &
+    local view=$!
+    echo "$gate $view" > "$STATE_DIR/viewer.pids"
+    trap 'kill "$gate" "$view" 2>/dev/null; rm -f "$STATE_DIR/viewer.pids" "$STATE_DIR/viewer.target"' EXIT INT TERM
+    set +e
+    wait "$view"
     local rc=$?
     set -e
-    if [ "$rc" -ne 0 ]; then
-        echo ""
-        printf '\033[31m✗ Stream viewer stopped (exit code %d).\033[0m\n' "$rc" >&2
-        printf 'Run \033[1mpraxis-share doctor\033[0m on this machine to verify dependencies.\n\n' >&2
-        if [ -t 0 ] || [ -t 1 ]; then
-            read -p "Press Enter to close..." _ || true
-        fi
+    if [ "$rc" -ne 0 ] && [ "$rc" -lt 128 ]; then
+        printf 'stream viewer stopped (exit %d) — praxis-share doctor\n' "$rc" >&2
+        return 1
     fi
 }
 
+cmd_disconnect() {
+    local f="$STATE_DIR/viewer.pids"
+    if [ -s "$f" ]; then
+        # shellcheck disable=SC2046
+        kill $(cat "$f") 2>/dev/null || true
+        rm -f "$f" "$STATE_DIR/viewer.target"
+    fi
+    pkill -f "gst-launch-1.0.*tcpclientsrc" 2>/dev/null || true
+    pkill -f "praxis-share-gate client" 2>/dev/null || true
+    ok "disconnected"
+}
+
+# Every window on the shared display goes back to the main screen, so
+# stopping a share never strands a window on a display that is about to go.
+cmd_bring_back() {
+    local mon; mon=$(cat "$MON_FILE" 2>/dev/null || true)
+    [ -n "$mon" ] || { info "no shared display"; return 0; }
+    local main; main=$(monitors | python3 -c 'import json,sys
+for m in json.load(sys.stdin):
+    if not m["name"].startswith("HEADLESS"): print(m["name"]); break')
+    local addrs; addrs=$(hyprctl -j clients 2>/dev/null | python3 -c "import json,sys
+ws={w['id'] for w in json.loads(__import__('subprocess').run(['hyprctl','-j','workspaces'],capture_output=True,text=True).stdout) if w.get('monitor')=='$mon'}
+for c in json.load(sys.stdin):
+    if c.get('workspace',{}).get('id') in ws: print(c['address'])")
+    local n=0 a
+    for a in $addrs; do
+        hyprctl dispatch "hl.dsp.window.move({ monitor = \"$main\", window = \"address:$a\" })" >/dev/null 2>&1 && n=$((n+1))
+    done
+    ok "brought $n window(s) back to $main"
+}
+
 cmd_stop() {
+    [ -s "$MON_FILE" ] && cmd_bring_back >/dev/null 2>&1 || true
     local pid; pid=$(serving_pid || true)
     if [ -n "$pid" ]; then kill -INT "$pid" 2>/dev/null || true; ok "stopped capturing"; else info "not serving"; fi
     [ -f "$SERVE_PID_FILE" ] && kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null
     [ -f "$GATE_PID_FILE" ] && kill "$(cat "$GATE_PID_FILE")" 2>/dev/null
-    rm -f "$PID_FILE" "$SERVE_PID_FILE" "$GATE_PID_FILE" "$PORT_FILE" "$CODE_FILE" "$FIFO"
+    rm -f "$PID_FILE" "$SERVE_PID_FILE" "$GATE_PID_FILE" "$PORT_FILE" "$CODE_FILE" "$FIFO" "$STATE_DIR/clients.json" "$STATE_DIR/mode" "$STATE_DIR/res" "$STATE_DIR/mirror_out"
     input_running && info "input is still shared — praxis-share input stop"
     if [ -s "$MON_FILE" ]; then
         local mon; mon=$(cat "$MON_FILE")
@@ -468,6 +521,9 @@ case "${1:-}" in
     mirror)  shift; cmd_mirror "$@" ;;
     connect) shift; cmd_connect "$@" ;;
     input)   shift; cmd_input "$@" ;;
+    disconnect) cmd_disconnect ;;
+    bring-back) cmd_bring_back ;;
+    on-connect-stream) cmd_on_connect_stream ;;
     stop)    cmd_stop ;;
     status)  cmd_status ;;
     scan)    shift; praxis-share-gate scan "$@" ;;

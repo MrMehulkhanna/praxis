@@ -6,7 +6,7 @@ praxis-share-gate — the lock on a shared screen.
   praxis-share-gate client --host H --port P --listen PORT --code CODE
 
 Without this, praxis-share is an open screen and microphone-adjacent audio
-feed to anyone on the network. With it, a viewer needs a six-digit code the
+feed to anyone on the network. With it, a viewer needs a four-digit code the
 host is showing on its own screen.
 
 The code is a TLS pre-shared key, not a password checked after connecting.
@@ -15,7 +15,7 @@ the stream at all, and because the handshake derives the session key from
 the code, everything after it is encrypted too. No certificates, nothing to
 copy between machines — read six digits off the other screen.
 
-Six digits is 10^6, which is thin against an attacker who can try forever,
+Four digits is 10^4, which is thin against an attacker who can try forever,
 so the server stops listening to an address for a while after a few bad
 handshakes, and the code is new for every session. That is proportionate to
 a home or office network; it is not a reason to expose the port to the
@@ -23,15 +23,17 @@ internet.
 """
 import argparse
 import json
+import os
 import secrets
 import socket
 import ssl
+import subprocess
 import sys
 import threading
 import time
 
 ALPHABET = "0123456789"
-CODE_LEN = 6
+CODE_LEN = 4  # four digits: easy to read across a desk; the lockout below keeps guessing slow
 MAX_FAILS = 5
 LOCKOUT_S = 60
 IDENTITY = b"praxis-share"
@@ -161,20 +163,39 @@ def pipe(a: socket.socket, b: socket.socket) -> None:
     except (OSError, ssl.SSLError):
         pass
     finally:
-        for s in (a, b):
-            try:
-                s.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
+        try:
+            b.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
 
 
-def serve(listen_port: int, to_port: int, code: str) -> int:
+def serve(listen_port: int, to_port: int, code: str, on_connect: str | None = None) -> int:
     key = psk_from(code)
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.set_ciphers("PSK")
     ctx.set_psk_server_callback(lambda identity: key, IDENTITY.decode())
 
     fails: dict[str, list] = {}
+    state_dir = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}") + "/praxis-share"
+    os.makedirs(state_dir, exist_ok=True)
+    clients_file = os.path.join(state_dir, "clients.json")
+    clients_lock = threading.Lock()
+    active_clients: dict[str, int] = {}
+
+    def update_clients(ip: str, delta: int):
+        with clients_lock:
+            cur = active_clients.get(ip, 0) + delta
+            if cur <= 0:
+                active_clients.pop(ip, None)
+            else:
+                active_clients[ip] = cur
+            try:
+                tmp = clients_file + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump({"count": len(active_clients), "clients": list(active_clients.keys())}, f)
+                os.replace(tmp, clients_file)
+            except Exception:
+                pass
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -209,14 +230,36 @@ def serve(listen_port: int, to_port: int, code: str) -> int:
                 return
             fails.pop(ip, None)
             print(f"gate: {ip} accepted", flush=True)
-            try:
-                up = socket.create_connection(("127.0.0.1", to_port), timeout=5)
-            except OSError as e:
-                print(f"gate: stream not reachable: {e}", flush=True)
+            if on_connect:
+                try:
+                    subprocess.run(on_connect, shell=True, check=True)
+                except Exception as e:
+                    print(f"gate: on-connect failed: {e}", flush=True)
+
+            up = None
+            t_giveup = time.time() + 4.0
+            while time.time() < t_giveup:
+                try:
+                    up = socket.create_connection(("127.0.0.1", to_port), timeout=1.0)
+                    break
+                except OSError:
+                    time.sleep(0.2)
+            if not up:
+                print(f"gate: stream not reachable: {to_port}", flush=True)
                 tls.close()
                 return
-            threading.Thread(target=pipe, args=(tls, up), daemon=True).start()
-            threading.Thread(target=pipe, args=(up, tls), daemon=True).start()
+
+            update_clients(ip, +1)
+            t1 = threading.Thread(target=pipe, args=(tls, up), daemon=True)
+            t2 = threading.Thread(target=pipe, args=(up, tls), daemon=True)
+            t1.start()
+            t2.start()
+
+            def monitor_session():
+                t2.join()
+                update_clients(ip, -1)
+
+            threading.Thread(target=monitor_session, daemon=True).start()
 
         threading.Thread(target=handle, daemon=True).start()
     return 0
@@ -242,22 +285,34 @@ def client(host: str, port: int, listen_port: int, code: str) -> int:
 
     lsn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     lsn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    lsn.bind(("127.0.0.1", listen_port))
+    try:
+        lsn.bind(("127.0.0.1", listen_port))
+    except OSError:
+        lsn.bind(("127.0.0.1", 0))
+    actual_port = lsn.getsockname()[1]
     lsn.listen(1)
-    print(f"gate: connected — play from 127.0.0.1:{listen_port}", flush=True)
+    print(f"gate: connected — play from 127.0.0.1:{actual_port}", flush=True)
     local, _ = lsn.accept()
     t1 = threading.Thread(target=pipe, args=(tls, local), daemon=True)
     t2 = threading.Thread(target=pipe, args=(local, tls), daemon=True)
     t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.join()
     return 0
 
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("serve");  s.add_argument("--listen", type=int, required=True); s.add_argument("--to", type=int, required=True); s.add_argument("--code", required=True)
-    c = sub.add_parser("client"); c.add_argument("--host", required=True); c.add_argument("--port", type=int, required=True); c.add_argument("--listen", type=int, required=True); c.add_argument("--code", required=True)
+    s = sub.add_parser("serve")
+    s.add_argument("--listen", type=int, required=True)
+    s.add_argument("--to", type=int, required=True)
+    s.add_argument("--code", required=True)
+    s.add_argument("--on-connect", default=None)
+    c = sub.add_parser("client")
+    c.add_argument("--host", required=True)
+    c.add_argument("--port", type=int, required=True)
+    c.add_argument("--listen", type=int, required=True)
+    c.add_argument("--code", required=True)
     sub.add_parser("newcode")
     sub.add_parser("scan")
     a = ap.parse_args(argv)
@@ -267,7 +322,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps(scan()))
         return 0
     if a.cmd == "serve":
-        return serve(a.listen, a.to, a.code)
+        return serve(a.listen, a.to, a.code, a.on_connect)
     return client(a.host, a.port, a.listen, a.code)
 
 
