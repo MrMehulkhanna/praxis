@@ -195,8 +195,11 @@ Partitioning, dual-boot details and hardware notes:
 
 ### Updating
 
-**Settings › Update**, or `praxis-update` from a terminal. The window streams
-progress and names anything that needs a restart. Or:
+**Settings › Update**, or `praxis-update` from a terminal. The update window compares your
+current commit against upstream, lists incoming changes, keeps packages in sync with the
+desktop set, and safely updates shell and window manager configurations while preserving your
+machine-specific overrides (`praxis-local.lua`, `settings.json`). Anything that needs a reboot
+displays a restart banner with a one-click restart button. Or from a clean shell:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/MrMehulkhanna/praxis/main/iso/airootfs/usr/local/bin/praxis-update | bash
@@ -260,6 +263,7 @@ The sections above are the reasons each piece exists. This is the whole list.
 | **Task manager** | `Ctrl+Shift+Esc` — CPU *and* GPU use per process, with a stop button for running AI jobs. |
 | **Tools** | Clipboard history `Super+Shift+V`, emoji `Super+.`, colour picker `Super+Shift+C`, screen recorder `Super+Shift+R`, notes `Super+N`, screenshot `Print`. |
 | **Wallpapers** | Thirteen original stills and three seamless live ones, decoded on the integrated GPU so the discrete card can idle. |
+| **Screen share** | `Super+Shift+D` — share screen with nearby Praxis PCs on local Wi-Fi with automatic discovery, 4-digit PIN pairing, sound forwarding, and zero terminal windows. |
 | **Settings** | Wi-fi, bluetooth, audio, displays, dock, power, date and time, appearance, shortcuts, AI models, and a Health page — one window. |
 
 <p align="center"><img src="docs/screenshots/settings-display.png" width="760" alt="Settings, Display: refresh rate, scale, OLED colour and burn-in protection"></p>
@@ -327,9 +331,8 @@ first.
 
 **Not done:**
 
-- Keyboard and mouse crossing to a second machine starts and listens, but has
-  never been watched working on two machines at once. Treat it as unverified.
-- Screen sharing has no discovery. You type an address and a code.
+- Keyboard and mouse crossing across machines (Deskflow) has an experimental toggle,
+  but multi-monitor coordinate synchronization is still being refined.
 - Hardware beyond this one laptop is handled by detection, not by testing.
   Brightness varies most between vendors; some HP Omen models have known
   problems.
