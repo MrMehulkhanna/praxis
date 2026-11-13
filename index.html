@@ -83,25 +83,22 @@
         <span class="brand-badge">AIOS</span>
       </a>
 
+      <!-- Ten top-level links wrapped onto two rows below ~1100 px and made
+           the header ragged. Four is what the page is actually about; the
+           rest are still reachable from the sections and the footer. -->
       <nav>
         <ul class="nav-links">
           <li><a href="#features" class="nav-link">Features</a></li>
-          <li><a href="#architecture" class="nav-link">Architecture</a></li>
-          <li><a href="#comparison" class="nav-link">vs Windows 11</a></li>
+          <li><a href="#simulator" class="nav-link">Try it</a></li>
           <li><a href="#desktop" class="nav-link">Desktop</a></li>
-          <li><a href="#simulator" class="nav-link">Live Simulator</a></li>
-          <li><a href="#wallpapers" class="nav-link">Wallpapers</a></li>
-          <li><a href="#shortcuts" class="nav-link">Shortcuts</a></li>
-          <li><a href="#hardware" class="nav-link">Hardware</a></li>
-          <li><a href="#releases" class="nav-link">Releases</a></li>
-          <li><a href="#faq" class="nav-link">FAQ</a></li>
+          <li><a href="#download" class="nav-link">Download</a></li>
         </ul>
       </nav>
 
       <div class="nav-actions">
         <a href="#simulator" class="btn-try-sim">
           <span class="pulse-dot"></span>
-          <span>⚡ Try OS Simulator</span>
+          <span>Try the simulator</span>
         </a>
         <a href="https://github.com/MrMehulkhanna/praxis" target="_blank" rel="noopener noreferrer" class="btn-github">
           <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
@@ -122,43 +119,29 @@
   <section class="hero-section">
     <div class="container hero-grid">
       <div class="hero-content">
-        <div class="hero-pill">
-          <span class="pulse-dot"></span>
-          <span>Knowledge, Put into Action · Stable ISO 2026.10</span>
-        </div>
-
         <h1 class="hero-title">
-          The Sovereign AI <br>
-          <span class="gradient-text">Operating System.</span>
+          The Sovereign AI<br>Operating System
         </h1>
 
         <p class="hero-subtitle">
-          A high-refresh Linux desktop with an AI that lives natively inside it. Zero telemetry. Zero reboots. Zero freezes. Fast on an ordinary laptop, offline-first, and safe to dual-boot next to Windows.
+          A high-refresh Linux desktop with an AI that lives natively inside it. Zero telemetry.
+          Zero reboots. Zero freezes. Fast on an ordinary laptop, offline-first, and safe to
+          dual-boot next to Windows.
         </p>
 
-        <div class="hero-badges">
-          <span class="badge-item">
-            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            Arch Linux Base
-          </span>
-          <span class="badge-item">
-            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            120Hz Wayland Native
-          </span>
-          <span class="badge-item">
-            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            100% Offline Local AI
-          </span>
-          <span class="badge-item">
-            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            Zero Telemetry
-          </span>
-        </div>
+        <!-- Specs as an editorial list, not a row of badges. Rows with a
+             hairline rule read as considered; pills with checkmarks read as
+             a template, and every landing page generated this year has them. -->
+        <dl class="hero-specs">
+          <div><dt>Base</dt><dd>Arch Linux</dd></div>
+          <div><dt>Display</dt><dd>120 Hz Wayland, native</dd></div>
+          <div><dt>AI</dt><dd>Local, runs offline</dd></div>
+          <div><dt>Telemetry</dt><dd>None</dd></div>
+        </dl>
 
         <div class="hero-ctas">
           <a href="#simulator" class="btn-sim-hero" id="hero-try-sim-btn">
-            <span class="pulse-dot"></span>
-            <span>⚡ Try Live OS Simulation (Online)</span>
+            <span>Try the live simulation</span>
           </a>
           <a href="#download" class="btn-primary">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -181,7 +164,7 @@
           <button class="view-ctrl-btn active" data-view="front">Front View</button>
           <button class="view-ctrl-btn" data-view="iso">Isometric</button>
           <button class="view-ctrl-btn" data-view="tilt">Keyboard Tilt</button>
-          <button class="view-ctrl-btn" data-view="spin">Auto-Spin ⚡</button>
+          <button class="view-ctrl-btn" data-view="spin">Auto-spin</button>
         </div>
         <div id="canvas-container"></div>
         <div class="viewport-overlay">
