@@ -40,7 +40,8 @@ PanelWindow {
     Glass {
         anchors { fill: parent; leftMargin: Theme.barMargin; rightMargin: Theme.barMargin; topMargin: Theme.barMargin; bottomMargin: 0 }
         radius: Theme.radiusMd
-        shadowStrength: 0.6
+        elevation: 1
+        shadowStrength: 0.8
 
         // ── LEFT ────────────────────────────────────────────────────────
         Row {

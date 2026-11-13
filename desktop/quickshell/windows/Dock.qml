@@ -141,6 +141,8 @@ PanelWindow {
     }
 
     Glass {
+
+        elevation: 1
         id: glass
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom

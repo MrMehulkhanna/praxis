@@ -82,8 +82,8 @@ Singleton {
 
     // 1440x810 logical is a small canvas; 38 + 8 spent 5.7 % of the height on
     // the bar alone. 34 + 6 still clears a 13 px label with room to spare.
-    readonly property int barHeight:   34
-    readonly property int barMargin:   6
+    readonly property int barHeight:   30
+    readonly property int barMargin:   4
     readonly property int dockIcon:    Settings.dockIconSize
     readonly property int dockMargin:  10
     readonly property int dockWindowGap: 16

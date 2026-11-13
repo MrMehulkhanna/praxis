@@ -108,6 +108,8 @@ OverlayWindow {
     }
 
     Glass {
+
+        elevation: 3
         id: card
         anchors.centerIn: parent
         width: Math.min(980, parent.width - 60)

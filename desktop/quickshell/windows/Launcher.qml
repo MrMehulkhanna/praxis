@@ -116,6 +116,8 @@ OverlayWindow {
     onQueryChanged: { confirmIndex = -1; list.currentIndex = 0 }
 
     Glass {
+
+        elevation: 3
         id: card
         anchors.horizontalCenter: parent.horizontalCenter
         y: parent.height * 0.18
