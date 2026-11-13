@@ -139,6 +139,43 @@ PanelWindow {
                 elide: Text.ElideRight
                 width: Math.min(implicitWidth, 240)
             }
+
+            // ── window controls ────────────────────────────────────────
+            // Dispatchers go through hyprctl in the Lua form the config uses:
+            // this Hyprland runs the non-legacy parser, which rejects
+            // "killactive" and friends outright.
+            //
+            // Minimise / maximise / close for the focused window. They live
+            // in the bar, which already exists and is already this tall, so
+            // they cost no screen space at all — a titlebar would have taken
+            // a strip off every window, and Hyprland has no server-side
+            // decorations to hang them on anyway.
+            //
+            // They appear only when something is focused, so the bar reads
+            // the same as before on an empty desktop.
+            Row {
+                id: winCtl
+                anchors.verticalCenter: parent.verticalCenter
+                visible: bar.isFocusedScreen && Hyprland.activeToplevel !== null
+                spacing: 1
+                leftPadding: 6
+
+                IconButton {
+                    icon: "minus"; iconSize: 12; padding: 5
+                    onClicked: Quickshell.execDetached(["hyprctl", "dispatch",
+                        'hl.dsp.window.move({ workspace = "special:minimized" })'])
+                }
+                IconButton {
+                    icon: "maximize"; iconSize: 12; padding: 5
+                    onClicked: Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.window.fullscreen()"])
+                }
+                IconButton {
+                    id: closeBtn
+                    icon: "x"; iconSize: 12; padding: 5
+                    iconColor: hovered ? Theme.red : Theme.text2
+                    onClicked: Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.window.close()"])
+                }
+            }
         }
 
         // ── CENTRE: clock (only on focused monitor to avoid duplication) ─

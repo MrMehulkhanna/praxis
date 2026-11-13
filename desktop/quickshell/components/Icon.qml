@@ -159,6 +159,13 @@ Canvas {
         case "x": line(ctx, 6.5, 6.5, 17.5, 17.5); line(ctx, 17.5, 6.5, 6.5, 17.5); break
         case "check": poly(ctx, [[5, 12.5], [10, 17.5], [19.5, 7]], false); break
         case "plus": line(ctx, 12, 5, 12, 19); line(ctx, 5, 12, 19, 12); break
+        // window controls — drawn to the same 24-unit grid and weight as the rest
+        case "minus": line(ctx, 5.5, 12, 18.5, 12); break
+        case "maximize": poly(ctx, [[6.5, 6.5], [17.5, 6.5], [17.5, 17.5], [6.5, 17.5]], true); break
+        case "restore":
+            poly(ctx, [[5.5, 9.5], [14.5, 9.5], [14.5, 18.5], [5.5, 18.5]], true)
+            poly(ctx, [[9.5, 5.5], [18.5, 5.5], [18.5, 14.5]], false)
+            break
         case "clock":
             arc(ctx, 12, 12, 8.5, 0, 2 * P)
             line(ctx, 12, 12, 12, 6.5)
