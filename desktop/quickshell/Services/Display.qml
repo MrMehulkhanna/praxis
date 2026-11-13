@@ -95,11 +95,32 @@ done`]
             }
         }
     }
+    // Applying colour re-applies the whole monitor rule, which is a modeset
+    // and a config-file rewrite. A slider emits moved() continuously while
+    // it is dragged, so firing on every event meant dozens of modesets in a
+    // second — the display reconfigures faster than it can settle, and
+    // everything touching the panel (including the brightness slider) reads
+    // garbage for as long as it lasts. Coalesce: move the numbers live so
+    // the UI tracks the finger, apply once the drag has stopped.
+    property int _pendingBright: -1
+    property int _pendingSat: -1
     function setOledColor(brightPct, satPct) {
         root.oledBrightPct = brightPct
         root.oledSatPct    = satPct
-        colorSet.command = ["praxis-display", "color", String(brightPct), String(satPct)]
-        colorSet.running = true
+        root._pendingBright = brightPct
+        root._pendingSat    = satPct
+        colorDebounce.restart()
+    }
+    Timer {
+        id: colorDebounce
+        interval: 350
+        onTriggered: {
+            if (root._pendingBright < 0 || colorSet.running) { if (colorSet.running) colorDebounce.restart(); return }
+            colorSet.command = ["praxis-display", "color",
+                                String(root._pendingBright), String(root._pendingSat)]
+            root._pendingBright = -1; root._pendingSat = -1
+            colorSet.running = true
+        }
     }
     function setOledWide(on) {
         colorSet.command = on ? ["praxis-display", "color", String(root.oledBrightPct), String(root.oledSatPct)]
