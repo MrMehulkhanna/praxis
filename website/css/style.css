@@ -2049,3 +2049,61 @@ section:not(.hero-section) {
   .hero-specs > div:nth-child(odd)  { padding-right: 0; }
   .hero-specs > div:nth-child(even) { padding-left: 0; border-left: 0; }
 }
+
+/* ── depth on scroll ──────────────────────────────────────────────────────
+   Sections arrive with real perspective rather than a flat fade: a small
+   rotation about X plus a lift, so the page reads as planes settling into
+   place instead of opacity being turned up. The rotation is deliberately
+   small — past about 10deg the text edges soften and it starts to look like
+   an effect rather than depth.
+
+   Everything is opt-in via .rise, so nothing moves that was not asked to,
+   and all of it collapses under prefers-reduced-motion. */
+.rise-scene { perspective: 1200px; perspective-origin: 50% 20%; }
+
+.rise {
+  opacity: 0;
+  transform: translate3d(0, 34px, -60px) rotateX(7deg);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 620ms cubic-bezier(0.16, 0.84, 0.32, 1),
+    transform 760ms cubic-bezier(0.16, 0.84, 0.32, 1);
+  will-change: transform, opacity;
+}
+.rise.in {
+  opacity: 1;
+  transform: none;
+}
+/* children settle one after another, which reads as a hand dealing cards */
+.rise-stagger > * {
+  opacity: 0;
+  transform: translate3d(0, 22px, -30px) rotateX(5deg);
+  transition:
+    opacity 560ms cubic-bezier(0.16, 0.84, 0.32, 1),
+    transform 680ms cubic-bezier(0.16, 0.84, 0.32, 1);
+}
+.rise-stagger.in > * { opacity: 1; transform: none; }
+.rise-stagger.in > *:nth-child(1) { transition-delay: 0ms }
+.rise-stagger.in > *:nth-child(2) { transition-delay: 70ms }
+.rise-stagger.in > *:nth-child(3) { transition-delay: 140ms }
+.rise-stagger.in > *:nth-child(4) { transition-delay: 210ms }
+.rise-stagger.in > *:nth-child(5) { transition-delay: 280ms }
+.rise-stagger.in > *:nth-child(6) { transition-delay: 350ms }
+
+/* A card that leans toward the pointer. The rotation is tiny and the
+   element keeps its own lighting, so it reads as a solid object catching
+   the light rather than a picture being warped. */
+.tilt {
+  transform-style: preserve-3d;
+  transition: transform 220ms cubic-bezier(0.16, 0.84, 0.32, 1);
+}
+.tilt-scene { perspective: 900px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .rise-stagger > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .tilt { transform: none !important; transition: none !important; }
+}
