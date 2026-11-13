@@ -10,6 +10,10 @@
 #    praxis-display revert                    go back now
 #    praxis-display status                    pending change, if any (Settings shows it)
 #    praxis-display list                      monitors and the modes they offer
+#    praxis-display color [BRIGHT] [SAT]      OLED colour: percentages, 100 = untouched.
+#                                             e.g. praxis-display color 130 115
+#    praxis-display color off                 back to plain sRGB at 8 bits
+#    praxis-display color show                what each panel is being driven at
 #
 #  Kept settings live in ~/.config/hypr/praxis-local.lua (this computer only),
 #  one line per monitor marked "-- praxis-display".
@@ -34,6 +38,40 @@ apply() {   # output mode scale
 current() { # output → "mode scale"
     local m; m=$(mon "$1"); [ -n "$m" ] || return 1
     jq -r '"\(.width)x\(.height)@\(.refreshRate * 100 | round / 100) \(.scale)"' <<<"$m"
+}
+
+# ── OLED colour ─────────────────────────────────────────────────────────
+# Hyprland drives every output through the srgb preset at 8 bits unless told
+# otherwise. On a wide-gamut OLED that is the narrowest pipeline the panel
+# has, and it is why colour looks flat next to the same laptop on Windows,
+# where the panel runs at its own gamut. The EDID advertises the headroom.
+#
+# The colour keys are only honoured when the rule names a real output — a
+# rule with output = "" silently drops them — so this writes one line per
+# panel into praxis-local.lua rather than touching the shipped config.
+oled_outputs() {   # internal panels whose EDID names a Samsung OLED (ATNA…)
+    local c conn
+    for c in /sys/class/drm/card*-eDP-*; do
+        [ -r "$c/edid" ] || continue
+        grep -qa ATNA "$c/edid" 2>/dev/null || continue
+        conn=${c##*/}; conn=${conn#card*-}
+        echo "$conn"
+    done | sort -u
+}
+
+colour_line() {   # output bright sat  → a praxis-local.lua rule
+    local out=$1 b=$2 sat=$3 m mode scale
+    m=$(mon "$out") || return 1
+    [ -n "$m" ] || return 1
+    mode=$(jq -r '"\(.width)x\(.height)@\(.refreshRate * 100 | round / 100)"' <<<"$m")
+    scale=$(jq -r .scale <<<"$m")
+    if [ "$b" = off ]; then
+        printf 'hl.monitor({ output = "%s", mode = "%s", position = "auto", scale = %s })  -- praxis-display\n' \
+            "$out" "$mode" "$scale"
+    else
+        printf 'hl.monitor({ output = "%s", mode = "%s", position = "auto", scale = %s, cm = "wide", bitdepth = 10, sdrbrightness = %s, sdrsaturation = %s })  -- praxis-display\n' \
+            "$out" "$mode" "$scale" "$b" "$sat"
+    fi
 }
 
 case "${1:-status}" in
@@ -80,6 +118,38 @@ case "${1:-status}" in
         else
             echo '{"pending":false}'
         fi
+        ;;
+    color)
+        sub=${2:-show}
+        if [ "$sub" = show ]; then
+            hyprctl -j monitors 2>/dev/null | jq -r '.[] |
+                "  \(.name)  \(.colorManagementPreset)  \(.currentFormat)  brightness \(.sdrBrightness)  saturation \(.sdrSaturation)"'
+            echo
+            echo "  OLED panels detected: $(oled_outputs | tr '\n' ' ')"
+            exit 0
+        fi
+        outs=$(oled_outputs)
+        [ -n "$outs" ] || die "no OLED panel found (praxis-display color show)"
+        if [ "$sub" = off ]; then
+            bright=off; sat=off
+        else
+            # percentages, because that is how the vendor tools put it
+            bright=$(awk "BEGIN{printf \"%.2f\", ${2:-130}/100}")
+            sat=$(awk "BEGIN{printf \"%.2f\", ${3:-115}/100}")
+        fi
+        touch "$LOCAL"
+        for out in $outs; do
+            line=$(colour_line "$out" "$bright" "$sat") || continue
+            # replace this panel's rule, keep every other line as it is
+            grep -v "hl.monitor({ output = \"$out\"" "$LOCAL" > "$LOCAL.new" 2>/dev/null || true
+            printf '%s\n' "$line" >> "$LOCAL.new"
+            mv "$LOCAL.new" "$LOCAL"
+            hyprctl eval "$line" >/dev/null 2>&1 || true
+            echo "  $out → $([ "$bright" = off ] && echo "sRGB, 8-bit" || echo "wide gamut, 10-bit, brightness ${2:-130}%, saturation ${3:-115}%")"
+        done
+        sleep 1
+        hyprctl -j monitors 2>/dev/null | jq -r '.[] | select(.name | startswith("eDP")) |
+            "  now: \(.colorManagementPreset) \(.currentFormat) brightness \(.sdrBrightness) saturation \(.sdrSaturation)"'
         ;;
     list)
         hyprctl -j monitors all | jq -r '.[] | "\(.name)  \(.description)\n  now: \(.width)x\(.height)@\(.refreshRate * 100 | round / 100)  scale \(.scale)\n  modes: \(.availableModes | join(" "))"'

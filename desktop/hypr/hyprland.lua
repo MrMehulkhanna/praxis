@@ -29,6 +29,26 @@ hl.config({
 ------------------
 
 -- See https://wiki.hypr.land/Configuring/Basics/Monitors/
+-- Colour on an OLED panel.
+--
+-- Hyprland drives every output through the srgb preset at 8 bits. On a
+-- wide-gamut OLED that is the narrowest pipeline the panel has, and it is
+-- why colour looks flat here next to the same laptop on Windows, where the
+-- panel runs at its own gamut. The EDID advertises the headroom; nothing
+-- was using it.
+--
+-- The colour keys cannot go in this rule: a monitor rule with output = ""
+-- silently drops cm, bitdepth, sdrbrightness and sdrsaturation, applying
+-- the mode and scale and nothing else. They have to name a real output, and
+-- the output name differs per machine.
+--
+--   praxis-display color 130 115   wide gamut, 10-bit, brightness and
+--                                  saturation as percentages
+--   praxis-display color off       back to plain sRGB at 8 bits
+--   praxis-display color show      what each panel is being driven at
+--
+-- It detects OLED panels from their EDID and writes one rule per panel into
+-- ~/.config/hypr/praxis-local.lua, which is required below.
 hl.monitor({
     output   = "",
     mode     = "preferred",
