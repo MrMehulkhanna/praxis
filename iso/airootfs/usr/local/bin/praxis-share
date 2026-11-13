@@ -22,7 +22,9 @@
 set -euo pipefail
 
 STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/praxis-share"
-PID_FILE="$STATE_DIR/stream.pid"
+PID_FILE="$STATE_DIR/capture.pid"
+SERVE_PID_FILE="$STATE_DIR/serve.pid"
+FIFO="$STATE_DIR/stream.ts"
 MON_FILE="$STATE_DIR/monitor"
 PORT_FILE="$STATE_DIR/port"
 DEFAULT_PORT=5920
@@ -69,8 +71,14 @@ doctor() {
 }
 
 encoder() {
-    for e in nvh264enc vah264enc x264enc; do
-        gst-inspect-1.0 "$e" >/dev/null 2>&1 && { echo "$e"; return; }
+    # wf-recorder hands the codec to ffmpeg, so these are ffmpeg's names.
+    # List once into a variable: under `set -o pipefail`, `ffmpeg | grep -q`
+    # has grep exit on the first match, ffmpeg takes SIGPIPE, and the whole
+    # pipeline reports 141 — so a match looked exactly like a miss.
+    local list; list=$(ffmpeg -hide_banner -encoders 2>/dev/null || true)
+    local e
+    for e in h264_nvenc h264_vaapi libx264; do
+        case "$list" in *" $e "*) echo "$e"; return ;; esac
     done
     die "no h264 encoder — run: praxis-share doctor"
 }
@@ -80,9 +88,12 @@ encoder() {
 # for bitrate we do not need on a LAN.
 encoder_args() {
     case "$1" in
-        nvh264enc) echo "preset=low-latency-hq zerolatency=true gop-size=30 rc-mode=cbr bitrate=12000" ;;
-        vah264enc) echo "target-usage=7 key-int-max=30 bitrate=12000" ;;
-        *)         echo "tune=zerolatency speed-preset=veryfast key-int-max=30 bitrate=12000" ;;
+        # NVENC's tune is an enum of its own (hq/ll/ull/lossless) — it does
+        # not take x264's "zerolatency", and rejects the whole encoder when
+        # handed it. ull is the ultra-low-latency profile we want here.
+        h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=12M" ;;
+        h264_vaapi) echo "g=30 b=12M" ;;
+        *)          echo "preset=veryfast tune=zerolatency g=30 b=12M" ;;
     esac
 }
 
@@ -134,31 +145,43 @@ cmd_mirror() {
 }
 
 start_stream() {
-    local mon="$1" port="$2" enc; enc=$(encoder)
-    # the tuning flags have to arrive as separate argv entries, so build an
-    # array rather than letting the shell word-split an unquoted expansion
-    local -a encargs; read -ra encargs <<< "$(encoder_args "$enc")"
-    need gst-launch-1.0
+    local mon="$1" port="$2" fps="${3:-60}" enc
+    need wf-recorder; need gst-launch-1.0
+    enc=$(encoder)
     echo "$port" > "$PORT_FILE"
-    info "encoding with $enc$([ "$enc" = nvh264enc ] && echo ' (hardware)')"
 
-    # pipewiresrc pulls from the screencast portal, which is the only
-    # sanctioned way to capture under Wayland. The first run raises a picker;
-    # choose "$mon" there and the grant is remembered.
-    setsid gst-launch-1.0 -q \
-        pipewiresrc do-timestamp=true keepalive-time=1000 resend-last=true \
-        ! videoconvert \
-        ! "$enc" "${encargs[@]}" \
-        ! h264parse config-interval=1 \
-        ! matroskamux streamable=true \
-        ! tcpserversink host=0.0.0.0 port="$port" sync=false \
-        >"$STATE_DIR/stream.log" 2>&1 &
+    # Capture goes through wf-recorder rather than pipewiresrc: pipewiresrc
+    # needs a portal node id, which means an interactive picker, and we need
+    # to name the output up front. wf-recorder takes -o OUTPUT directly.
+    #
+    # Two traps, both found the hard way:
+    #   -f -   is read as a file literally named "-", not stdout, so every
+    #          pipe came out empty. A named pipe is the way to stream out.
+    #   -D     a headless output nobody has moved a window onto produces no
+    #          damage, so without this the capture sits at zero frames.
+    #
+    # mpegts, not matroska: matroska only finalises on a clean exit and is
+    # not seekable down a pipe, so a viewer joining late gets nothing.
+    rm -f "$FIFO"; mkfifo "$FIFO"
+
+    info "capturing $mon with $enc$([ "$enc" = h264_nvenc ] && echo ' (hardware)')"
+    # each tuning flag needs its own -p, so expand them into an argv array
+    local -a pargs=(); local kv
+    for kv in $(encoder_args "$enc"); do pargs+=(-p "$kv"); done
+    setsid wf-recorder -D -o "$mon" -c "$enc" -m mpegts -r "$fps" \
+        "${pargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
     echo $! > "$PID_FILE"
-    sleep 1.5
+
+    setsid gst-launch-1.0 -q \
+        filesrc location="$FIFO" ! queue max-size-time=100000000 leaky=downstream \
+        ! tcpserversink host=0.0.0.0 port="$port" sync=false recover-policy=keyframe \
+        >"$STATE_DIR/serve.log" 2>&1 &
+    echo $! > "$SERVE_PID_FILE"
+
+    sleep 2
     if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-        rm -f "$PID_FILE"
-        printf '\n\033[31mthe stream did not start\033[0m — last lines:\n'; tail -8 "$STATE_DIR/stream.log" 2>/dev/null
-        die "see $STATE_DIR/stream.log"
+        printf '\n\033[31mcapture did not start\033[0m — last lines:\n'; tail -8 "$STATE_DIR/capture.log" 2>/dev/null
+        cmd_stop >/dev/null 2>&1; die "see $STATE_DIR/capture.log"
     fi
     ok "serving on port $port"
     local ip; ip=$(ip -4 -j addr 2>/dev/null | python3 -c '
@@ -179,14 +202,15 @@ cmd_connect() {
     info "connecting to $host:$port — Esc or Ctrl-C to stop"
     exec gst-launch-1.0 -q \
         tcpclientsrc host="$host" port="$port" \
-        ! matroskademux ! h264parse ! avdec_h264 ! videoconvert \
+        ! tsdemux ! h264parse ! avdec_h264 ! videoconvert \
         ! waylandsink fullscreen=true sync=false
 }
 
 cmd_stop() {
     local pid; pid=$(serving_pid || true)
-    if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; ok "stopped serving"; else info "not serving"; fi
-    rm -f "$PID_FILE" "$PORT_FILE"
+    if [ -n "$pid" ]; then kill -INT "$pid" 2>/dev/null || true; ok "stopped capturing"; else info "not serving"; fi
+    [ -f "$SERVE_PID_FILE" ] && kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null
+    rm -f "$PID_FILE" "$SERVE_PID_FILE" "$PORT_FILE" "$FIFO"
     if [ -s "$MON_FILE" ]; then
         local mon; mon=$(cat "$MON_FILE")
         hyprctl output remove "$mon" >/dev/null 2>&1 && ok "removed $mon"
