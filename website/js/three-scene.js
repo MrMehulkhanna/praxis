@@ -449,7 +449,7 @@
     heroObs.observe(container);
   }
 
-  document.addEventListener(visibilitychange, () => {
+  document.addEventListener("visibilitychange", () => {
     isPageVisible = !document.hidden;
   });
 
