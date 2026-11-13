@@ -21,6 +21,7 @@ OverlayWindow {
         { id: "Appearance",       icon: "eye" },
         { id: "Dock",             icon: "dock" },
         { id: "Display",          icon: "monitor" },
+        { id: "Screen share",     icon: "monitor" },
         { id: "Touchpad & Mouse", icon: "touchpad" },
         { id: "Windows",          icon: "layers" },
         { id: "Shortcuts",        icon: "keyboard" },
@@ -172,7 +173,7 @@ OverlayWindow {
                     sourceComponent: {
                         switch (Shell.settingsSection) {
                             case "General": return general; case "Date & Time": return dateTime; case "Appearance": return appearance; case "Dock": return dockSec
-                            case "Display": return display; case "Touchpad & Mouse": return touchpadSec; case "Windows": return windowsSec; case "Shortcuts": return keyboard
+                            case "Display": return display; case "Screen share": return screenShareSec; case "Touchpad & Mouse": return touchpadSec; case "Windows": return windowsSec; case "Shortcuts": return keyboard
                             case "Network": return network; case "Bluetooth": return bluetooth; case "Audio": return audio
                             case "Power": return powerSec; case "Wallpaper": return wallpaper; case "Profiles": return profiles
                             case "AI": return ai; case "Health": return health; default: return general
@@ -635,6 +636,51 @@ OverlayWindow {
                 }
             }
             Text { text: "A new mode or scale shows at once and goes back by itself after 15 seconds unless you press Keep — so a mode a monitor can't show never leaves it dark. Kept settings are saved for this computer and come back after a restart."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.fontXs; width: parent.width; wrapMode: Text.WordWrap }
+        }
+    }
+
+    // ═══════════════ SCREEN SHARE ═══════════════
+    Component {
+        id: screenShareSec
+        Column {
+            spacing: 12
+            H { text: "WIRELESS DISPLAY SHARING" }
+
+            Card {
+                height: shareExplCol.implicitHeight + 24
+                Column {
+                    id: shareExplCol
+                    anchors.fill: parent; anchors.margins: 12
+                    spacing: 8
+                    Text {
+                        text: "Share this screen with another PC or view a remote display"
+                        color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontMd; font.weight: Font.DemiBold
+                    }
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        text: "Praxis Screen Share connects two computers directly over local Wi-Fi with zero cloud transmission. Add an extra virtual monitor to the right of your screen or mirror an existing display with full audio. Secured by automated device discovery and a 4-digit pairing PIN."
+                        color: Theme.text2; font.family: Theme.font; font.pixelSize: Theme.fontSm
+                    }
+                }
+            }
+
+            SettingRow {
+                label: "Screen share app"
+                description: Share.serving
+                    ? "Currently sharing on port " + Share.port + " (" + Share.clients + (Share.clients === 1 ? " viewer" : " viewers") + ") · PIN: " + (Share.pairCode || "----")
+                    : (Share.viewing ? "Viewing " + Share.viewTarget + " fullscreen" : "Open the screen share window to share or connect · Super+Shift+D")
+                Btn {
+                    icon: "monitor"
+                    label: Share.serving ? "Sharing — Open" : (Share.viewing ? "Viewing — Open" : "Open")
+                    onClicked: Shell.open("share")
+                }
+            }
+
+            SettingRow {
+                label: "Allow screen share"
+                description: Share.serving ? "Screen sharing is active on this PC." : "Turn on to advertise this PC on local Wi-Fi."
+                Toggle { checked: Share.serving; onToggled: v => v ? Share.start() : Share.stop() }
+            }
         }
     }
 
