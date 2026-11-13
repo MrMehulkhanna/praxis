@@ -154,6 +154,10 @@ check "os-release says Praxis"   grep -q '^ID=praxis' "$AIRO/usr/lib/praxis/os-r
 check "tmpfiles keeps branding"  grep -q '/usr/lib/praxis/os-release' "$AIRO/usr/lib/tmpfiles.d/praxis.conf"
 check "the installer gives the system its own identity" bash -c "grep -q 'usr/lib/praxis/os-release' '$AIRO/usr/local/bin/praxis-install-engine'"
 check "the installer renames the boot menu entry" bash -c "grep -q 'interface_branding: Praxis' '$AIRO/usr/local/bin/praxis-install-engine'"
+for _p in gst-plugins-good gst-libav gst-plugins-bad wf-recorder deskflow papirus-icon-theme; do
+    check "$_p is installed on disk, not just in the live session" \
+        bash -c "sed '/^# @live-only/,\$d' '$REPO/iso/packages.x86_64' | grep -qx '$_p'"
+done
 check "an icon theme ships for GTK apps" bash -c "grep -qx papirus-icon-theme '$REPO/iso/packages.x86_64' && grep -qx adwaita-icon-theme '$REPO/iso/packages.x86_64'"
 check "GTK is pointed at that icon theme" bash -c "grep -q gtk-icon-theme-name '$AIRO/etc/skel/.config/gtk-3.0/settings.ini'"
 check "no /home/mk in the image" bash -c "! grep -rIl '/home/mk' '$AIRO' '$REPO/desktop'"

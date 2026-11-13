@@ -54,13 +54,22 @@ doctor() {
         else printf '  \033[31m✗\033[0m %-34s \033[2m%s\033[0m\n' "$1" "${4:-missing}"; missing=1; fi
     }
     check "Hyprland running"         'hyprctl version'
+    # These are what the pipeline actually uses. The list used to name
+    # matroskamux and pipewiresrc, which it stopped using when capture moved
+    # to wf-recorder and the container to mpegts — so it reported things
+    # missing that are not needed, and never checked the ones that are.
+    check "wf-recorder (capture)"    'command -v wf-recorder'          "" "pacman -S wf-recorder"
+    check "ffmpeg (encoding)"        'command -v ffmpeg'               "" "pacman -S ffmpeg"
     check "gstreamer"                'command -v gst-launch-1.0'       "" "pacman -S gstreamer gst-plugins-base"
-    check "pipewiresrc (capture)"    'gst-inspect-1.0 pipewiresrc'     "" "pacman -S gst-plugin-pipewire"
-    check "screencast portal"        'pacman -Q xdg-desktop-portal-hyprland' "" "pacman -S xdg-desktop-portal-hyprland"
     check "tcpserversink"            'gst-inspect-1.0 tcpserversink'   "" "pacman -S gst-plugins-base"
+    check "tsdemux"                  'gst-inspect-1.0 tsdemux'         "" "pacman -S gst-plugins-bad"
+    check "h264parse"                'gst-inspect-1.0 h264parse'       "" "pacman -S gst-plugins-bad"
     check "waylandsink (viewer)"     'gst-inspect-1.0 waylandsink'     "" "pacman -S gst-plugins-bad"
-    check "matroskamux"              'gst-inspect-1.0 matroskamux'     "" "pacman -S gst-plugins-good"
+    check "aacparse"                 'gst-inspect-1.0 aacparse'        "" "pacman -S gst-plugins-good"
+    check "pulsesink (sound out)"    'gst-inspect-1.0 pulsesink'       "" "pacman -S gst-plugins-good"
     check "h264 decoder"             'gst-inspect-1.0 avdec_h264'      "" "pacman -S gst-libav"
+    check "aac decoder"              'gst-inspect-1.0 avdec_aac'       "" "pacman -S gst-libav"
+    check "pairing gate"             'command -v praxis-share-gate'    "" "reinstall praxis"
 
     local enc=""
     for e in nvh264enc vah264enc x264enc; do

@@ -42,6 +42,9 @@ wtype
 deskflow
 hyprpicker
 wf-recorder
+gst-plugins-good
+gst-libav
+gst-plugins-bad
 brightnessctl
 playerctl
 zenity
@@ -106,5 +109,3 @@ intel-media-driver
 libva-intel-driver
 # lets iso/test-live.sh drive the live session in a VM; its udev rule starts it only inside one
 qemu-guest-agent
-gst-plugins-good
-gst-libav
