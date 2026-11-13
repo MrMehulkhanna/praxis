@@ -19,6 +19,7 @@ ShellRoot {
     SettingsWindow {}
     ActivityPanel {}
     WidgetBoard {}
+    ShareWindow {}
     WorkspaceOverview {}
     DictationOsd {}
 

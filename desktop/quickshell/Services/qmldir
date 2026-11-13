@@ -14,3 +14,4 @@ singleton Display 1.0 Display.qml
 singleton Weather 1.0 Weather.qml
 singleton Battery 1.0 Battery.qml
 singleton Modes 1.0 Modes.qml
+singleton Share 1.0 Share.qml
