@@ -218,7 +218,7 @@ start_stream() {
         fi
     fi
 
-    setsid wf-recorder -D -o "$mon" -c "$enc" -m mpegts -r "$fps" \
+    setsid wf-recorder -y -D -o "$mon" -c "$enc" -m mpegts -r "$fps" \
         "${pargs[@]}" "${aargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
     echo $! > "$PID_FILE"
 

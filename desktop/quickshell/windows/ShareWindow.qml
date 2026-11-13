@@ -17,6 +17,8 @@ OverlayWindow {
     onOpened: { Share.refresh(); Share.checkReady() }
 
     property string connectTarget: ""
+    property bool   copiedAddr: false
+    Timer { id: copyTimer; interval: 1800; onTriggered: win.copiedAddr = false }
 
     // same shape as the Settings buttons, so the two windows match
     component Btn: IconButton { implicitHeight: 30; padding: 10 }
@@ -198,8 +200,9 @@ OverlayWindow {
                     width: parent.width
                     wrapMode: Text.WordWrap
                     visible: !Share.serving
-                    text: "Start here, then read the address and code off this window and type them "
-                        + "into the other machine's Receive box."
+                    text: Share.localIp
+                        ? "Start here, then type this PC's address (" + Share.localIp + ":" + Share.port + ") and code into the other machine's Receive box."
+                        : "Start here, then read the address and code off this window and type them into the other machine's Receive box."
                     color: Theme.text2
                     font.family: Theme.font; font.pixelSize: Theme.fontSm
                 }
@@ -229,33 +232,91 @@ OverlayWindow {
                     width: parent.width; height: 38
                     Btn {
                         anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
                         icon: Share.serving ? "stop" : "play"
                         label: Share.serving ? "Stop sharing" : "Start sharing"
                         onClicked: Share.serving ? Share.stop() : Share.start()
                     }
                     Row {
                         anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        visible: Share.serving && Share.pairCode !== ""
-                        spacing: Theme.spaceSm
-                        Text {
-                            text: "code"
-                            color: Theme.muted
-                            font.family: Theme.font; font.pixelSize: Theme.fontXs
+                        visible: Share.serving
+                        spacing: Theme.spaceMd
+
+                        // Address pill with click-to-copy
+                        Row {
+                            spacing: Theme.spaceSm
                             anchors.verticalCenter: parent.verticalCenter
-                        }
-                        // Big, monospaced and spaced out, because its whole job
-                        // is being read off this screen and typed on another.
-                        Rectangle {
-                            width: codeTxt.width + 20; height: 30; radius: Theme.radiusSm
-                            color: Theme.alpha(Theme.accent, 0.14)
-                            border.width: 1; border.color: Theme.alpha(Theme.accent, 0.4)
                             Text {
-                                id: codeTxt
-                                anchors.centerIn: parent
-                                text: Share.pairCode
-                                color: Theme.accent
-                                font.family: Theme.fontMono; font.pixelSize: Theme.fontLg
-                                font.weight: Font.DemiBold; font.letterSpacing: 3
+                                text: "address"
+                                color: Theme.muted
+                                font.family: Theme.font; font.pixelSize: Theme.fontXs
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Rectangle {
+                                id: addrBadge
+                                height: 30; width: addrContent.width + 16; radius: Theme.radiusSm
+                                color: Theme.alpha(Theme.surface, 0.7)
+                                border.width: 1
+                                border.color: win.copiedAddr ? Theme.green : (addrMa.containsMouse ? Theme.accent : Theme.borderStrong)
+                                anchors.verticalCenter: parent.verticalCenter
+                                Behavior on border.color { ColorAnimation { duration: Theme.fast } }
+
+                                Row {
+                                    id: addrContent
+                                    anchors.centerIn: parent; spacing: 6
+                                    Text {
+                                        id: addrTxt
+                                        text: (Share.localIp || "127.0.0.1") + ":" + Share.port
+                                        color: Theme.text
+                                        font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Icon {
+                                        name: win.copiedAddr ? "check" : "copy"
+                                        size: 13
+                                        color: win.copiedAddr ? Theme.green : (addrMa.containsMouse ? Theme.text : Theme.muted)
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: addrMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        Quickshell.execDetached(["wl-copy", "--", addrTxt.text])
+                                        win.copiedAddr = true
+                                        copyTimer.restart()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Code pill
+                        Row {
+                            spacing: Theme.spaceSm
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: Share.pairCode !== ""
+                            Text {
+                                text: "code"
+                                color: Theme.muted
+                                font.family: Theme.font; font.pixelSize: Theme.fontXs
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Rectangle {
+                                width: codeTxt.width + 20; height: 30; radius: Theme.radiusSm
+                                color: Theme.alpha(Theme.accent, 0.14)
+                                border.width: 1; border.color: Theme.alpha(Theme.accent, 0.4)
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    id: codeTxt
+                                    anchors.centerIn: parent
+                                    text: Share.pairCode
+                                    color: Theme.accent
+                                    font.family: Theme.fontMono; font.pixelSize: Theme.fontLg
+                                    font.weight: Font.DemiBold; font.letterSpacing: 3
+                                }
                             }
                         }
                     }
@@ -299,12 +360,18 @@ OverlayWindow {
                                 color: Theme.text
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
                                 onTextChanged: win.connectTarget = text
-                                onAccepted: if (text.trim()) Share.connectTo(text.trim())
+                                onAccepted: {
+                                    if (codeIn.text.length === 6 && text.trim()) {
+                                        Share.connectTo(text.trim(), codeIn.text)
+                                    } else {
+                                        codeIn.forceActiveFocus()
+                                    }
+                                }
                                 Text {
                                     anchors.fill: parent
                                     verticalAlignment: Text.AlignVCenter
                                     visible: !addr.text && !addr.activeFocus
-                                    text: "192.168.1.20:5920"
+                                    text: Share.localIp ? Share.localIp + ":5920" : "192.168.1.20:5920"
                                     color: Theme.muted
                                     font.family: Theme.fontMono; font.pixelSize: Theme.fontSm
                                 }
@@ -323,6 +390,11 @@ OverlayWindow {
                                 maximumLength: 6
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 font.family: Theme.fontMono; font.pixelSize: Theme.fontSm; font.letterSpacing: 2
+                                onAccepted: {
+                                    if (win.connectTarget.trim() && text.length === 6) {
+                                        Share.connectTo(win.connectTarget.trim(), text)
+                                    }
+                                }
                                 Text {
                                     anchors.fill: parent; verticalAlignment: Text.AlignVCenter
                                     visible: !codeIn.text && !codeIn.activeFocus
@@ -354,11 +426,12 @@ OverlayWindow {
                 Text {
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: "Sending " + (Share.servingMon || "a display") + " on port " + Share.port
-                        + "  ·  " + Share.clients + (Share.clients === 1 ? " viewer" : " viewers")
+                    text: "Serving " + (Share.servingMon || "display") + " at "
+                        + (Share.localIp ? Share.localIp + ":" + Share.port : ":" + Share.port)
+                        + " (code: " + (Share.pairCode || "------") + ")  ·  "
+                        + Share.clients + (Share.clients === 1 ? " viewer" : " viewers")
                         + (Share.withAudio ? "  ·  with sound" : "  ·  no sound")
-                        + "\nOver a local network this arrives about 15–40 ms late. Comfortable for a browser or "
-                        + "a terminal on the far screen; not for games or scrubbing video there."
+                        + "\nOn the other PC, open this window and type the address and code in the Receive box above to show it fullscreen."
                     color: Theme.text2
                     font.family: Theme.font; font.pixelSize: Theme.fontSm
                     lineHeight: 1.25
