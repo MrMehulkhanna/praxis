@@ -606,6 +606,13 @@ hl.window_rule({
     center = true,
 })
 
+-- Praxis Screen Share viewer opens fullscreen
+hl.window_rule({
+    name       = "praxis-share-viewer-fullscreen",
+    match      = { class = "^(gst-launch-1.0)$" },
+    fullscreen = true,
+})
+
 -- Hyprland-run windowrule
 hl.window_rule({
     name  = "move-hyprland-run",
