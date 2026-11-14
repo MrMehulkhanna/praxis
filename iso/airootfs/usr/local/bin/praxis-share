@@ -111,9 +111,9 @@ encoder_args() {
         # NVENC's tune is an enum of its own (hq/ll/ull/lossless) — it does
         # not take x264's "zerolatency", and rejects the whole encoder when
         # handed it. ull is the ultra-low-latency profile we want here.
-        h264_nvenc) echo "preset=p1 tune=ull g=60 rc=cbr b=30M profile=high444p colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
+        h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=${SHARE_BITRATE:-30M} profile=high444p colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
         h264_vaapi) echo "g=30 b=12M" ;;
-        *)          echo "preset=ultrafast tune=zerolatency g=30 b=16M colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
+        *)          echo "preset=ultrafast tune=zerolatency g=30 b=${SHARE_BITRATE_SW:-16M} colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
     esac
 }
 
@@ -239,6 +239,17 @@ cmd_on_connect_stream() {
         mon=$(cat "$STATE_DIR/mirror_out" 2>/dev/null || true)
         [ -n "$mon" ] || mon=$(monitors | python3 -c 'import json,sys;ms=json.load(sys.stdin);print(ms[0]["name"] if ms else "")')
     fi
+    # Over Wi-Fi the picture has to fit ~30 Mb/s and live with jitter. Over a
+    # cable — Ethernet, or a Thunderbolt/USB4 network link — there is room
+    # for three times that, which takes the last of the blockiness out.
+    # Decide from the interface the viewer is actually reached through.
+    local peer=${PRAXIS_SHARE_PEER:-} dev=""
+    [ -n "$peer" ] && dev=$(ip route get "$peer" 2>/dev/null | grep -oE 'dev [^ ]+' | awk '{print $2}' | head -1)
+    case "$dev" in
+        wl*|"") ;;
+        *) SHARE_BITRATE=100M; SHARE_BITRATE_SW=40M
+           info "wired link to $peer ($dev) — higher quality" ;;
+    esac
     local port; port=$(cat "$PORT_FILE" 2>/dev/null || echo "$DEFAULT_PORT")
     # the capture died (or never started): clear its server too, or the old
     # one keeps the loopback port and the new one cannot serve anything
@@ -288,9 +299,11 @@ start_stream() {
         "${pargs[@]}" "${aargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
     echo $! > "$PID_FILE"
 
+    # No leaky queue on this side. Dropping part of an H.264 stream corrupts
+    # every frame until the next keyframe — the blocky "bursting" picture.
     setsid gst-launch-1.0 -q \
-        filesrc location="$FIFO" ! queue max-size-time=100000000 leaky=downstream \
-        ! tcpserversink host=127.0.0.1 port="$inner" sync=false recover-policy=keyframe \
+        filesrc location="$FIFO" \
+        ! tcpserversink host=127.0.0.1 port="$inner" sync=false \
         >"$STATE_DIR/serve.log" 2>&1 &
     echo $! > "$SERVE_PID_FILE"
 }
@@ -374,6 +387,15 @@ cmd_connect() {
     # every other window. As plain RGB it is treated like any other app.
     #
     # Leaky queues and async=false are what make a window appear at all.
+    # Where to drop, and where never to: compressed video is never dropped —
+    # losing part of it corrupts every frame up to the next keyframe, which
+    # showed as blocks bursting across the picture. Only *decoded* frames are
+    # dropped, by the one-frame leaky queue after the decoder: harmless, and
+    # it means the newest frame is always the one on screen. Slice threading
+    # keeps the decoder from holding frames back (frame threading adds a few
+    # frames of delay), output-corrupt=false never shows a damaged frame, and
+    # the audio branch stays leaky so it can never block the demuxer.
+    #
     # 100 ms each: a leaky queue drops the oldest data instead of blocking,
     # so it can be small without bringing back the preroll deadlock, and a
     # 1 s queue had been adding up to a second of input delay.
@@ -389,8 +411,10 @@ cmd_connect() {
     echo "$target" > "$STATE_DIR/viewer.target"
     gst-launch-1.0 -q \
         tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d latency=0 \
-        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=100000000 \
-           ! h264parse ! avdec_h264 ! videoconvert ! video/x-raw,format=BGRx ! $vsink sync=false async=false \
+        d. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 \
+           ! h264parse ! avdec_h264 thread-type=slice output-corrupt=false \
+           ! queue leaky=downstream max-size-buffers=1 \
+           ! videoconvert ! video/x-raw,format=BGRx ! $vsink sync=false async=false \
         d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=100000000 \
            ! aacparse ! avdec_aac ! audioconvert ! audioresample ! $asink sync=false async=false &
     VIEW_PID=$!; VIEW_GATE=$gate

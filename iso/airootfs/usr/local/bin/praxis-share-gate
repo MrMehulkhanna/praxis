@@ -330,7 +330,10 @@ def serve(listen_port: int, to_port: int, code: str, on_connect: str | None = No
             print(f"gate: {ip} accepted", flush=True)
             if on_connect:
                 try:
-                    subprocess.run(on_connect, shell=True, check=True)
+                    # tell the stream who connected, so it can pick a bitrate
+                    # to suit the link (Wi-Fi or a cable)
+                    subprocess.run(on_connect, shell=True, check=True,
+                                   env={**__import__('os').environ, 'PRAXIS_SHARE_PEER': ip})
                 except Exception as e:
                     print(f"gate: on-connect failed: {e}", flush=True)
 
