@@ -52,7 +52,10 @@ ESP=""
 for d in ${PRAXIS_ESP:-} /boot/efi /efi /boot; do
     [ -f "$d/EFI/Praxis/grubx64.efi" ] && { ESP=$d; break; }
 done
-[ -n "$ESP" ] || { say "Praxis boot loader not found on the EFI partition"; exit 1; }
+# Not every system boots through the Praxis GRUB loader (a machine that was
+# Arch first may use Limine or systemd-boot). Nothing to fix there — say so
+# quietly instead of failing, which surfaced as "boot order fix failed".
+[ -n "$ESP" ] || { say "this PC does not boot through the Praxis loader — nothing to do"; exit 0; }
 LOADER="$ESP/EFI/Praxis/grubx64.efi"
 
 # 3. fallback loader: what firmware boots when it has no (usable) entry

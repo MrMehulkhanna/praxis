@@ -304,7 +304,23 @@ fi
 # ---------------------------------------------------------------------------
 # Ensures packages added since the machine was installed are brought in
 if [ -f "$SRC_REPO/iso/packages.x86_64" ] && command -v pacman >/dev/null 2>&1; then
-    log "Ensuring desktop package set from packages.x86_64 is installed"
+    # ── continue with the updater we just downloaded ────────────────────────
+# Everything after this point used to run from the copy of this script that
+# was already in memory — the old one. So a fix to the updater itself only
+# took effect on the *next* update, and an installed PC that was behind got
+# its first update with old logic from start to finish. Hand over to the
+# fresh copy once, right after pulling it.
+NEW_UPDATER="$SRC_REPO/iso/airootfs/usr/local/bin/praxis-update"
+if [ -z "${PRAXIS_UPDATE_REEXEC:-}" ] && [ -f "$NEW_UPDATER" ] \
+   && ! cmp -s "$NEW_UPDATER" "$(readlink -f "$0" 2>/dev/null || echo "$0")"; then
+    info "A newer updater was downloaded — continuing with it"
+    if [ "$EUID" -eq 0 ]; then install -m755 "$NEW_UPDATER" /usr/local/bin/praxis-update
+    else sudo install -m755 "$NEW_UPDATER" /usr/local/bin/praxis-update; fi
+    export PRAXIS_UPDATE_REEXEC=1
+    exec /usr/local/bin/praxis-update "$@"
+fi
+
+log "Ensuring desktop package set from packages.x86_64 is installed"
     mapfile -t DESKTOP_PKGS < <(awk '/^# @live-only/ { exit } /^[a-zA-Z0-9]/ { print $1 }' "$SRC_REPO/iso/packages.x86_64")
     if [ "${#DESKTOP_PKGS[@]}" -gt 0 ]; then
         if [ "$EUID" -eq 0 ]; then
