@@ -69,8 +69,15 @@ step "6/6  Language model (optional)"
 if command -v praxis-models >/dev/null; then
     praxis-models recommend || true
     echo
-    read -rp "Model id to download now (Enter to skip): " model
-    [ -n "${model:-}" ] && praxis-models download "$model"
+    # Run by the updater there is no keyboard: skip the question rather than
+    # let read hit end-of-input, which under set -e would abort the script
+    # before it records that setup is done.
+    if [ -t 0 ] && [ -z "${AIOS_SETUP_UNATTENDED:-}" ]; then
+        read -rp "Model id to download now (Enter to skip): " model || model=""
+        [ -n "${model:-}" ] && praxis-models download "$model"
+    else
+        echo "   skipped — pick one later with praxis-models recommend"
+    fi
 else
     echo "   run 'praxis-models recommend' later to pick a model for this hardware"
 fi

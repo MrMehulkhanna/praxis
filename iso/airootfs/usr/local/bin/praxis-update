@@ -587,6 +587,29 @@ fi
 # 5c. Voice typing & speech recognition (faster-whisper)
 # ---------------------------------------------------------------------------
 log "Checking voice typing speech recognition"
+# Voice typing needs the local AI backend, and that was only ever installed
+# if the user clicked "Set up the AI" on first boot. Skip it once and voice
+# typing never worked — and this step could not help, because it only
+# touched backends that already existed. Set it up for anyone missing it.
+if [ -d /opt/aios ] && command -v aios-setup >/dev/null 2>&1; then
+    for udir in /home/*; do
+        [ -d "$udir" ] || continue
+        [ -x "$udir/aios/.venv/bin/python" ] && continue
+        u=$(stat -c %U "$udir"); uid=$(id -u "$u" 2>/dev/null) || continue
+        [ "$uid" -ge 1000 ] || continue
+        info "Setting up voice typing and the AI backend for $u (one-time, downloads ~1 GB)…"
+        run_as_user() {
+            if [ "$(id -un)" = "$u" ]; then env AIOS_SETUP_UNATTENDED=1 "$@"
+            else sudo -u "$u" -H env XDG_RUNTIME_DIR="/run/user/$uid" \
+                     DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" AIOS_SETUP_UNATTENDED=1 "$@"; fi
+        }
+        if run_as_user aios-setup </dev/null >/tmp/praxis-aios-setup.log 2>&1; then
+            success "Voice typing ready for $u"
+        else
+            warn "AI setup for $u did not finish — see /tmp/praxis-aios-setup.log"
+        fi
+    done
+fi
 for udir in /home/* "$HOME"; do
     [ -d "$udir" ] || continue
     aios_u="$udir/aios"
