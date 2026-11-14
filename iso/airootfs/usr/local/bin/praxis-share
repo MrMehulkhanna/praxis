@@ -31,6 +31,12 @@ SERVE_PID_FILE="$STATE_DIR/serve.pid"
 FIFO="$STATE_DIR/stream.ts"
 GATE_PID_FILE="$STATE_DIR/gate.pid"
 CODE_FILE="$STATE_DIR/code"
+# TEMPORARY while the two-laptop link is being tuned: no pairing code. Both
+# sides use this fixed key, so a click on the PC in the list connects with
+# nothing to type. The link is still encrypted; it is just open to anyone on
+# the same network. Set PRAXIS_SHARE_PIN=1 to bring the four-digit code back.
+OPEN_CODE="0000"
+new_code() { if [ "${PRAXIS_SHARE_PIN:-0}" = 1 ]; then praxis-share-gate newcode; else echo "$OPEN_CODE"; fi; }
 MON_FILE="$STATE_DIR/monitor"
 PORT_FILE="$STATE_DIR/port"
 DEFAULT_PORT=5920
@@ -121,10 +127,10 @@ encoder_args() {
         # NVENC's tune is an enum of its own (hq/ll/ull/lossless) — it does
         # not take x264's "zerolatency", and rejects the whole encoder when
         # handed it. ull is the ultra-low-latency profile we want here.
-        h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=${SHARE_BITRATE:-30M} profile=high444p colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
-        hevc_nvenc) echo "preset=p1 tune=ull g=30 bf=0 rc=cbr b=${SHARE_BITRATE:-30M} profile=rext colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
+        h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=${SHARE_BITRATE:-30M} profile=high444p colorspace=smpte170m color_primaries=bt709 color_trc=iec61966-2-1 color_range=tv" ;;
+        hevc_nvenc) echo "preset=p1 tune=ull g=30 bf=0 rc=cbr b=${SHARE_BITRATE:-30M} profile=rext colorspace=smpte170m color_primaries=bt709 color_trc=iec61966-2-1 color_range=tv" ;;
         h264_vaapi) echo "g=30 b=12M" ;;
-        *)          echo "preset=ultrafast tune=zerolatency g=30 b=${SHARE_BITRATE_SW:-16M} colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
+        *)          echo "preset=ultrafast tune=zerolatency g=30 b=${SHARE_BITRATE_SW:-16M} colorspace=smpte170m color_primaries=bt709 color_trc=iec61966-2-1 color_range=tv" ;;
     esac
 }
 
@@ -182,7 +188,7 @@ cmd_extend() {
     rm -f "$MON_FILE"
 
     local inner=$(( port + 1000 ))
-    local code; code=$(praxis-share-gate newcode)
+    local code; code=$(new_code)
     printf '%s\n' "$code" > "$CODE_FILE"; chmod 600 "$CODE_FILE"
     setsid praxis-share-gate serve --listen "$port" --to "$inner" --code "$code" \
         --on-connect "praxis-share on-connect-stream" \
@@ -217,7 +223,7 @@ cmd_mirror() {
     : > "$MON_FILE"            # nothing to remove on stop: it is a real monitor
 
     local inner=$(( port + 1000 ))
-    local code; code=$(praxis-share-gate newcode)
+    local code; code=$(new_code)
     printf '%s\n' "$code" > "$CODE_FILE"; chmod 600 "$CODE_FILE"
     setsid praxis-share-gate serve --listen "$port" --to "$inner" --code "$code" \
         --on-connect "praxis-share on-connect-stream" \
@@ -384,6 +390,7 @@ cmd_connect() {
         asink="autoaudiosink"
     fi
 
+    [ -z "$code" ] && [ "${PRAXIS_SHARE_PIN:-0}" != 1 ] && code="$OPEN_CODE"
     if [ -z "$code" ]; then
         # asked for rather than guessed: the host is showing it on its screen
         printf 'pairing code shown on %s: ' "$host"

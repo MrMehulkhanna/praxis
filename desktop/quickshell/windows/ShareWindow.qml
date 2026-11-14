@@ -541,11 +541,12 @@ OverlayWindow {
                                 Btn {
                                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                                     icon: "monitor"
-                                    label: (win.connectTarget === (modelData.ip + ":" + modelData.port)) ? "Selected" : "Select"
+                                    label: "Connect"
                                     onClicked: {
                                         win.connectTarget = modelData.ip + ":" + modelData.port
                                         addr.text = win.connectTarget
-                                        codeIn.forceActiveFocus()
+                                        // no pairing code for now: one click connects
+                                        Share.connectTo(win.connectTarget, "")
                                     }
                                 }
                             }
@@ -597,7 +598,7 @@ OverlayWindow {
                                 }
                                 onAccepted: {
                                     let t = win.connectTarget.trim()
-                                    if ((codeIn.text.length === 4 || codeIn.text.length === 6) && t) {
+                                    if ((codeIn.text.length === 0 || codeIn.text.length === 4 || codeIn.text.length === 6) && t) {
                                         Share.connectTo(t, codeIn.text)
                                     } else {
                                         codeIn.forceActiveFocus()
@@ -633,7 +634,7 @@ OverlayWindow {
                                     }
                                 }
                                 onAccepted: {
-                                    if (win.connectTarget.trim() && (text.length === 4 || text.length === 6)) {
+                                    if (win.connectTarget.trim() && (text.length === 0 || text.length === 4 || text.length === 6)) {
                                         Share.connectTo(win.connectTarget.trim(), text)
                                     }
                                 }
@@ -648,7 +649,7 @@ OverlayWindow {
                         }
                         Btn {
                             icon: "monitor"; label: "Connect"
-                            enabled: win.connectTarget.trim() !== "" && (codeIn.text.length === 4 || codeIn.text.length === 6)
+                            enabled: win.connectTarget.trim() !== "" && (codeIn.text.length === 0 || codeIn.text.length === 4 || codeIn.text.length === 6)
                             onClicked: Share.connectTo(win.connectTarget.trim(), codeIn.text)
                         }
                     }
