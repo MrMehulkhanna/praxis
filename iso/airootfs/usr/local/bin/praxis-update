@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+
+# ── run with the rights it needs ────────────────────────────────────────
+# Started without root — by an older update window, or by hand — it used to
+# carry on anyway, and every step that writes to the system quietly failed.
+# If sudo allows this command without a password, take it.
+if [ "$(id -u)" -ne 0 ] && sudo -n -l "$(readlink -f "$0")" >/dev/null 2>&1; then
+    exec sudo -n "$(readlink -f "$0")" "$@"
+fi
+if [ "${1:-}" = "--dismiss-restart" ]; then
+    rm -f /var/lib/praxis/restart-required; exit 0
+fi
 # ============================================================================
 #  Praxis rolling updater — refresh system packages + AIOS + shell config.
 #  Safe to run any time. No-op if nothing to do.

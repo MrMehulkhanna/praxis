@@ -76,7 +76,11 @@ Singleton {
         // going, and the two then deadlock on pacman's database lock: the
         // window sits on one phase forever with no error anywhere.
         proc.command = ["bash", "-c",
-            "if sudo -n true 2>/dev/null; then exec sudo -n /usr/local/bin/praxis-update 2>&1; " +
+            // Ask whether *this command* may run passwordless — not `true`.
+            // Installed PCs only allow praxis-update and a few tools, so
+            // `sudo -n true` failed there, the update ran without admin
+            // rights, and every step that writes to the system did nothing.
+            "if sudo -n -l /usr/local/bin/praxis-update >/dev/null 2>&1; then exec sudo -n /usr/local/bin/praxis-update 2>&1; " +
             "else exec /usr/local/bin/praxis-update 2>&1; fi"]
         proc.running = true
     }
@@ -84,7 +88,7 @@ Singleton {
     function restartNow() { Quickshell.execDetached(["systemctl", "reboot"]) }
     function dismissRestart() {
         Quickshell.execDetached(["bash", "-c",
-            "rm -f /var/lib/praxis/restart-required 2>/dev/null || sudo -n rm -f /var/lib/praxis/restart-required"])
+            "rm -f /var/lib/praxis/restart-required 2>/dev/null || sudo -n /usr/local/bin/praxis-update --dismiss-restart"])
         root.restartNeeded = false
     }
 
