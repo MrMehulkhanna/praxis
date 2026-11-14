@@ -68,6 +68,7 @@ doctor() {
     check "aacparse"                 'gst-inspect-1.0 aacparse'        "" "pacman -S gst-plugins-good"
     check "pulsesink (sound out)"    'gst-inspect-1.0 pulsesink'       "" "pacman -S gst-plugins-good"
     check "h264 decoder"             'gst-inspect-1.0 avdec_h264'      "" "pacman -S gst-libav"
+    check "h265 decoder"             'gst-inspect-1.0 avdec_h265'      "" "pacman -S gst-libav"
     check "aac decoder"              'gst-inspect-1.0 avdec_aac'       "" "pacman -S gst-libav"
     check "pairing gate"             'command -v praxis-share-gate'    "" "reinstall praxis"
 
@@ -93,7 +94,16 @@ encoder() {
     # Picking a listed-but-dead encoder killed the capture the moment a viewer
     # connected, so the viewer said "connected" and never showed a picture.
     # libx264 is the software fallback that always works.
+    # HEVC 4:4:4 comes first: at 30 Mb/s it measured SSIM 0.997 against a
+    # lossless copy on a moving test pattern, where H.264 4:4:4 made about 30%
+    # more errors at the same bitrate, and NVIDIA GPUs from Turing on decode
+    # it in hardware. The test encode uses the real 4:4:4 settings, because a
+    # GPU can encode HEVC and still refuse its 4:4:4 profile.
     local e
+    if ffmpeg -hide_banner -loglevel error -f lavfi -i nullsrc=s=256x144:r=30 \
+           -frames:v 3 -pix_fmt yuv444p -c:v hevc_nvenc -profile:v rext -f null - >/dev/null 2>&1; then
+        echo hevc_nvenc; return
+    fi
     for e in h264_nvenc libx264; do
         if ffmpeg -hide_banner -loglevel error -f lavfi -i nullsrc=s=256x144:r=30 \
                -frames:v 3 -c:v "$e" -f null - >/dev/null 2>&1; then
@@ -112,6 +122,7 @@ encoder_args() {
         # not take x264's "zerolatency", and rejects the whole encoder when
         # handed it. ull is the ultra-low-latency profile we want here.
         h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=${SHARE_BITRATE:-30M} profile=high444p colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
+        hevc_nvenc) echo "preset=p1 tune=ull g=30 bf=0 rc=cbr b=${SHARE_BITRATE:-30M} profile=rext colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
         h264_vaapi) echo "g=30 b=12M" ;;
         *)          echo "preset=ultrafast tune=zerolatency g=30 b=${SHARE_BITRATE_SW:-16M} colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
     esac
@@ -227,9 +238,16 @@ cmd_on_connect_stream() {
     fi
     local mode; mode=$(cat "$STATE_DIR/mode" 2>/dev/null || echo "extend")
     local mon=""
+    # the viewer named its own screen during pairing: build the extra display
+    # at exactly that size, so nothing is stretched on the far side
+    if [ -n "${PRAXIS_SHARE_RES:-}" ]; then
+        echo "$PRAXIS_SHARE_RES" > "$STATE_DIR/res"
+        info "viewer screen is $PRAXIS_SHARE_RES"
+    fi
     if [ "$mode" = "extend" ]; then
-        if [ -s "$MON_FILE" ]; then
+        if [ -s "$MON_FILE" ] && monitors | grep -q "\"$(cat "$MON_FILE")\""; then
             mon=$(cat "$MON_FILE")
+            hyprctl eval "hl.monitor({ output = \"$mon\", mode = \"$(cat "$STATE_DIR/res" 2>/dev/null || echo "$DEFAULT_RES")\", position = \"auto\", scale = 1 })" >/dev/null 2>&1 || true
         else
             mon=$(add_headless)
             echo "$mon" > "$MON_FILE"
@@ -245,9 +263,15 @@ cmd_on_connect_stream() {
     # Decide from the interface the viewer is actually reached through.
     local peer=${PRAXIS_SHARE_PEER:-} dev=""
     [ -n "$peer" ] && dev=$(ip route get "$peer" 2>/dev/null | grep -oE 'dev [^ ]+' | awk '{print $2}' | head -1)
+    # Bitrate follows the picture size: 30 Mb/s is near lossless for a
+    # 1080p screen, so a 2880x1620 one (2.25x the pixels) gets ~70.
+    local res w h px=2073600; res=$(cat "$STATE_DIR/res" 2>/dev/null || true)
+    if [[ "$res" =~ ^([0-9]+)x([0-9]+) ]]; then w=${BASH_REMATCH[1]}; h=${BASH_REMATCH[2]}; px=$(( w * h )); fi
+    SHARE_BITRATE="$(( (px * 15 + 999999) / 1000000 ))M"
+    [ "${SHARE_BITRATE%M}" -lt 30 ] && SHARE_BITRATE=30M
     case "$dev" in
         wl*|"") ;;
-        *) SHARE_BITRATE=100M; SHARE_BITRATE_SW=40M
+        *) SHARE_BITRATE="$(( ${SHARE_BITRATE%M} * 3 > 150 ? 150 : ${SHARE_BITRATE%M} * 3 ))M"; SHARE_BITRATE_SW=40M
            info "wired link to $peer ($dev) — higher quality" ;;
     esac
     local port; port=$(cat "$PORT_FILE" 2>/dev/null || echo "$DEFAULT_PORT")
@@ -268,11 +292,24 @@ start_stream() {
     # that and still smooth for documents, browsers and terminals. Hardware
     # encoders keep 60.
     [ "$enc" = libx264 ] && [ "$fps" -gt 30 ] && fps=30
+    # NVENC on a laptop RTX 4050 encodes 4:4:4 at ~107 fps for 1920x1080 but
+    # only ~49 for 2880x1620. Asking for more than it can do does not drop
+    # frames cleanly: they queue, and the queue is input delay. Keep full
+    # colour and ask for what the chip sustains, with a little headroom
+    # (~200 Mpixel/s), never above 60.
+    case "$enc" in *_nvenc)
+        local res; res=$(cat "$STATE_DIR/res" 2>/dev/null || true)
+        if [[ "$res" =~ ^([0-9]+)x([0-9]+) ]]; then
+            local cap=$(( 200000000 / (BASH_REMATCH[1] * BASH_REMATCH[2]) ))
+            [ "$cap" -lt "$fps" ] && fps=$cap
+            [ "$fps" -lt 30 ] && fps=30
+        fi ;;
+    esac
     echo "$port" > "$PORT_FILE"
 
     rm -f "$FIFO"; mkfifo "$FIFO"
 
-    info "capturing $mon with $enc$([ "$enc" = h264_nvenc ] && echo ' (hardware)')"
+    info "capturing $mon with $enc$(case $enc in *_nvenc) echo ' (hardware)';; esac)"
     # each tuning flag needs its own -p, so expand them into an argv array
     local -a pargs=(); local kv
     for kv in $(encoder_args "$enc"); do pargs+=(-p "$kv"); done
@@ -294,7 +331,7 @@ start_stream() {
     # from 0.905 (4:2:0, 12 Mb/s) to 0.982 (4:4:4, 30 Mb/s), PSNR 43.8 -> 52 dB.
     # The software fallback stays 4:2:0 to keep its CPU cost down.
     local -a fmtargs=()
-    [ "$enc" = h264_nvenc ] && fmtargs=(-x yuv444p)
+    case "$enc" in *_nvenc) fmtargs=(-x yuv444p) ;; esac
     setsid wf-recorder -y -D -o "$mon" -c "$enc" -m mpegts -r "$fps" "${fmtargs[@]}" \
         "${pargs[@]}" "${aargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
     echo $! > "$PID_FILE"
@@ -369,8 +406,13 @@ cmd_connect() {
     local local_port=$(( port + 2000 ))
     mkdir -p "$STATE_DIR"
     info "connecting to $host:$port"
+    # this screen's real pixels and refresh, so the host builds a matching
+    # display; capped at 60 Hz, what the encoder is set up for
+    local myres; myres=$(monitors | python3 -c 'import json,sys
+ms=json.load(sys.stdin); m=next((m for m in ms if m.get("focused")), ms[0] if ms else None)
+if m: print("%dx%d@%d" % (m["width"], m["height"], min(60, round(m["refreshRate"]))))' 2>/dev/null || true)
     setsid praxis-share-gate client --host "$host" --port "$port" \
-        --listen "$local_port" --code "$code" >"$STATE_DIR/client.log" 2>&1 &
+        --listen "$local_port" --code "$code" ${myres:+--res "$myres"} >"$STATE_DIR/client.log" 2>&1 &
     local gate=$!
     sleep 2
     if ! kill -0 "$gate" 2>/dev/null; then
@@ -412,7 +454,7 @@ cmd_connect() {
     gst-launch-1.0 -q \
         tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d latency=0 \
         d. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 \
-           ! h264parse ! avdec_h264 thread-type=slice output-corrupt=false \
+           ! decodebin3 \
            ! queue leaky=downstream max-size-buffers=1 \
            ! videoconvert ! video/x-raw,format=BGRx ! $vsink sync=false async=false \
         d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=100000000 \

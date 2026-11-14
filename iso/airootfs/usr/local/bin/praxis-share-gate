@@ -23,6 +23,7 @@ internet.
 """
 import argparse
 import json
+import re
 import os
 import secrets
 import socket
@@ -328,12 +329,32 @@ def serve(listen_port: int, to_port: int, code: str, on_connect: str | None = No
                 return
             fails.pop(ip, None)
             print(f"gate: {ip} accepted", flush=True)
+            # A current viewer opens with one line naming its own screen, so
+            # the extra display is made pixel for pixel to match it instead of
+            # a fixed 1920x1080 stretched over a sharper panel. Older viewers
+            # send nothing; give up after a moment and use the default.
+            env = {**os.environ, 'PRAXIS_SHARE_PEER': ip}
+            try:
+                tls.settimeout(1.5)
+                hello = b""
+                while not hello.endswith(b"\n") and len(hello) < 64:
+                    ch = tls.recv(1)
+                    if not ch:
+                        break
+                    hello += ch
+                m = re.fullmatch(rb"PRAXIS-RES (\d{3,5})x(\d{3,5})@(\d{2,3})\n", hello)
+                if m:
+                    env['PRAXIS_SHARE_RES'] = m.expand(rb"\1x\2@\3").decode()
+            except (socket.timeout, ssl.SSLError, OSError):
+                pass
+            finally:
+                tls.settimeout(None)
             if on_connect:
                 try:
                     # tell the stream who connected, so it can pick a bitrate
                     # to suit the link (Wi-Fi or a cable)
                     subprocess.run(on_connect, shell=True, check=True,
-                                   env={**__import__('os').environ, 'PRAXIS_SHARE_PEER': ip})
+                                   env=env)
                 except Exception as e:
                     print(f"gate: on-connect failed: {e}", flush=True)
 
@@ -366,7 +387,7 @@ def serve(listen_port: int, to_port: int, code: str, on_connect: str | None = No
     return 0
 
 
-def client(host: str, port: int, listen_port: int, code: str) -> int:
+def client(host: str, port: int, listen_port: int, code: str, res: str | None = None) -> int:
     key = psk_from(code)
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname = False
@@ -383,6 +404,9 @@ def client(host: str, port: int, listen_port: int, code: str) -> int:
     except OSError as e:
         print(f"praxis-share-gate: cannot reach {host}:{port} ({e})", file=sys.stderr)
         return 3
+
+    if res:
+        tls.sendall(f"PRAXIS-RES {res}\n".encode())
 
     lsn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     lsn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -414,6 +438,7 @@ def main(argv: list[str]) -> int:
     c.add_argument("--port", type=int, required=True)
     c.add_argument("--listen", type=int, required=True)
     c.add_argument("--code", required=True)
+    c.add_argument("--res", help="this screen, WxH@Hz, so the host matches it")
     sub.add_parser("newcode")
     sub.add_parser("scan")
     a = ap.parse_args(argv)
@@ -424,7 +449,7 @@ def main(argv: list[str]) -> int:
         return 0
     if a.cmd == "serve":
         return serve(a.listen, a.to, a.code, a.on_connect)
-    return client(a.host, a.port, a.listen, a.code)
+    return client(a.host, a.port, a.listen, a.code, a.res)
 
 
 if __name__ == "__main__":
