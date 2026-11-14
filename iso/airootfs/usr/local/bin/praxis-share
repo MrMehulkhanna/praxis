@@ -363,6 +363,9 @@ cmd_connect() {
     # from the network: everything over the wire is inside the TLS session
     # the pairing code established.
     # Leaky queues and async=false are what make a window appear at all.
+    # 100 ms each: a leaky queue drops the oldest data instead of blocking,
+    # so it can be small without bringing back the preroll deadlock, and a
+    # 1 s queue had been adding up to a second of input delay.
     # A viewer that joins mid-stream drops video until the next keyframe;
     # meanwhile the small audio queue filled, blocked the demuxer, and the
     # keyframe never arrived — the pipeline sat in PREROLLING forever with
@@ -375,9 +378,9 @@ cmd_connect() {
     echo "$target" > "$STATE_DIR/viewer.target"
     gst-launch-1.0 -q \
         tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d latency=0 \
-        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=1000000000 \
+        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=100000000 \
            ! h264parse ! avdec_h264 ! videoconvert ! $vsink sync=false async=false \
-        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=1000000000 \
+        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=100000000 \
            ! aacparse ! avdec_aac ! audioconvert ! audioresample ! $asink sync=false async=false &
     VIEW_PID=$!; VIEW_GATE=$gate
     echo "$VIEW_GATE $VIEW_PID" > "$STATE_DIR/viewer.pids"
