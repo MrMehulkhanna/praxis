@@ -87,16 +87,20 @@ doctor() {
 }
 
 encoder() {
-    # wf-recorder hands the codec to ffmpeg, so these are ffmpeg's names.
-    # List once into a variable: under `set -o pipefail`, `ffmpeg | grep -q`
-    # has grep exit on the first match, ffmpeg takes SIGPIPE, and the whole
-    # pipeline reports 141 — so a match looked exactly like a miss.
-    local list; list=$(ffmpeg -hide_banner -encoders 2>/dev/null || true)
+    # Test-encode, don't just ask ffmpeg what it was built with. ffmpeg lists
+    # h264_nvenc on every Arch machine, NVIDIA or not, and even on an NVIDIA
+    # laptop it stops working between a driver update and the next reboot.
+    # Picking a listed-but-dead encoder killed the capture the moment a viewer
+    # connected, so the viewer said "connected" and never showed a picture.
+    # libx264 is the software fallback that always works.
     local e
-    for e in h264_nvenc h264_vaapi libx264; do
-        case "$list" in *" $e "*) echo "$e"; return ;; esac
+    for e in h264_nvenc libx264; do
+        if ffmpeg -hide_banner -loglevel error -f lavfi -i nullsrc=s=256x144:r=30 \
+               -frames:v 3 -c:v "$e" -f null - >/dev/null 2>&1; then
+            echo "$e"; return
+        fi
     done
-    die "no h264 encoder — run: praxis-share doctor"
+    die "no working h264 encoder — run: praxis-share doctor"
 }
 
 # Low latency matters more than compression ratio here: a big keyframe gap
@@ -109,7 +113,7 @@ encoder_args() {
         # handed it. ull is the ultra-low-latency profile we want here.
         h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=12M" ;;
         h264_vaapi) echo "g=30 b=12M" ;;
-        *)          echo "preset=veryfast tune=zerolatency g=30 b=12M" ;;
+        *)          echo "preset=ultrafast tune=zerolatency g=30 b=16M" ;;
     esac
 }
 
@@ -140,6 +144,11 @@ add_headless() {
     after=$(monitors | python3 -c 'import json,sys;print(" ".join(m["name"] for m in json.load(sys.stdin)))')
     for n in $after; do case " $before " in *" $n "*) ;; *) new="$n" ;; esac; done
     [ -n "${new:-}" ] || die "the headless output did not appear"
+    # Hyprland gives a new headless output the default scale of 2, so a
+    # 1920x1080 display was really 960x540 stretched — blurry text and huge
+    # windows on the far screen. Pin it to scale 1 at the requested mode.
+    local res; res=$(cat "$STATE_DIR/res" 2>/dev/null || true); [ -n "$res" ] || res="$DEFAULT_RES"
+    hyprctl eval "hl.monitor({ output = \"$new\", mode = \"$res\", position = \"auto\", scale = 1 })" >/dev/null 2>&1 || true
     echo "$new"
 }
 
@@ -231,6 +240,9 @@ cmd_on_connect_stream() {
         [ -n "$mon" ] || mon=$(monitors | python3 -c 'import json,sys;ms=json.load(sys.stdin);print(ms[0]["name"] if ms else "")')
     fi
     local port; port=$(cat "$PORT_FILE" 2>/dev/null || echo "$DEFAULT_PORT")
+    # the capture died (or never started): clear its server too, or the old
+    # one keeps the loopback port and the new one cannot serve anything
+    if [ -f "$SERVE_PID_FILE" ]; then kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null || true; fi
     local with_audio; with_audio=$(cat "$STATE_DIR/with_audio" 2>/dev/null || echo "1")
     WITH_AUDIO="$with_audio"
     start_stream "$mon" "$port"
@@ -341,22 +353,28 @@ cmd_connect() {
         printf '\n'; sed 's/^/  /' "$STATE_DIR/client.log" 2>/dev/null | tail -3
         die "could not connect"
     fi
-    ok "connected — Esc or Ctrl-C to stop"
+    ok "connected — Super+C closes the picture, Super+Alt+D disconnects"
 
     # The decoder now reads from the authenticated tunnel on loopback, not
     # from the network: everything over the wire is inside the TLS session
     # the pairing code established.
+    # Leaky queues and async=false are what make a window appear at all.
+    # A viewer that joins mid-stream drops video until the next keyframe;
+    # meanwhile the small audio queue filled, blocked the demuxer, and the
+    # keyframe never arrived — the pipeline sat in PREROLLING forever with
+    # no window, while saying "connected".
+    #
     # The viewer runs in the background and we wait on it, rather than in the
     # foreground: bash does not run a trap while a foreground child is
     # running, so a Disconnect from the window used to leave the picture up
     # until the stream died on its own. With wait, a signal lands at once.
     echo "$target" > "$STATE_DIR/viewer.target"
     gst-launch-1.0 -q \
-        tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d \
-        d. ! queue max-size-time=200000000 ! h264parse ! avdec_h264 ! videoconvert \
-           ! $vsink sync=false \
-        d. ! queue max-size-time=200000000 ! aacparse ! avdec_aac ! audioconvert ! audioresample \
-           ! $asink sync=false &
+        tcpclientsrc host=127.0.0.1 port="$local_port" ! tsdemux name=d latency=0 \
+        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=1000000000 \
+           ! h264parse ! avdec_h264 ! videoconvert ! $vsink sync=false async=false \
+        d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=1000000000 \
+           ! aacparse ! avdec_aac ! audioconvert ! audioresample ! $asink sync=false async=false &
     local view=$!
     echo "$gate $view" > "$STATE_DIR/viewer.pids"
     trap 'kill "$gate" "$view" 2>/dev/null; rm -f "$STATE_DIR/viewer.pids" "$STATE_DIR/viewer.target"' EXIT INT TERM
@@ -406,8 +424,12 @@ cmd_stop() {
     [ -s "$MON_FILE" ] && cmd_bring_back >/dev/null 2>&1 || true
     local pid; pid=$(serving_pid || true)
     if [ -n "$pid" ]; then kill -INT "$pid" 2>/dev/null || true; ok "stopped capturing"; else info "not serving"; fi
-    [ -f "$SERVE_PID_FILE" ] && kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null
-    [ -f "$GATE_PID_FILE" ] && kill "$(cat "$GATE_PID_FILE")" 2>/dev/null
+    # "|| true" on every kill: under set -e, killing a process that already
+    # exited returns 1 and aborted stop on this line — so the gate below it
+    # was never killed, kept the old PIN, and every later start said
+    # "already serving".
+    [ -f "$SERVE_PID_FILE" ] && { kill "$(cat "$SERVE_PID_FILE")" 2>/dev/null || true; }
+    [ -f "$GATE_PID_FILE" ] && { kill "$(cat "$GATE_PID_FILE")" 2>/dev/null || true; }
     rm -f "$PID_FILE" "$SERVE_PID_FILE" "$GATE_PID_FILE" "$PORT_FILE" "$CODE_FILE" "$FIFO" "$STATE_DIR/clients.json" "$STATE_DIR/mode" "$STATE_DIR/res" "$STATE_DIR/mirror_out"
     input_running && info "input is still shared — praxis-share input stop"
     if [ -s "$MON_FILE" ]; then

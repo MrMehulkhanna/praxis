@@ -459,6 +459,9 @@ hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc call shell toggle wid
 -- Not Shift+S — that is already the area screenshot, and binding it twice
 -- meant every attempt to share the screen fired slurp instead.
 hl.bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd("quickshell ipc call shell toggle share"), { description = "Praxis: Share screen" })
+-- Super+Alt+D: leave a shared screen you are watching. The viewer is a
+-- fullscreen window with no buttons of its own, so it needs a way out.
+hl.bind(mainMod .. " + ALT + D", hl.dsp.exec_cmd("praxis-share disconnect"), { description = "Praxis: Stop watching a shared screen" })
 -- Super+Shift+Q → power menu (lock/suspend/logout/reboot/off)
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("praxis-power"), { description = "System: Power menu" })
 -- Super+N → quicknote (rofi prompt → today's ~/aios/notes/YYYY-MM-DD.md)
