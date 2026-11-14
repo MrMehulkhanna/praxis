@@ -210,32 +210,40 @@ def scan(timeout: float = 1.2) -> list[dict]:
             pass
     s.close()
 
-    # TCP probe fallback for active neighbors in ip neigh if not discovered via UDP
-    for tgt in targets:
-        if tgt in ["<broadcast>", "255.255.255.255"] or tgt.endswith(".255") or tgt == my_ip:
-            continue
-        key = f"{tgt}:5920"
-        if key not in devices:
-            try:
-                tc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                tc.settimeout(0.15)
-                if tc.connect_ex((tgt, 5920)) == 0:
-                    hostname = f"Praxis PC ({tgt})"
-                    try:
-                        h = socket.gethostbyaddr(tgt)[0]
-                        if h:
-                            hostname = h.split(".")[0]
-                    except Exception:
-                        pass
-                    devices[key] = {
-                        "name": hostname,
-                        "ip": tgt,
-                        "port": 5920,
-                        "is_self": False
-                    }
-                tc.close()
-            except Exception:
-                pass
+    # Phone hotspots and many routers drop broadcast/multicast between
+    # clients while still letting them connect to each other directly, so
+    # the beacon never arrives and the list stayed empty even with the other
+    # PC sharing. Knock on the share port of every address on each small
+    # local network (/22 or narrower: at most ~1000 quick connects, run in
+    # parallel) and list whatever answers.
+    import ipaddress
+    from concurrent.futures import ThreadPoolExecutor
+    candidates = []
+    try:
+        out = subprocess.check_output(["ip", "-4", "-o", "addr", "show"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            p = line.split()
+            if "inet" not in p or p[1] == "lo":
+                continue
+            net = ipaddress.ip_interface(p[p.index("inet") + 1]).network
+            if net.prefixlen >= 22:
+                candidates += [str(h) for h in net.hosts()]
+    except Exception:
+        pass
+    known = {d["ip"] for d in devices.values()}
+    def knock(ip):
+        try:
+            with socket.create_connection((ip, 5920), timeout=0.4):
+                return ip
+        except OSError:
+            return None
+    todo = [ip for ip in dict.fromkeys(candidates) if ip not in known and ip != my_ip]
+    if todo:
+        with ThreadPoolExecutor(max_workers=128) as ex:
+            for ip in ex.map(knock, todo):
+                if ip:
+                    # no reverse-DNS lookup: on a hotspot it times out per host
+                    devices[f"{ip}:5920"] = {"name": f"Praxis PC ({ip})", "ip": ip, "port": 5920, "is_self": False}
 
     return list(devices.values())
 

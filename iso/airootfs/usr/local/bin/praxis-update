@@ -595,6 +595,29 @@ if command -v wpctl >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+# 5b2. Direct cable link for screen sharing
+# ---------------------------------------------------------------------------
+# An Ethernet cable straight between two Praxis PCs has no router to hand out
+# addresses, so by default neither side gets one and they cannot see each
+# other. This profile still asks a router first (a normal LAN works as
+# before) and falls back to a link-local 169.254.x.x address after 8 s, so
+# two laptops on one cable find each other with no settings.
+log "Setting up direct-cable networking for screen sharing"
+if command -v nmcli >/dev/null 2>&1; then
+    if ! nmcli -t -f NAME con show 2>/dev/null | grep -qx praxis-direct; then
+        nmcli con add type ethernet con-name praxis-direct ifname "*" \
+            ipv4.method auto ipv4.link-local fallback ipv4.dhcp-timeout 8 \
+            ipv6.method link-local connection.autoconnect yes \
+            connection.autoconnect-priority 50 >/dev/null 2>&1 \
+            && success "cable link ready" || warn "could not add the cable profile"
+    else
+        nmcli con modify praxis-direct connection.interface-name "" ipv4.method auto \
+            ipv4.addresses "" ipv4.link-local fallback ipv4.dhcp-timeout 8 >/dev/null 2>&1 || true
+        success "cable link ready"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # 5c. Voice typing & speech recognition (faster-whisper)
 # ---------------------------------------------------------------------------
 log "Checking voice typing speech recognition"

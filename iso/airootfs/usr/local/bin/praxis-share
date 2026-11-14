@@ -338,6 +338,13 @@ start_stream() {
     # The software fallback stays 4:2:0 to keep its CPU cost down.
     local -a fmtargs=()
     case "$enc" in *_nvenc) fmtargs=(-x yuv444p) ;; esac
+    # wf-recorder's own RGB->YUV step uses swscale's fast defaults, which
+    # bleed colour across neighbouring pixels: on a test card of 1-pixel
+    # lines and small coloured text it scored 20 dB against a lossless grab,
+    # i.e. visibly soft. With accurate rounding and full-resolution chroma
+    # in and out it scores 59 dB, pixel-identical to the eye. The matrix and
+    # range here match the colorspace/color_range tags the encoder writes.
+    fmtargs+=(-F "scale=flags=accurate_rnd+full_chroma_int+full_chroma_inp:out_color_matrix=bt601:out_range=tv")
     setsid wf-recorder -y -D -o "$mon" -c "$enc" -m mpegts -r "$fps" "${fmtargs[@]}" \
         "${pargs[@]}" "${aargs[@]}" -f "$FIFO" >"$STATE_DIR/capture.log" 2>&1 &
     echo $! > "$PID_FILE"
