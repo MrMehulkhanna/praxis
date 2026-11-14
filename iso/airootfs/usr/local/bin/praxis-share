@@ -111,9 +111,9 @@ encoder_args() {
         # NVENC's tune is an enum of its own (hq/ll/ull/lossless) — it does
         # not take x264's "zerolatency", and rejects the whole encoder when
         # handed it. ull is the ultra-low-latency profile we want here.
-        h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=12M" ;;
+        h264_nvenc) echo "preset=p1 tune=ull g=30 rc=cbr b=12M colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
         h264_vaapi) echo "g=30 b=12M" ;;
-        *)          echo "preset=ultrafast tune=zerolatency g=30 b=16M" ;;
+        *)          echo "preset=ultrafast tune=zerolatency g=30 b=16M colorspace=smpte170m color_primaries=bt709 color_trc=bt709 color_range=tv" ;;
     esac
 }
 
@@ -253,6 +253,10 @@ start_stream() {
     local inner=$(( port + 1000 ))   # loopback-only; the gate fronts "$port"
     need wf-recorder; need gst-launch-1.0
     enc=$(encoder)
+    # Software x264 at 1080p60 costs about three CPU cores; at 30 it is half
+    # that and still smooth for documents, browsers and terminals. Hardware
+    # encoders keep 60.
+    [ "$enc" = libx264 ] && [ "$fps" -gt 30 ] && fps=30
     echo "$port" > "$PORT_FILE"
 
     rm -f "$FIFO"; mkfifo "$FIFO"
@@ -375,11 +379,13 @@ cmd_connect() {
            ! h264parse ! avdec_h264 ! videoconvert ! $vsink sync=false async=false \
         d. ! queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=1000000000 \
            ! aacparse ! avdec_aac ! audioconvert ! audioresample ! $asink sync=false async=false &
-    local view=$!
-    echo "$gate $view" > "$STATE_DIR/viewer.pids"
-    trap 'kill "$gate" "$view" 2>/dev/null; rm -f "$STATE_DIR/viewer.pids" "$STATE_DIR/viewer.target"' EXIT INT TERM
+    VIEW_PID=$!; VIEW_GATE=$gate
+    echo "$VIEW_GATE $VIEW_PID" > "$STATE_DIR/viewer.pids"
+    # globals, not locals: an EXIT trap runs after the function has returned,
+    # and under set -u a local it names is unbound by then
+    trap 'kill "${VIEW_GATE:-}" "${VIEW_PID:-}" 2>/dev/null || true; rm -f "$STATE_DIR/viewer.pids" "$STATE_DIR/viewer.target"' EXIT INT TERM
     set +e
-    wait "$view"
+    wait "$VIEW_PID"
     local rc=$?
     set -e
     if [ "$rc" -ne 0 ] && [ "$rc" -lt 128 ]; then
